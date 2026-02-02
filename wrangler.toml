@@ -1,0 +1,23 @@
+name = "xikipedia"
+account_id = "facf6619808dc039df729531bbb26d1d"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+
+# Custom domain routing (uncomment after setting up DNS)
+# routes = [
+#   { pattern = "xikipedia.emilycogsdill.com/*", zone_name = "emilycogsdill.com" }
+# ]
+
+# Static assets configuration
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+# R2 binding for large data file
+[[r2_buckets]]
+binding = "DATA_BUCKET"
+bucket_name = "xikipedia-data"
+preview_bucket_name = "xikipedia-data"
+
+[dev]
+port = 8788

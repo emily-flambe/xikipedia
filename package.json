@@ -1,0 +1,27 @@
+{
+  "name": "xikipedia",
+  "version": "1.0.0",
+  "description": "Wikipedia as a social media feed - recreation of xikipedia.org by rebane2001",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "npx playwright test",
+    "test:ui": "npx playwright test --ui"
+  },
+  "keywords": [
+    "wikipedia",
+    "social-media",
+    "algorithm",
+    "cloudflare-workers"
+  ],
+  "author": "rebane2001 (original), emily-flambe (deployment)",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@playwright/test": "^1.57.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.51.0"
+  }
+}
