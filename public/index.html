@@ -299,6 +299,12 @@
         .retry-btn:hover {
             background: #1a9ae8;
         }
+        .recommendation-reason {
+            font-size: 12px;
+            color: #8899aa;
+            margin: 4px 0 8px 0;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -586,6 +592,15 @@
         postYes.onclick = handleLike;
 
         postDiv.appendChild(postTitle);
+
+        // Display recommendation reason if available
+        if (nextPost.recommendedBecause && nextPost.recommendedBecause.length > 0) {
+            const reasonP = document.createElement("p");
+            reasonP.classList.add("recommendation-reason");
+            reasonP.innerText = "Because you liked: " + nextPost.recommendedBecause.join(", ");
+            postDiv.appendChild(reasonP);
+        }
+
         postDiv.appendChild(postP);
         
         if (nextPost.thumb) {
@@ -617,7 +632,7 @@
             .map(post => {
                 const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -50000;
                 const postScore = [...post.allCategories].reduce(
-                    (sum, cat) => sum + (categoryScores[cat] ?? 0), 
+                    (sum, cat) => sum + (categoryScores[cat] ?? 0),
                     initialScore
                 );
                 post.score = postScore;
@@ -648,8 +663,22 @@
                 }
             });
         }
-        
+
         bestPost.seen = (bestPost.seen ?? 0) + 1;
+
+        // Track top contributing categories for transparency
+        const categoryContributions = [...bestPost.allCategories]
+            .map(cat => ({ cat, score: categoryScores[cat] || 0 }))
+            .filter(c => c.score > 0)  // Only positive contributions
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3);
+
+        if (categoryContributions.length > 0) {
+            bestPost.recommendedBecause = categoryContributions.map(c => convertCat(c.cat));
+        } else {
+            bestPost.recommendedBecause = null;
+        }
+
         return bestPost;
     }
 
