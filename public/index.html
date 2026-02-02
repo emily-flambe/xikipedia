@@ -890,12 +890,22 @@
         console.log(`Processing ${wikiLen} articles...`);
         const loading = document.querySelector("#loading");
         let lastFrame = Date.now();
-        
+
         const loadingDetails = document.getElementById('loadingDetails');
         const loadingProgressBar = document.getElementById('loadingProgressBar');
 
+        let filteredCount = 0;
+
         while (smoldata.pages.length) {
             const e = smoldata.pages.pop();
+
+            // Skip articles with very short text (less than 100 chars)
+            if (e[2] && e[2].length < 100) {
+                filteredCount++;
+                i++;
+                continue;
+            }
+
             const tempPage = {
                 title: e[0],
                 id: e[1],
@@ -920,7 +930,9 @@
             tempPage.allCategories.add(...tempPage.links.map(e => `p:${e}`));
             pagesArr.push(tempPage);
         }
-        
+
+        console.log(`Filtered ${filteredCount} short articles (less than 100 characters)`);
+
         loading.remove();
         document.getElementById('loadingProgress').style.display = 'none';
         document.getElementById('loadingDetails').innerText = `${wikiLen.toLocaleString()} articles ready`;
