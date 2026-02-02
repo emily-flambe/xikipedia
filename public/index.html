@@ -308,7 +308,7 @@
         <p style="font-weight: 600;margin:0">Or add your own</p>
         <div id="categorySearch" style="display:flex;flex-direction:column">
             <input placeholder="Estonia..." disabled data-testid="category-search-input" aria-label="Search for categories">
-            <select size="5" data-testid="category-search-select"></select>
+            <select size="5" data-testid="category-search-select" aria-label="Category search results"></select>
         </div>
         <p style="margin-top:auto">
             Since the content and images shown is from random Wikipedia articles, you will likely see 
@@ -472,7 +472,6 @@
         postDiv.classList.add("post");
         postDiv.dataset.testid = "post";
         postDiv.dataset.title = nextPost.title;
-        postDiv.setAttribute("role", "article");
         postDiv.setAttribute("tabindex", "0");
         postDiv.setAttribute("aria-label", `Article: ${nextPost.title}. Press Enter to open on Wikipedia.`);
 
@@ -512,13 +511,6 @@
 
         postYes.onclick = handleLike;
 
-        postYes.onkeydown = (e) => {
-            if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleLike(e);
-            }
-        };
-        
         postDiv.appendChild(postTitle);
         postDiv.appendChild(postP);
         
@@ -605,7 +597,6 @@
         const check = document.createElement("input");
         const labelText = `${cat.slice(0, 1).toUpperCase()}${cat.slice(1).toLowerCase()}`;
         check.type = "checkbox";
-        check.setAttribute("aria-label", `Select category: ${labelText}`);
         picker.innerText = labelText;
         picker.appendChild(check);
         picker.classList.add("categoryPicker");
