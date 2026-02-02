@@ -493,6 +493,13 @@
         
         postDiv.onclick = (e) => {
             const now = Date.now();
+
+            // Fix race condition: clear timer if tapping a different post
+            if (singleTapTimer && lastTapTarget !== postDiv) {
+                clearTimeout(singleTapTimer);
+                singleTapTimer = null;
+            }
+
             const isDoubleTap = (now - lastTapTime < 300) && (lastTapTarget === postDiv);
 
             if (isDoubleTap) {
@@ -500,11 +507,14 @@
                 clearTimeout(singleTapTimer);
                 singleTapTimer = null;
 
-                // Trigger the like action
-                postYes.click();
+                // Only animate and like if not already liked
+                if (!postYes.dataset.liked) {
+                    // Trigger the like action
+                    postYes.click();
 
-                // Show visual feedback
-                showDoubleTapHeart(postDiv);
+                    // Show visual feedback
+                    showDoubleTapHeart(postDiv);
+                }
 
                 // Reset tap tracking
                 lastTapTime = 0;
