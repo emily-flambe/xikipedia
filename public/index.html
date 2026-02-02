@@ -59,8 +59,13 @@
             align-items: flex-start;
             cursor: pointer;
         }
-        .post:hover {
+        .post:hover,
+        .post:focus {
             background: #1C2732;
+        }
+        .post:focus {
+            outline: 2px solid #2cafff;
+            outline-offset: -2px;
         }
         .post h1 {
             font-size: 100%;
@@ -151,7 +156,8 @@
             justify-content: space-between;
             align-items: center;
             box-shadow: inset 0px 0px 1.2px 0px #000;
-            background: #000;
+            background: #1C2732;
+            color: #E8E8E8;
         }
         .categoryPicker::after {
             content: "+";
@@ -162,7 +168,7 @@
         }
         .categoryPicker:hover,
         .categoryPicker:active {
-            background: rgba(0,0,0,0.5);
+            background: #38444D;
         }
         .categoryPicker:has(input:checked) {
             background: #FFF;
@@ -221,8 +227,19 @@
         }
         .loading-details {
             font-size: 14px;
-            opacity: 0.7;
+            opacity: 0.85;
             margin-top: 8px;
+        }
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
         .loading-progress {
             width: 100%;
@@ -266,8 +283,8 @@
 </head>
 <body>
     <p id="loading">Loading...</p>
-    <div class="posts" data-testid="posts"></div>
-    <div class="stats" data-testid="stats"></div>
+    <div class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
+    <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores"></aside>
     <div id="startScreen" popover="manual">
         <div>
             <h1>Xikipedia</h1>
@@ -290,7 +307,7 @@
         <div id="categoryPickList"></div>
         <p style="font-weight: 600;margin:0">Or add your own</p>
         <div id="categorySearch" style="display:flex;flex-direction:column">
-            <input placeholder="Estonia..." disabled data-testid="category-search-input">
+            <input placeholder="Estonia..." disabled data-testid="category-search-input" aria-label="Search for categories">
             <select size="5" data-testid="category-search-select"></select>
         </div>
         <p style="margin-top:auto">
@@ -306,7 +323,7 @@
             <p id="errorText">Network error occurred.</p>
             <button class="retry-btn" id="retryBtn">Try again</button>
         </div>
-        <button id="startBtn" disabled data-testid="start-button">I'm an adult, continue</button>
+        <button id="startBtn" disabled data-testid="start-button" aria-label="Start browsing Xikipedia (adult content warning)">I'm an adult, continue</button>
     </div>
 <script>
     // ============================================
@@ -451,31 +468,55 @@
         const postTitle = document.createElement("h1");
         const postP = document.createElement("p");
         const postYes = document.createElement("button");
-        
+
         postDiv.classList.add("post");
         postDiv.dataset.testid = "post";
         postDiv.dataset.title = nextPost.title;
-        
-        postDiv.onclick = () => {
+        postDiv.setAttribute("role", "article");
+        postDiv.setAttribute("tabindex", "0");
+        postDiv.setAttribute("aria-label", `Article: ${nextPost.title}. Press Enter to open on Wikipedia.`);
+
+        const openWikipedia = () => {
             window.open(`https://simple.wikipedia.org/wiki/${nextPost.title.replace(/ /g, '_')}`);
             if (!postDiv.dataset.engaged) {
                 postDiv.dataset.engaged = engagePost(nextPost, 75);
             }
         };
-        
+
+        postDiv.onclick = openWikipedia;
+
+        postDiv.onkeydown = (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openWikipedia();
+            }
+        };
+
         postTitle.innerText = nextPost.title;
         postP.innerText = nextPost.text;
         postYes.innerText = "Like";
         postYes.dataset.testid = "like-button";
-        
-        postYes.onclick = (e) => {
+        postYes.setAttribute("aria-label", `Like this article: ${nextPost.title}`);
+        postYes.setAttribute("aria-pressed", "false");
+
+        const handleLike = (e) => {
             postYes.dataset.liked = "true";
+            postYes.setAttribute("aria-pressed", "true");
             if (!postYes.dataset.engaged) {
                 postYes.dataset.engaged = engagePost(nextPost, 50 + postsWithoutLike * 4);
             }
             postsWithoutLike = 0;
             setTimeout(updateEngagement, 100);
             e.stopPropagation();
+        };
+
+        postYes.onclick = handleLike;
+
+        postYes.onkeydown = (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleLike(e);
+            }
         };
         
         postDiv.appendChild(postTitle);
@@ -562,8 +603,10 @@
         }
         const picker = document.createElement("label");
         const check = document.createElement("input");
+        const labelText = `${cat.slice(0, 1).toUpperCase()}${cat.slice(1).toLowerCase()}`;
         check.type = "checkbox";
-        picker.innerText = `${cat.slice(0, 1).toUpperCase()}${cat.slice(1).toLowerCase()}`;
+        check.setAttribute("aria-label", `Select category: ${labelText}`);
+        picker.innerText = labelText;
         picker.appendChild(check);
         picker.classList.add("categoryPicker");
         check.dataset.category = cat;
