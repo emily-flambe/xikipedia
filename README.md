@@ -76,11 +76,29 @@ Note: Local development requires the R2 bucket with the data file. For most chan
 PLAYWRIGHT_BASE_URL=https://xikipedia.emily-cogsdill.workers.dev npm test
 ```
 
-## Data File
+## Data Updates
 
-The `smoldata.json` (~215MB) contains Simple Wikipedia article data and is stored in Cloudflare R2 for efficient delivery. This file is not stored in the repository.
+Data is refreshed automatically via a **Dagster pipeline** running on a local WSL2 instance.
 
-To regenerate the data file, see the original repository for the data generation scripts.
+### Schedule
+- **Monthly** on the 1st at 6:00 AM (Mountain Time)
+- Syncs from [xikipedia.org](https://xikipedia.org) (~2 min)
+
+### Pipeline Flow
+```
+raw_wikipedia_data         Download from xikipedia.org (~40MB compressed)
+        ↓
+processed_wikipedia_data   Validate & transform (~270K articles)
+        ↓
+r2_wikipedia_data         Upload to Cloudflare R2 (~215MB)
+```
+
+### Manual Update
+- **Dagster UI**: http://pceus:3000 → Jobs → `xikipedia_update_job` → Launch Run
+- **CLI**: `dagster job launch -j xikipedia_update_job -f dagster_definitions/definitions.py`
+
+### Setup
+See [dagster_definitions/SETUP.md](./dagster_definitions/SETUP.md) for installation and configuration.
 
 ## License
 
