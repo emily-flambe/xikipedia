@@ -606,14 +606,19 @@
         shareBtn.onclick = (e) => {
             e.stopPropagation();
             const shareUrl = `${window.location.origin}${window.location.pathname}?article=${nextPost.id}`;
-            navigator.clipboard.writeText(shareUrl).then(() => {
-                shareBtn.classList.add("copied");
-                shareBtn.setAttribute("aria-label", "Link copied!");
-                setTimeout(() => {
-                    shareBtn.classList.remove("copied");
-                    shareBtn.setAttribute("aria-label", `Share this article: ${nextPost.title}`);
-                }, 2000);
-            });
+            navigator.clipboard.writeText(shareUrl)
+                .then(() => {
+                    shareBtn.classList.add("copied");
+                    shareBtn.setAttribute("aria-label", "Link copied!");
+                    setTimeout(() => {
+                        shareBtn.classList.remove("copied");
+                        shareBtn.setAttribute("aria-label", `Share this article: ${nextPost.title}`);
+                    }, 2000);
+                })
+                .catch(() => {
+                    // Fallback: show the URL in a prompt
+                    prompt('Copy this link:', shareUrl);
+                });
         };
 
         buttonRow.classList.add("button-row");
@@ -900,6 +905,10 @@
         let sharedArticle = null;
         if (sharedArticleId) {
             sharedArticle = pagesArr.find(p => p.id == sharedArticleId);
+            if (!sharedArticle) {
+                // Article not found - log warning
+                console.warn('Shared article not found:', sharedArticleId);
+            }
             // Clear the URL parameter
             window.history.replaceState({}, '', window.location.pathname);
         }
