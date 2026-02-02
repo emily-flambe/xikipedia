@@ -1,0 +1,48 @@
+name: Update Data
+
+on:
+  # Run monthly on the 1st at 6am UTC
+  schedule:
+    - cron: '0 6 1 * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Data source'
+        required: true
+        default: 'xikipedia.org'
+        type: choice
+        options:
+          - xikipedia.org
+          - generate-fresh
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Update data from xikipedia.org
+        if: github.event.inputs.source != 'generate-fresh'
+        run: node scripts/update-from-source.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      
+      - name: Generate fresh data (slow - several hours)
+        if: github.event.inputs.source == 'generate-fresh'
+        run: |
+          node scripts/generate-data.mjs
+          npx wrangler r2 object put xikipedia-data/smoldata.json --file public/smoldata.json --content-type "application/json" --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
