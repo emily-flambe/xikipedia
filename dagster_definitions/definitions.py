@@ -9,6 +9,7 @@ Dagster pipeline to keep Wikipedia data fresh:
 Schedule: Monthly on the 1st
 """
 
+import brotli
 import json
 import os
 import subprocess
@@ -32,7 +33,7 @@ import requests
 
 # Constants
 WIKI_API = "https://simple.wikipedia.org/w/api.php"
-SOURCE_URL = "https://xikipedia.org/smoldata.json"
+SOURCE_URL = "https://xikipedia.org/smoldata.json.br"  # Brotli compressed
 R2_BUCKET = "xikipedia-data"
 R2_KEY = "smoldata.json"
 
@@ -50,22 +51,30 @@ def raw_wikipedia_data(context: AssetExecutionContext) -> dict:
     """
     Fetch the pre-generated data from xikipedia.org.
     This is the fast path - uses rebane2001's processed data.
+    Downloads Brotli-compressed file and decompresses it.
     """
     context.log.info(f"Downloading data from {SOURCE_URL}...")
     
     response = requests.get(SOURCE_URL, timeout=300)
     response.raise_for_status()
     
-    data = response.json()
+    # Decompress Brotli
+    context.log.info(f"Downloaded {len(response.content) / 1024 / 1024:.2f} MB compressed, decompressing...")
+    decompressed = brotli.decompress(response.content)
+    context.log.info(f"Decompressed to {len(decompressed) / 1024 / 1024:.2f} MB")
+    
+    data = json.loads(decompressed)
     
     article_count = len(data.get("pages", []))
     category_count = len(data.get("subCategories", {}))
     
-    context.log.info(f"Downloaded {article_count} articles, {category_count} categories")
+    context.log.info(f"Loaded {article_count} articles, {category_count} categories")
     
     context.add_output_metadata({
         "article_count": article_count,
         "category_count": category_count,
+        "compressed_size_mb": round(len(response.content) / 1024 / 1024, 2),
+        "decompressed_size_mb": round(len(decompressed) / 1024 / 1024, 2),
         "source": SOURCE_URL,
         "download_time": datetime.now().isoformat(),
     })
@@ -124,7 +133,7 @@ def r2_wikipedia_data(
 ) -> str:
     """
     Upload the processed data to Cloudflare R2 bucket.
-    Requires wrangler CLI to be installed and configured.
+    Requires wrangler CLI and CLOUDFLARE_API_TOKEN env var.
     """
     # Write to temp file
     with tempfile.NamedTemporaryFile(
@@ -141,7 +150,6 @@ def r2_wikipedia_data(
         context.log.info(f"Uploading {file_size / 1024 / 1024:.2f} MB to R2...")
         
         # Use wrangler to upload
-        # Note: CLOUDFLARE_API_TOKEN must be set in dagster service environment
         result = subprocess.run(
             [
                 "npx", "wrangler", "r2", "object", "put",
