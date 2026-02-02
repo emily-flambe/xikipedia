@@ -102,6 +102,26 @@
         .post button[data-liked]::after {
             content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.06,21.01c3.94,0,13.77-11.36,8.56-16.37-4.59-4.41-8.61,1.58-8.61,1.58,0,0-4.02-5.99-8.61-1.58-5.22,5.01,4.61,16.37,8.56,16.37h.11Z" stroke-width="2" fill="red" stroke="red"/></svg>');
         }
+        /* Double-tap like animation */
+        @keyframes doubleTapLike {
+            0% { transform: scale(0); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
+        .double-tap-heart {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            width: 80px;
+            height: 80px;
+            pointer-events: none;
+            animation: doubleTapLike 0.6s ease-out forwards;
+            z-index: 10;
+        }
+        .post {
+            position: relative;
+        }
         .post img.media {
             border-radius: 16px;
             border: 1px solid #38444D;
@@ -330,6 +350,11 @@
     let postsWithoutLike = 0;
     const DATA_SIZE = 225690064;
 
+    // Double-tap detection state
+    let lastTapTime = 0;
+    let lastTapTarget = null;
+    let singleTapTimer = null;
+
     // DOM Elements
     const startBtn = document.getElementById("startBtn");
     const startScreen = document.getElementById("startScreen");
@@ -432,6 +457,16 @@
         return amount;
     }
 
+    // Show double-tap heart animation
+    function showDoubleTapHeart(postDiv) {
+        const heart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        heart.setAttribute("viewBox", "0 0 24 24");
+        heart.classList.add("double-tap-heart");
+        heart.innerHTML = '<path d="m12.06,21.01c3.94,0,13.77-11.36,8.56-16.37-4.59-4.41-8.61,1.58-8.61,1.58,0,0-4.02-5.99-8.61-1.58-5.22,5.01,4.61,16.37,8.56,16.37h.11Z" stroke-width="2" fill="red" stroke="red"/>';
+        postDiv.appendChild(heart);
+        heart.addEventListener("animationend", () => heart.remove());
+    }
+
     // Show full-size image in popover
     function showPic(imgName) {
         const fullImg = document.createElement("img");
@@ -456,10 +491,41 @@
         postDiv.dataset.testid = "post";
         postDiv.dataset.title = nextPost.title;
         
-        postDiv.onclick = () => {
-            window.open(`https://simple.wikipedia.org/wiki/${nextPost.title.replace(/ /g, '_')}`);
-            if (!postDiv.dataset.engaged) {
-                postDiv.dataset.engaged = engagePost(nextPost, 75);
+        postDiv.onclick = (e) => {
+            const now = Date.now();
+            const isDoubleTap = (now - lastTapTime < 300) && (lastTapTarget === postDiv);
+
+            if (isDoubleTap) {
+                // Double-tap detected - trigger like
+                clearTimeout(singleTapTimer);
+                singleTapTimer = null;
+
+                // Trigger the like action
+                postYes.click();
+
+                // Show visual feedback
+                showDoubleTapHeart(postDiv);
+
+                // Reset tap tracking
+                lastTapTime = 0;
+                lastTapTarget = null;
+            } else {
+                // First tap - wait to see if it's a double-tap
+                lastTapTime = now;
+                lastTapTarget = postDiv;
+
+                // Delay single-tap action to check for second tap
+                singleTapTimer = setTimeout(() => {
+                    if (lastTapTarget === postDiv) {
+                        // Single tap confirmed - open Wikipedia
+                        window.open(`https://simple.wikipedia.org/wiki/${nextPost.title.replace(/ /g, '_')}`);
+                        if (!postDiv.dataset.engaged) {
+                            postDiv.dataset.engaged = engagePost(nextPost, 75);
+                        }
+                    }
+                    lastTapTime = 0;
+                    lastTapTarget = null;
+                }, 300);
             }
         };
         
