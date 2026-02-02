@@ -219,6 +219,49 @@
             text-align: center;
             padding: 20px;
         }
+        .loading-details {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-top: 8px;
+        }
+        .loading-progress {
+            width: 100%;
+            height: 4px;
+            background: #38444D;
+            border-radius: 2px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+        .loading-progress-bar {
+            height: 100%;
+            background: #2cafff;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .error-message {
+            background: #5c2626;
+            border: 1px solid #8b3a3a;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            display: none;
+        }
+        .error-message.visible {
+            display: block;
+        }
+        .retry-btn {
+            background: #2cafff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        .retry-btn:hover {
+            background: #1a9ae8;
+        }
     </style>
 </head>
 <body>
@@ -254,6 +297,15 @@
             Since the content and images shown is from random Wikipedia articles, you will likely see 
             NSFW content. Please only continue if you're an adult.
         </p>
+        <div class="loading-progress" id="loadingProgress" style="display:none">
+            <div class="loading-progress-bar" id="loadingProgressBar"></div>
+        </div>
+        <div class="loading-details" id="loadingDetails"></div>
+        <div class="error-message" id="errorMessage">
+            <strong>Failed to load data</strong>
+            <p id="errorText">Network error occurred.</p>
+            <button class="retry-btn" id="retryBtn">Try again</button>
+        </div>
         <button id="startBtn" disabled data-testid="start-button">I'm an adult, continue</button>
     </div>
 <script>
@@ -533,26 +585,114 @@
         }
     }
 
-    // Fetch file with progress tracking
-    async function getFileWithProgress(url) {
-        const resp = await fetch(url, { cache: "force-cache" });
-        let responseSize = 0;
-        const bytes = new Uint8Array(DATA_SIZE);
-        
-        for await (const chunk of streamToAsyncIterable(resp.body)) {
-            const prevPercent = Math.floor(responseSize / DATA_SIZE * 100);
-            const newPercent = Math.floor((responseSize + chunk.length) / DATA_SIZE * 100);
-            if (prevPercent < newPercent) {
-                startBtn.innerText = `Xikipedia is loading... (${prevPercent}% of 40MB loaded)`;
+    // Format bytes to human readable
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // Format seconds to human readable time
+    function formatTime(seconds) {
+        if (seconds < 60) return Math.ceil(seconds) + 's';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.ceil(seconds % 60);
+        return `${mins}m ${secs}s`;
+    }
+
+    // Fetch file with progress tracking and retry logic
+    async function getFileWithProgress(url, retryCount = 0) {
+        const MAX_RETRIES = 3;
+        const loadingProgress = document.getElementById('loadingProgress');
+        const loadingProgressBar = document.getElementById('loadingProgressBar');
+        const loadingDetails = document.getElementById('loadingDetails');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const retryBtn = document.getElementById('retryBtn');
+
+        loadingProgress.style.display = 'block';
+        errorMessage.classList.remove('visible');
+
+        try {
+            const resp = await fetch(url, { cache: "force-cache" });
+
+            if (!resp.ok) {
+                throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
             }
-            bytes.set(chunk, responseSize);
-            responseSize += chunk.length;
+
+            let responseSize = 0;
+            const bytes = new Uint8Array(DATA_SIZE);
+            const startTime = Date.now();
+            let speedSamples = [];
+            let lastSampleTime = startTime;
+            let lastSampleSize = 0;
+
+            for await (const chunk of streamToAsyncIterable(resp.body)) {
+                bytes.set(chunk, responseSize);
+                responseSize += chunk.length;
+
+                const now = Date.now();
+                const percent = Math.floor(responseSize / DATA_SIZE * 100);
+
+                // Calculate speed every 500ms
+                if (now - lastSampleTime >= 500) {
+                    const bytesInInterval = responseSize - lastSampleSize;
+                    const secondsInInterval = (now - lastSampleTime) / 1000;
+                    const currentSpeed = bytesInInterval / secondsInInterval;
+
+                    speedSamples.push(currentSpeed);
+                    if (speedSamples.length > 5) speedSamples.shift();
+
+                    lastSampleTime = now;
+                    lastSampleSize = responseSize;
+                }
+
+                // Update UI
+                loadingProgressBar.style.width = percent + '%';
+                startBtn.innerText = `Downloading... ${percent}%`;
+
+                if (speedSamples.length > 0) {
+                    const avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
+                    const remaining = DATA_SIZE - responseSize;
+                    const eta = remaining / avgSpeed;
+                    loadingDetails.innerText = `${formatBytes(responseSize)} of ${formatBytes(DATA_SIZE)} · ${formatBytes(avgSpeed)}/s · ~${formatTime(eta)} remaining`;
+                } else {
+                    loadingDetails.innerText = `${formatBytes(responseSize)} of ${formatBytes(DATA_SIZE)}`;
+                }
+            }
+
+            loadingProgressBar.style.width = '100%';
+            startBtn.innerText = `Download complete, processing...`;
+            loadingDetails.innerText = '';
+            await new Promise(requestAnimationFrame);
+            await new Promise(requestAnimationFrame);
+            return JSON.parse(new TextDecoder().decode(bytes));
+
+        } catch (error) {
+            console.error('Download failed:', error);
+
+            if (retryCount < MAX_RETRIES) {
+                const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+                startBtn.innerText = `Connection lost, retrying in ${delay/1000}s...`;
+                loadingDetails.innerText = `Attempt ${retryCount + 2} of ${MAX_RETRIES + 1}`;
+                await new Promise(r => setTimeout(r, delay));
+                return getFileWithProgress(url, retryCount + 1);
+            }
+
+            // All retries failed
+            loadingProgress.style.display = 'none';
+            loadingDetails.innerText = '';
+            errorMessage.classList.add('visible');
+            errorText.innerText = error.message || 'Network error. Please check your connection.';
+            startBtn.innerText = 'Loading failed';
+
+            // Return a promise that resolves when user clicks retry
+            return new Promise((resolve) => {
+                retryBtn.onclick = () => {
+                    resolve(getFileWithProgress(url, 0));
+                };
+            });
         }
-        
-        startBtn.innerText = `Xikipedia is loading... (100% downloaded)`;
-        await new Promise(requestAnimationFrame);
-        await new Promise(requestAnimationFrame);
-        return JSON.parse(new TextDecoder().decode(bytes));
     }
 
     // Main initialization
@@ -574,6 +714,9 @@
         const loading = document.querySelector("#loading");
         let lastFrame = Date.now();
         
+        const loadingDetails = document.getElementById('loadingDetails');
+        const loadingProgressBar = document.getElementById('loadingProgressBar');
+
         while (smoldata.pages.length) {
             const e = smoldata.pages.pop();
             const tempPage = {
@@ -584,9 +727,12 @@
                 categories: e[4],
                 links: e[5]
             };
-            
+
             if (i % 1000 === 0 && Date.now() - lastFrame > 20) {
-                startBtn.innerText = `Xikipedia is loading... (${(i / wikiLen * 100).toFixed(0)}%)`;
+                const percent = (i / wikiLen * 100).toFixed(0);
+                startBtn.innerText = `Processing articles... ${percent}%`;
+                loadingProgressBar.style.width = percent + '%';
+                loadingDetails.innerText = `${i.toLocaleString()} of ${wikiLen.toLocaleString()} articles`;
                 await new Promise(r => requestAnimationFrame(r));
                 lastFrame = Date.now();
             }
@@ -599,6 +745,8 @@
         }
         
         loading.remove();
+        document.getElementById('loadingProgress').style.display = 'none';
+        document.getElementById('loadingDetails').innerText = `${wikiLen.toLocaleString()} articles ready`;
         startBtn.removeAttribute("disabled");
         categorySearchInput.removeAttribute("disabled");
         startBtn.innerText = "I'm an adult, continue";
