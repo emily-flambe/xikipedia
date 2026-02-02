@@ -13,9 +13,29 @@
     <meta content="#38444D" name="theme-color">
     <link rel="icon" href="/favicon.ico">
     <style>
+        :root {
+            --bg-primary: #15202B;
+            --bg-secondary: #1C2732;
+            --bg-tertiary: #000;
+            --text-primary: #FFF;
+            --text-secondary: #8899aa;
+            --border-color: #38444D;
+            --accent-color: #2cafff;
+        }
+
+        :root.light-mode {
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F7F9FA;
+            --bg-tertiary: #EFF3F4;
+            --text-primary: #0F1419;
+            --text-secondary: #536471;
+            --border-color: #EFF3F4;
+            --accent-color: #1D9BF0;
+        }
+
         html, body {
-            background: #15202B;
-            color: #FFF;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             font-family: system-ui, sans-serif;
             margin: 0;
             padding: 0;
@@ -27,7 +47,7 @@
         .posts {
             max-width: 600px;
             width: 100vw;
-            border: 1px solid #38444D;
+            border: 1px solid var(--border-color);
             border-top: none;
             height: fit-content;
         }
@@ -36,7 +56,7 @@
         }
         .stats {
             max-width: 300px;
-            border: 1px solid #38444D;
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             position: fixed;
             left: calc(50% + 330px);
@@ -53,7 +73,7 @@
         }
         .post {
             padding: 12px 24px;
-            border-top: 1px solid #38444D;
+            border-top: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
             align-items: flex-start;
@@ -61,10 +81,10 @@
         }
         .post:hover,
         .post:focus {
-            background: #1C2732;
+            background: var(--bg-secondary);
         }
         .post:focus {
-            outline: 2px solid #2cafff;
+            outline: 2px solid var(--accent-color);
             outline-offset: -2px;
         }
         .post h1 {
@@ -140,7 +160,7 @@
         }
         .post img.media {
             border-radius: 16px;
-            border: 1px solid #38444D;
+            border: 1px solid var(--border-color);
             display: block;
             margin: 8px 0;
             max-width: min(512px, 100%);
@@ -159,12 +179,12 @@
         #startScreen {
             display: flex;
             flex-direction: column;
-            background: #15202B;
+            background: var(--bg-primary);
             border: none;
             width: 90%;
             height: 90%;
             max-width: 600px;
-            color: #fff;
+            color: var(--text-primary);
             border-radius: 8px;
             padding: 32px;
             box-sizing: border-box;
@@ -187,30 +207,30 @@
             justify-content: space-between;
             align-items: center;
             box-shadow: inset 0px 0px 1.2px 0px #000;
-            background: #1C2732;
-            color: #E8E8E8;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
         }
         .categoryPicker::after {
             content: "+";
-            color: #2cafff;
+            color: var(--accent-color);
             font-size: 150%;
             line-height: 0;
             margin-left: 8px;
         }
         .categoryPicker:hover,
         .categoryPicker:active {
-            background: #38444D;
+            background: var(--border-color);
         }
         .categoryPicker:has(input:checked) {
-            background: #FFF;
-            color: #000;
+            background: var(--text-primary);
+            color: var(--bg-primary);
         }
         .categoryPicker:has(input:checked)::after {
             content: "−";
-            color: #000;
+            color: var(--bg-primary);
         }
         .categoryPicker:has(input:focus-visible) {
-            outline: 2px solid #2cafff;
+            outline: 2px solid var(--accent-color);
         }
         .categoryPicker input {
             opacity: 0;
@@ -220,9 +240,9 @@
         #startBtn {
             border-radius: 32px;
             padding: 12px;
-            background: #2cafff;
+            background: var(--accent-color);
             color: #FFF;
-            border: 1px solid #000;
+            border: 1px solid var(--bg-tertiary);
             font: inherit;
             cursor: pointer;
         }
@@ -237,9 +257,9 @@
         #categorySearch input {
             border-radius: 32px;
             padding: 12px;
-            background: #000;
-            color: #FFF;
-            border: 1px solid #000;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--bg-tertiary);
             font: inherit;
         }
         #categorySearch input[disabled] {
@@ -250,7 +270,7 @@
             display: none;
         }
         a[href] {
-            color: #2cafff;
+            color: var(--accent-color);
         }
         #loading {
             text-align: center;
@@ -275,14 +295,14 @@
         .loading-progress {
             width: 100%;
             height: 4px;
-            background: #38444D;
+            background: var(--border-color);
             border-radius: 2px;
             margin: 12px 0;
             overflow: hidden;
         }
         .loading-progress-bar {
             height: 100%;
-            background: #2cafff;
+            background: var(--accent-color);
             border-radius: 2px;
             transition: width 0.3s ease;
             width: 0%;
@@ -299,7 +319,7 @@
             display: block;
         }
         .retry-btn {
-            background: #2cafff;
+            background: var(--accent-color);
             color: white;
             border: none;
             padding: 8px 16px;
@@ -312,13 +332,27 @@
         }
         .recommendation-reason {
             font-size: 12px;
-            color: #8899aa;
+            color: var(--text-secondary);
             margin: 4px 0 8px 0;
             font-style: italic;
+        }
+        #themeToggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 100;
         }
     </style>
 </head>
 <body>
+    <button id="themeToggle" aria-label="Toggle dark/light mode">&#127769;</button>
     <p id="loading">Loading...</p>
     <div class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
     <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores"></aside>
@@ -368,6 +402,19 @@
     // Original by rebane2001 (https://lyra.horse)
     // Recreation for Cloudflare Workers deployment
     // ============================================
+
+    // Theme toggle functionality
+    const themeToggle = document.getElementById('themeToggle');
+    themeToggle.onclick = () => {
+        document.documentElement.classList.toggle('light-mode');
+        themeToggle.textContent = document.documentElement.classList.contains('light-mode') ? '\u2600\uFE0F' : '\uD83C\uDF19';
+        localStorage.setItem('theme', document.documentElement.classList.contains('light-mode') ? 'light' : 'dark');
+    };
+    // Load saved theme
+    if (localStorage.getItem('theme') === 'light') {
+        document.documentElement.classList.add('light-mode');
+        themeToggle.textContent = '\u2600\uFE0F';
+    }
 
     const pagesArr = [];
     let noPageMaps = {};
