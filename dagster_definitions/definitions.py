@@ -25,6 +25,7 @@ from dagster import (
     Config,
     EnvVar,
     MetadataValue,
+    DefaultScheduleStatus,
 )
 
 import requests
@@ -187,7 +188,7 @@ xikipedia_update_job = define_asset_job(
 @schedule(
     job=xikipedia_update_job,
     cron_schedule="0 6 1 * *",  # 6am on the 1st of each month
-    default_status="RUNNING",   # Enabled by default
+    default_status=DefaultScheduleStatus.RUNNING,  # Enabled by default
 )
 def monthly_data_update_schedule():
     """Monthly schedule to refresh Wikipedia data."""
