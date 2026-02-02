@@ -316,6 +316,20 @@
             margin: 4px 0 8px 0;
             font-style: italic;
         }
+        .surprise-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 10px 20px;
+            font: inherit;
+            cursor: pointer;
+            margin: 8px 0;
+        }
+        .surprise-btn:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
     </style>
 </head>
 <body>
@@ -342,6 +356,7 @@
         </p>
         <p style="font-weight: 600;margin:0">Pick some categories to get started (optional)</p>
         <div id="categoryPickList"></div>
+        <button id="surpriseMe" class="surprise-btn">🎲 Surprise me!</button>
         <p style="font-weight: 600;margin:0">Or add your own</p>
         <div id="categorySearch" style="display:flex;flex-direction:column">
             <input placeholder="Estonia..." disabled data-testid="category-search-input" aria-label="Search for categories">
@@ -434,6 +449,23 @@
     categorySearchSelect.oninput = () => {
         if (!categorySearchSelect.value || categorySearchSelect.value === "...") return;
         addPickableCategory(categorySearchSelect.value, true);
+    };
+
+    // Surprise me button handler
+    document.getElementById('surpriseMe').onclick = () => {
+        // Uncheck all current selections
+        document.querySelectorAll('.categoryPicker input:checked').forEach(cb => cb.checked = false);
+
+        // Pick 3-5 random categories from defaultCategories
+        const shuffled = [...defaultCategories].sort(() => Math.random() - 0.5);
+        const count = 3 + Math.floor(Math.random() * 3); // 3-5 categories
+        const selected = shuffled.slice(0, count);
+
+        // Check those categories
+        selected.forEach(cat => {
+            const checkbox = document.querySelector(`.categoryPicker input[data-category="${cat}"]`);
+            if (checkbox) checkbox.checked = true;
+        });
     };
 
     // Recursive category expansion with memoization
