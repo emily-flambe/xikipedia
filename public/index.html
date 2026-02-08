@@ -316,6 +316,20 @@
             margin: 4px 0 8px 0;
             font-style: italic;
         }
+        .session-stats {
+            position: fixed;
+            bottom: 16px;
+            left: 16px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 100;
+        }
+        @media (max-width: 600px) {
+            .session-stats { display: none; }
+        }
         .data-freshness {
             font-size: 12px;
             color: #8899aa;
@@ -340,6 +354,9 @@
 <body>
     <p id="loading">Loading...</p>
     <div class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
+    <div id="sessionStats" class="session-stats">
+        <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
+    </div>
     <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores"></aside>
     <div id="startScreen" popover="manual">
         <div>
@@ -394,6 +411,13 @@
     const pagesArr = [];
     let noPageMaps = {};
     const recursiveCache = new Map();
+
+    // Session stats tracking
+    let articlesViewed = 0;
+    let articlesLiked = 0;
+    let currentStreak = 0;
+    let maxStreak = 0;
+
     const categoryScores = {
         "given names": -1000,
         "surnames": -1000,
@@ -530,6 +554,12 @@
         return amount;
     }
 
+    // Update session stats display
+    function updateSessionStats() {
+        document.getElementById('viewCount').textContent = articlesViewed;
+        document.getElementById('likeCount').textContent = articlesLiked;
+    }
+
     // Show double-tap heart animation
     function showDoubleTapHeart(postDiv) {
         const heart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -635,6 +665,13 @@
             postYes.setAttribute("aria-pressed", "true");
             if (!postYes.dataset.engaged) {
                 postYes.dataset.engaged = engagePost(nextPost, 50 + postsWithoutLike * 4);
+                // Update session stats for likes
+                articlesLiked++;
+                currentStreak++;
+                if (currentStreak > maxStreak) {
+                    maxStreak = currentStreak;
+                }
+                updateSessionStats();
             }
             postsWithoutLike = 0;
             setTimeout(updateEngagement, 100);
@@ -702,6 +739,10 @@
         engagePost(nextPost, -5);
         postsWithoutLike++;
         document.querySelector(".posts").appendChild(postDiv);
+
+        // Update session stats
+        articlesViewed++;
+        updateSessionStats();
     }
 
     // Get next post using the scoring algorithm
