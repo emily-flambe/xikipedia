@@ -349,6 +349,25 @@
             cursor: pointer;
             z-index: 100;
         }
+        .data-freshness {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin: 4px 0;
+        }
+        .surprise-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 10px 20px;
+            font: inherit;
+            cursor: pointer;
+            margin: 8px 0;
+        }
+        .surprise-btn:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
     </style>
 </head>
 <body>
@@ -376,15 +395,17 @@
         </p>
         <p style="font-weight: 600;margin:0">Pick some categories to get started (optional)</p>
         <div id="categoryPickList"></div>
+        <button id="surpriseMe" class="surprise-btn">🎲 Surprise me!</button>
         <p style="font-weight: 600;margin:0">Or add your own</p>
         <div id="categorySearch" style="display:flex;flex-direction:column">
             <input placeholder="Estonia..." disabled data-testid="category-search-input" aria-label="Search for categories">
             <select size="5" data-testid="category-search-select" aria-label="Category search results"></select>
         </div>
         <p style="margin-top:auto">
-            Since the content and images shown is from random Wikipedia articles, you will likely see 
+            Since the content and images shown is from random Wikipedia articles, you will likely see
             NSFW content. Please only continue if you're an adult.
         </p>
+        <p class="data-freshness">Data last updated: <span id="lastUpdated">February 2026</span></p>
         <div class="loading-progress" id="loadingProgress" style="display:none">
             <div class="loading-progress-bar" id="loadingProgressBar"></div>
         </div>
@@ -416,6 +437,7 @@
         themeToggle.textContent = '\u2600\uFE0F';
     }
 
+    const DATA_LAST_UPDATED = "February 2026";
     const pagesArr = [];
     let noPageMaps = {};
     const recursiveCache = new Map();
@@ -481,6 +503,23 @@
     categorySearchSelect.oninput = () => {
         if (!categorySearchSelect.value || categorySearchSelect.value === "...") return;
         addPickableCategory(categorySearchSelect.value, true);
+    };
+
+    // Surprise me button handler
+    document.getElementById('surpriseMe').onclick = () => {
+        // Uncheck all current selections
+        document.querySelectorAll('.categoryPicker input:checked').forEach(cb => cb.checked = false);
+
+        // Pick 3-5 random categories from defaultCategories
+        const shuffled = [...defaultCategories].sort(() => Math.random() - 0.5);
+        const count = 3 + Math.floor(Math.random() * 3); // 3-5 categories
+        const selected = shuffled.slice(0, count);
+
+        // Check those categories
+        selected.forEach(cat => {
+            const checkbox = document.querySelector(`.categoryPicker input[data-category="${cat}"]`);
+            if (checkbox) checkbox.checked = true;
+        });
     };
 
     // Recursive category expansion with memoization
@@ -937,12 +976,22 @@
         console.log(`Processing ${wikiLen} articles...`);
         const loading = document.querySelector("#loading");
         let lastFrame = Date.now();
-        
+
         const loadingDetails = document.getElementById('loadingDetails');
         const loadingProgressBar = document.getElementById('loadingProgressBar');
 
+        let filteredCount = 0;
+
         while (smoldata.pages.length) {
             const e = smoldata.pages.pop();
+
+            // Skip articles with very short text (less than 100 chars)
+            if (e[2] && e[2].length < 100) {
+                filteredCount++;
+                i++;
+                continue;
+            }
+
             const tempPage = {
                 title: e[0],
                 id: e[1],
@@ -967,7 +1016,9 @@
             tempPage.allCategories.add(...tempPage.links.map(e => `p:${e}`));
             pagesArr.push(tempPage);
         }
-        
+
+        console.log(`Filtered ${filteredCount} short articles (less than 100 characters)`);
+
         loading.remove();
         document.getElementById('loadingProgress').style.display = 'none';
         document.getElementById('loadingDetails').innerText = `${wikiLen.toLocaleString()} articles ready`;
