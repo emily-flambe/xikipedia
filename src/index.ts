@@ -227,12 +227,13 @@ function getCorsHeaders(request: Request): Record<string, string> {
   };
 }
 
+let currentRequest: Request | null = null;
+
 function jsonResponse(
   data: unknown,
   status = 200,
-  request?: Request,
 ): Response {
-  const cors = request ? getCorsHeaders(request) : { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS[0] };
+  const cors = currentRequest ? getCorsHeaders(currentRequest) : { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS[0] };
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -242,8 +243,8 @@ function jsonResponse(
   });
 }
 
-function errorResponse(message: string, status: number, request?: Request): Response {
-  return jsonResponse({ error: message }, status, request);
+function errorResponse(message: string, status: number): Response {
+  return jsonResponse({ error: message }, status);
 }
 
 // ─── Auth Middleware ─────────────────────────────────────────────────
@@ -475,18 +476,18 @@ async function handleDeleteAccount(
 ): Promise<Response> {
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
-    return errorResponse('Unauthorized', 401, request);
+    return errorResponse('Unauthorized', 401);
   }
 
   let body: { password?: string };
   try {
     body = await request.json();
   } catch {
-    return errorResponse('Invalid JSON body', 400, request);
+    return errorResponse('Invalid JSON body', 400);
   }
 
   if (typeof body.password !== 'string' || !body.password) {
-    return errorResponse('Password is required to delete account', 400, request);
+    return errorResponse('Password is required to delete account', 400);
   }
 
   // Verify password before deletion
@@ -497,14 +498,14 @@ async function handleDeleteAccount(
     .first<Pick<UserRow, 'password_hash' | 'salt'>>();
 
   if (!user) {
-    return errorResponse('User not found', 404, request);
+    return errorResponse('User not found', 404);
   }
 
   const salt = new Uint8Array(hexToArrayBuffer(user.salt));
   const computedHash = await hashPassword(body.password, salt);
 
   if (computedHash !== user.password_hash) {
-    return errorResponse('Incorrect password', 403, request);
+    return errorResponse('Incorrect password', 403);
   }
 
   // Delete preferences first (foreign key), then user
@@ -513,13 +514,14 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
-  return jsonResponse({ success: true }, 200, request);
+  return jsonResponse({ success: true });
 }
 
 // ─── Main Worker ─────────────────────────────────────────────────────
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    currentRequest = request;
     const url = new URL(request.url);
 
     // Handle CORS preflight for API routes
