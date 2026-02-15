@@ -944,7 +944,7 @@ test.describe('CORS headers on API responses', () => {
     const resp = await page.request.get('/api/preferences');
     expect(resp.status()).toBe(401);
     const headers = resp.headers();
-    expect(headers['access-control-allow-origin']).toBe('*');
+    expect(headers['access-control-allow-origin']).toBe('https://xiki.emilycogsdill.com');
   });
 
   test('CORS preflight for DELETE method', async ({ page }) => {
