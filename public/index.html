@@ -187,6 +187,7 @@
             border-radius: 8px;
             padding: 32px;
             box-sizing: border-box;
+            overflow-y: auto;
         }
         #startScreen h1,
         #startScreen h2 {
@@ -663,6 +664,142 @@
                 display: block;
             }
         }
+
+        /* === Auth UI === */
+        #authSection {
+            margin: 12px 0;
+            border: 1px solid #38444D;
+            border-radius: 8px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .auth-tabs {
+            display: flex;
+            border-bottom: 1px solid #38444D;
+        }
+        .auth-tab {
+            flex: 1;
+            padding: 8px 12px;
+            background: transparent;
+            color: #8899AA;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font: inherit;
+            font-size: 14px;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .auth-tab:hover {
+            color: #FFF;
+        }
+        .auth-tab.active {
+            color: #2cafff;
+            border-bottom-color: #2cafff;
+        }
+        .auth-tab-content {
+            display: none;
+            padding: 12px;
+        }
+        .auth-tab-content.active {
+            display: block;
+        }
+        .auth-tab-content input[type="text"],
+        .auth-tab-content input[type="password"] {
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 32px;
+            padding: 10px 14px;
+            background: #000;
+            color: #FFF;
+            border: 1px solid #38444D;
+            font: inherit;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .auth-tab-content input[type="text"]:focus,
+        .auth-tab-content input[type="password"]:focus {
+            outline: none;
+            border-color: #2cafff;
+        }
+        .auth-submit-btn {
+            width: 100%;
+            border-radius: 32px;
+            padding: 10px;
+            background: #2cafff;
+            color: #FFF;
+            border: none;
+            font: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .auth-submit-btn:hover {
+            opacity: 0.9;
+        }
+        .auth-submit-btn:disabled {
+            background: #557;
+            cursor: not-allowed;
+        }
+        .auth-error {
+            color: #ff6b6b;
+            font-size: 13px;
+            margin-top: 4px;
+            min-height: 0;
+        }
+        .auth-guest-msg {
+            color: #8899AA;
+            font-size: 13px;
+            margin: 4px 0;
+        }
+        .auth-welcome {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            font-size: 14px;
+        }
+        .auth-welcome a {
+            font-size: 13px;
+            cursor: pointer;
+        }
+        #logoutBtn {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            background: transparent;
+            border: 1px solid #38444D;
+            color: #8899AA;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 100;
+            display: none;
+        }
+        #logoutBtn:hover {
+            color: #FFF;
+            border-color: #2cafff;
+        }
+        #deleteAccountBtn {
+            position: fixed;
+            top: 12px;
+            right: 100px;
+            background: transparent;
+            border: 1px solid #38444D;
+            color: #664444;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font: inherit;
+            font-size: 11px;
+            cursor: pointer;
+            z-index: 100;
+            display: none;
+        }
+        #deleteAccountBtn:hover {
+            color: #ff6b6b;
+            border-color: #ff6b6b;
+        }
     </style>
 </head>
 <body>
@@ -696,6 +833,30 @@
             Original source on <a href="https://github.com/rebane2001/xikipedia">GitHub</a>.
             Recreation hosted on Cloudflare Workers.
         </p>
+        <div id="authSection">
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="guest">Guest</button>
+                <button class="auth-tab" data-tab="login">Login</button>
+                <button class="auth-tab" data-tab="register">Register</button>
+            </div>
+            <div class="auth-tab-content active" data-tab-content="guest">
+                <p class="auth-guest-msg">Browse without an account. Your preferences won't be saved.</p>
+            </div>
+            <div class="auth-tab-content" data-tab-content="login">
+                <input type="text" id="loginUsername" placeholder="Username" autocomplete="username">
+                <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+                <button class="auth-submit-btn" id="loginBtn">Log in</button>
+                <div class="auth-error" id="loginError"></div>
+            </div>
+            <div class="auth-tab-content" data-tab-content="register">
+                <input type="text" id="registerUsername" placeholder="Username" autocomplete="username">
+                <input type="password" id="registerPassword" placeholder="Password" autocomplete="new-password">
+                <input type="password" id="registerConfirm" placeholder="Confirm password" autocomplete="new-password">
+                <button class="auth-submit-btn" id="registerBtn">Create account</button>
+                <div class="auth-error" id="registerError"></div>
+            </div>
+        </div>
+        <div id="categoryPickerSection">
         <p style="font-weight: 600;margin:0">Pick some categories to get started (optional)</p>
         <div id="categoryPickList"></div>
         <button id="surpriseMe" class="surprise-btn">🎲 Surprise me!</button>
@@ -703,6 +864,7 @@
         <div id="categorySearch" style="display:flex;flex-direction:column">
             <input placeholder="Estonia..." disabled data-testid="category-search-input" aria-label="Search for categories">
             <select size="5" data-testid="category-search-select" aria-label="Category search results"></select>
+        </div>
         </div>
         <p style="margin-top:auto">
             Since the content and images shown is from random Wikipedia articles, you will likely see
@@ -720,6 +882,8 @@
         </div>
         <button id="startBtn" disabled data-testid="start-button" aria-label="Start browsing Xikipedia (adult content warning)">I'm an adult, continue</button>
     </div>
+    <button id="logoutBtn">Log out</button>
+    <button id="deleteAccountBtn">Delete account</button>
 <script>
     // ============================================
     // Xikipedia - Wikipedia as a Social Media Feed
@@ -757,12 +921,78 @@
     };
     const hiddenCategories = new Set();
     const defaultCategories = [
-        "nature", "science", "animals", "anthropology", "places", 
-        "sociology", "art", "mathematics", "games", "technology", 
+        "nature", "science", "animals", "anthropology", "places",
+        "sociology", "art", "mathematics", "games", "technology",
         "music", "human sexuality"
     ];
     let postsWithoutLike = 0;
     const DATA_SIZE = 225690064;
+
+    // ============================================
+    // Auth state management
+    // ============================================
+
+    function isLoggedIn() {
+        return !!localStorage.getItem('xiki_token');
+    }
+
+    function currentUser() {
+        return localStorage.getItem('xiki_username') || null;
+    }
+
+    function getAuthHeaders() {
+        const token = localStorage.getItem('xiki_token');
+        if (token) return { 'Authorization': 'Bearer ' + token };
+        return {};
+    }
+
+    function logout() {
+        localStorage.removeItem('xiki_token');
+        localStorage.removeItem('xiki_username');
+        window.location.reload();
+    }
+
+    async function deleteAccount() {
+        if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return;
+        try {
+            const resp = await fetch('/api/account', {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+            if (!resp.ok) {
+                alert('Failed to delete account. Please try again.');
+                return;
+            }
+        } catch (e) {
+            console.error('Delete account failed:', e);
+            alert('Failed to delete account. Please try again.');
+            return;
+        }
+        localStorage.removeItem('xiki_token');
+        localStorage.removeItem('xiki_username');
+        window.location.reload();
+    }
+
+    // Debounced preference saving
+    let saveTimeout = null;
+    function savePreferences() {
+        if (!isLoggedIn()) return;
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            const body = {
+                categoryScores: categoryScores,
+                hiddenCategories: Array.from(hiddenCategories)
+            };
+            fetch('/api/preferences', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders()
+                },
+                body: JSON.stringify(body)
+            }).catch(e => console.error('Failed to save preferences:', e));
+        }, 5000);
+    }
 
     // Double-tap detection state
     let lastTapTime = 0;
@@ -832,6 +1062,115 @@
             if (checkbox) checkbox.checked = true;
         });
     };
+
+    // ============================================
+    // Auth UI: Tab switching and form submission
+    // ============================================
+
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+        tab.onclick = () => {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.auth-tab-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.querySelector(`[data-tab-content="${tab.dataset.tab}"]`).classList.add('active');
+        };
+    });
+
+    async function handleLogin() {
+        const username = document.getElementById('loginUsername').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        const errorEl = document.getElementById('loginError');
+        const btn = document.getElementById('loginBtn');
+
+        if (!username || !password) {
+            errorEl.textContent = 'Please enter username and password.';
+            return;
+        }
+
+        errorEl.textContent = '';
+        btn.disabled = true;
+        btn.textContent = 'Logging in...';
+
+        try {
+            const resp = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                errorEl.textContent = data.error || 'Login failed.';
+                btn.disabled = false;
+                btn.textContent = 'Log in';
+                return;
+            }
+            localStorage.setItem('xiki_token', data.token);
+            localStorage.setItem('xiki_username', data.username);
+            window.location.reload();
+        } catch (e) {
+            errorEl.textContent = 'Network error. Please try again.';
+            btn.disabled = false;
+            btn.textContent = 'Log in';
+        }
+    }
+
+    async function handleRegister() {
+        const username = document.getElementById('registerUsername').value.trim();
+        const password = document.getElementById('registerPassword').value;
+        const confirmPw = document.getElementById('registerConfirm').value;
+        const errorEl = document.getElementById('registerError');
+        const btn = document.getElementById('registerBtn');
+
+        if (!username || !password) {
+            errorEl.textContent = 'Please enter username and password.';
+            return;
+        }
+        if (password !== confirmPw) {
+            errorEl.textContent = 'Passwords do not match.';
+            return;
+        }
+
+        errorEl.textContent = '';
+        btn.disabled = true;
+        btn.textContent = 'Creating account...';
+
+        try {
+            const resp = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                errorEl.textContent = data.error || 'Registration failed.';
+                btn.disabled = false;
+                btn.textContent = 'Create account';
+                return;
+            }
+            localStorage.setItem('xiki_token', data.token);
+            localStorage.setItem('xiki_username', data.username);
+            window.location.reload();
+        } catch (e) {
+            errorEl.textContent = 'Network error. Please try again.';
+            btn.disabled = false;
+            btn.textContent = 'Create account';
+        }
+    }
+
+    document.getElementById('loginBtn').onclick = handleLogin;
+    document.getElementById('registerBtn').onclick = handleRegister;
+
+    // Allow Enter key to submit auth forms
+    document.getElementById('loginPassword').onkeydown = (e) => {
+        if (e.key === 'Enter') handleLogin();
+    };
+    document.getElementById('registerConfirm').onkeydown = (e) => {
+        if (e.key === 'Enter') handleRegister();
+    };
+
+    // Logout and delete account buttons
+    document.getElementById('logoutBtn').onclick = logout;
+    document.getElementById('deleteAccountBtn').onclick = deleteAccount;
 
     // Recursive category expansion with memoization
     function recursiveCategories(subCategories, categories, depth) {
@@ -1021,6 +1360,7 @@
         post.allCategories.forEach(e => {
             categoryScores[e] = (categoryScores[e] ?? 0) + amount;
         });
+        savePreferences();
         return amount;
     }
 
@@ -1611,12 +1951,67 @@
         }, { passive: true });
     }
 
+    // Start the feed (extracted so both auth and guest paths can use it)
+    function startFeed(sharedArticle) {
+        startScreen.hidePopover();
+        startScreen.remove();
+
+        // Initialize mobile sidebar drawer
+        initMobileDrawer();
+
+        // Show floating refresh button and init pull-to-refresh
+        document.getElementById("refreshBtn").style.display = "flex";
+        document.getElementById("refreshBtn").onclick = (e) => {
+            e.stopPropagation();
+            refreshFeed();
+        };
+        initPullToRefresh();
+
+        // Show logout/delete buttons if logged in
+        if (isLoggedIn()) {
+            document.getElementById('logoutBtn').style.display = 'block';
+            document.getElementById('deleteAccountBtn').style.display = 'block';
+        }
+        // If there's a shared article, show it first
+        if (sharedArticle) {
+            sharedArticle.seen = (sharedArticle.seen ?? 0) + 1;
+            createNextPost(sharedArticle);
+        }
+        requestAnimationFrame(render);
+    }
+
     // Main initialization
     async function main() {
         startScreen.showPopover();
+
+        // Configure auth section based on login state
+        const authSection = document.getElementById('authSection');
+        const categoryPickerSection = document.getElementById('categoryPickerSection');
+
+        if (isLoggedIn()) {
+            // Show welcome message instead of auth form
+            const welcomeDiv = document.createElement('div');
+            welcomeDiv.className = 'auth-welcome';
+            welcomeDiv.appendChild(document.createTextNode('Welcome back, '));
+            const strong = document.createElement('strong');
+            strong.style.margin = '0 4px';
+            strong.textContent = currentUser();
+            welcomeDiv.appendChild(strong);
+            welcomeDiv.appendChild(document.createTextNode('! '));
+            const logoutLink = document.createElement('a');
+            logoutLink.textContent = 'Log out';
+            logoutLink.onclick = logout;
+            logoutLink.style.cursor = 'pointer';
+            welcomeDiv.appendChild(logoutLink);
+            authSection.innerHTML = '';
+            authSection.appendChild(welcomeDiv);
+            // Hide category picker for logged-in users
+            categoryPickerSection.style.display = 'none';
+        }
+
         defaultCategories.forEach(e => addPickableCategory(e));
         startBtn.innerText = "Xikipedia is loading... (downloading ~40MB of data)";
-        
+
         const smoldata = await getFileWithProgress("smoldata.json");
 
         const subCategories = smoldata.subCategories;
@@ -1663,7 +2058,7 @@
                 lastFrame = Date.now();
             }
             i++;
-            
+
             tempPage.allCategories = new Set(recursiveCategories(subCategories, [...tempPage.categories], 0));
             tempPage.allCategories.add(`p:${tempPage.id}`);
             tempPage.allCategories.add(...tempPage.links.map(e => `p:${e}`));
@@ -1678,7 +2073,7 @@
         startBtn.removeAttribute("disabled");
         categorySearchInput.removeAttribute("disabled");
         startBtn.innerText = "I'm an adult, continue";
-        
+
         // Check for shared article URL parameter
         const urlParams = new URLSearchParams(window.location.search);
         const sharedArticleId = urlParams.get('article');
@@ -1693,8 +2088,41 @@
             window.history.replaceState({}, '', window.location.pathname);
         }
 
+        // If logged in, load saved preferences and auto-start
+        if (isLoggedIn()) {
+            try {
+                const prefsResp = await fetch('/api/preferences', {
+                    headers: getAuthHeaders()
+                });
+                if (!prefsResp.ok) throw new Error('Failed to load preferences');
+                const prefs = await prefsResp.json();
+
+                // Apply saved categoryScores (merge, preserving defaults like given names: -1000)
+                if (prefs.categoryScores) {
+                    Object.entries(prefs.categoryScores).forEach(([k, v]) => {
+                        categoryScores[k] = v;
+                    });
+                }
+
+                // Apply saved hiddenCategories if present
+                if (prefs.hiddenCategories && Array.isArray(prefs.hiddenCategories)) {
+                    prefs.hiddenCategories.forEach(cat => hiddenCategories.add(cat));
+                }
+
+                // Auto-start the feed
+                startFeed(sharedArticle);
+                return;
+            } catch (e) {
+                console.warn('Failed to load preferences, clearing auth:', e);
+                localStorage.removeItem('xiki_token');
+                localStorage.removeItem('xiki_username');
+                // Fall through to normal start screen - reload to show guest UI
+                window.location.reload();
+                return;
+            }
+        }
+
         startBtn.onclick = () => {
-            startScreen.hidePopover();
             document.querySelectorAll(".categoryPicker>input:checked").forEach(e => {
                 categoryScores[e.dataset.category] = defaultCategories.includes(e.dataset.category) ? 1000 : 5000;
             });
@@ -1703,25 +2131,7 @@
                 const page = pagesArr.find(x => x.title.toLowerCase() === e.dataset.category);
                 if (page) engagePost(page, 100);
             });
-            startScreen.remove();
-
-            // Initialize mobile sidebar drawer
-            initMobileDrawer();
-
-            // Show floating refresh button and init pull-to-refresh
-            document.getElementById("refreshBtn").style.display = "flex";
-            document.getElementById("refreshBtn").onclick = (e) => {
-                e.stopPropagation();
-                refreshFeed();
-            };
-            initPullToRefresh();
-
-            // If there's a shared article, show it first
-            if (sharedArticle) {
-                sharedArticle.seen = (sharedArticle.seen ?? 0) + 1;
-                createNextPost(sharedArticle);
-            }
-            requestAnimationFrame(render);
+            startFeed(sharedArticle);
         };
     }
 
