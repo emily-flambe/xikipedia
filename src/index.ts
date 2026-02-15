@@ -212,27 +212,38 @@ async function verifyToken(
 
 // ─── Response Helpers ────────────────────────────────────────────────
 
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+const ALLOWED_ORIGINS = [
+  'https://xiki.emilycogsdill.com',
+  'https://xikipedia.emily-cogsdill.workers.dev',
+];
+
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin') || '';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+}
 
 function jsonResponse(
   data: unknown,
   status = 200,
+  request?: Request,
 ): Response {
+  const cors = request ? getCorsHeaders(request) : { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS[0] };
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...CORS_HEADERS,
+      ...cors,
     },
   });
 }
 
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse({ error: message }, status);
+function errorResponse(message: string, status: number, request?: Request): Response {
+  return jsonResponse({ error: message }, status, request);
 }
 
 // ─── Auth Middleware ─────────────────────────────────────────────────
@@ -464,7 +475,36 @@ async function handleDeleteAccount(
 ): Promise<Response> {
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
-    return errorResponse('Unauthorized', 401);
+    return errorResponse('Unauthorized', 401, request);
+  }
+
+  let body: { password?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse('Invalid JSON body', 400, request);
+  }
+
+  if (typeof body.password !== 'string' || !body.password) {
+    return errorResponse('Password is required to delete account', 400, request);
+  }
+
+  // Verify password before deletion
+  const user = await env.DB.prepare(
+    'SELECT password_hash, salt FROM users WHERE id = ?',
+  )
+    .bind(payload.sub)
+    .first<Pick<UserRow, 'password_hash' | 'salt'>>();
+
+  if (!user) {
+    return errorResponse('User not found', 404, request);
+  }
+
+  const salt = new Uint8Array(hexToArrayBuffer(user.salt));
+  const computedHash = await hashPassword(body.password, salt);
+
+  if (computedHash !== user.password_hash) {
+    return errorResponse('Incorrect password', 403, request);
   }
 
   // Delete preferences first (foreign key), then user
@@ -473,7 +513,7 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
-  return jsonResponse({ success: true });
+  return jsonResponse({ success: true }, 200, request);
 }
 
 // ─── Main Worker ─────────────────────────────────────────────────────
@@ -486,7 +526,7 @@ export default {
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
       return new Response(null, {
         status: 204,
-        headers: CORS_HEADERS,
+        headers: getCorsHeaders(request),
       });
     }
 

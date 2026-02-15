@@ -596,14 +596,21 @@
     }
 
     async function deleteAccount() {
-        if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return;
+        const password = prompt('Enter your password to confirm account deletion:');
+        if (!password) return;
+        if (!confirm('Are you sure? This cannot be undone.')) return;
         try {
             const resp = await fetch('/api/account', {
                 method: 'DELETE',
-                headers: getAuthHeaders()
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders()
+                },
+                body: JSON.stringify({ password })
             });
             if (!resp.ok) {
-                alert('Failed to delete account. Please try again.');
+                const data = await resp.json().catch(() => ({}));
+                alert(data.error || 'Failed to delete account. Please try again.');
                 return;
             }
         } catch (e) {
