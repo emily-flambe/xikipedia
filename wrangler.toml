@@ -20,6 +20,12 @@ binding = "DATA_BUCKET"
 bucket_name = "xikipedia-data"
 preview_bucket_name = "xikipedia-data"
 
+# D1 database for user accounts and preferences
+[[d1_databases]]
+binding = "DB"
+database_name = "xikipedia-users"
+database_id = "33c22faa-49cd-449d-a70e-73703c68f62b"
+
 [dev]
 port = 8788
 
