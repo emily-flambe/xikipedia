@@ -392,6 +392,7 @@
         }
         .post .feedback-btn {
             position: relative;
+            font-size: 14px;
         }
         .post .feedback-btn .got-it {
             position: absolute;
@@ -399,7 +400,7 @@
             left: 50%;
             transform: translateX(-50%);
             font-size: 11px;
-            color: #2cafff;
+            color: var(--accent-color, #2cafff);
             white-space: nowrap;
             pointer-events: none;
             animation: gotItFade 1s ease-out forwards;
@@ -408,6 +409,9 @@
             0% { opacity: 1; transform: translateX(-50%) translateY(0); }
             70% { opacity: 1; transform: translateX(-50%) translateY(-4px); }
             100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+        }
+        .post .button-spacer {
+            flex: 1;
         }
     </style>
 </head>
@@ -814,6 +818,8 @@
         moreBtn.setAttribute("aria-label", `More like this: ${nextPost.title}`);
         moreBtn.onclick = (e) => {
             e.stopPropagation();
+            if (moreBtn.disabled) return;
+            moreBtn.disabled = true;
             engagePost(nextPost, 150);
             updateEngagement();
             const gotIt = document.createElement("span");
@@ -829,6 +835,8 @@
         lessBtn.setAttribute("aria-label", `Less like this: ${nextPost.title}`);
         lessBtn.onclick = (e) => {
             e.stopPropagation();
+            if (lessBtn.disabled) return;
+            lessBtn.disabled = true;
             engagePost(nextPost, -150);
             updateEngagement();
             const gotIt = document.createElement("span");
@@ -842,7 +850,7 @@
         buttonRow.appendChild(lessBtn);
         // Spacer pushes share/like to the right
         const spacer = document.createElement("div");
-        spacer.style.flex = "1";
+        spacer.classList.add("button-spacer");
         buttonRow.appendChild(spacer);
         buttonRow.appendChild(shareBtn);
         buttonRow.appendChild(postYes);

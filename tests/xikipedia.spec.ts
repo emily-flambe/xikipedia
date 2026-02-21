@@ -257,4 +257,18 @@ test.describe('Feature 1: More/Less feedback buttons', () => {
     expect(moreLabel).toContain(postTitle!);
     expect(lessLabel).toContain(postTitle!);
   });
+
+  test('feedback buttons disable after click to prevent spam', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const moreBtn = firstPost.locator('.more-btn');
+
+    await moreBtn.click();
+    await page.waitForTimeout(100);
+
+    // Button should be disabled after first click
+    await expect(moreBtn).toBeDisabled();
+  });
 });
