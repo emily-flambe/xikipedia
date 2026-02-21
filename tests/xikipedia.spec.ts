@@ -1,4 +1,16 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
+
+/**
+ * Helper: loads the app, waits for data, clicks start, waits for first post.
+ */
+async function startFeed(page: Page) {
+  await page.goto('/');
+  const startBtn = page.locator('[data-testid="start-button"]');
+  await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+  await startBtn.click();
+  await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+  await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+}
 
 test.describe('Xikipedia', () => {
   test('loads the start screen', async ({ page }) => {
@@ -158,5 +170,65 @@ test.describe('Xikipedia', () => {
     
     // Now search should be enabled
     await expect(searchInput).not.toBeDisabled();
+  });
+});
+
+// =============================================
+// Feature 2: Feed refresh
+// =============================================
+test.describe('Feature 2: Feed refresh', () => {
+  test('refresh button is visible after starting feed', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const refreshBtn = page.locator('#refreshBtn');
+    await expect(refreshBtn).toBeVisible();
+  });
+
+  test('refresh button clears all posts', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    // Verify posts exist
+    const posts = page.locator('[data-testid="post"]');
+    const initialCount = await posts.count();
+    expect(initialCount).toBeGreaterThan(0);
+
+    // Click refresh
+    await page.locator('#refreshBtn').click();
+
+    await page.waitForTimeout(500);
+
+    // After refresh, new posts should appear
+    await expect(posts.first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test('refresh button scrolls page to top', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    // Scroll down first
+    await page.evaluate(() => window.scrollTo(0, 5000));
+    await page.waitForTimeout(500);
+
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    expect(scrollBefore).toBeGreaterThan(0);
+
+    // Click refresh
+    await page.locator('#refreshBtn').click();
+    await page.waitForTimeout(300);
+
+    // Should be scrolled to top
+    const scrollAfter = await page.evaluate(() => window.scrollY);
+    expect(scrollAfter).toBe(0);
+  });
+
+  test('refresh button is hidden before feed starts', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.goto('/');
+
+    // Refresh button should be hidden on start screen
+    const refreshBtn = page.locator('#refreshBtn');
+    await expect(refreshBtn).not.toBeVisible();
   });
 });
