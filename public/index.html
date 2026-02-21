@@ -382,6 +382,56 @@
             opacity: 0.9;
             transform: scale(1.02);
         }
+
+        /* === Feature 2: Refresh button & pull-to-refresh === */
+        .floating-btn {
+            position: fixed;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #2cafff;
+            border: none;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .floating-btn:hover {
+            transform: scale(1.1);
+        }
+        .floating-btn:active {
+            transform: scale(0.9);
+        }
+        #refreshBtn {
+            right: 24px;
+            bottom: 24px;
+        }
+        #refreshBtn::after {
+            content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" fill="white"/></svg>');
+        }
+        .pull-to-refresh-indicator {
+            text-align: center;
+            padding: 12px;
+            color: #8899AA;
+            font-size: 14px;
+            transition: opacity 0.3s;
+            overflow: hidden;
+            height: 0;
+        }
+        .pull-to-refresh-indicator.active {
+            height: auto;
+        }
+        .pull-to-refresh-indicator .spinner {
+            display: inline-block;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -392,6 +442,7 @@
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
     </div>
     <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores"></aside>
+    <button class="floating-btn" id="refreshBtn" aria-label="Refresh feed" style="display:none"></button>
     <div id="startScreen" popover="manual">
         <div>
             <h1>Xikipedia</h1>
@@ -999,6 +1050,83 @@
         }
     }
 
+    // ============================================
+    // Feature 2: Feed Refresh
+    // ============================================
+
+    function refreshFeed() {
+        // Clear all posts from DOM
+        const postsContainer = document.querySelector(".posts");
+        postsContainer.innerHTML = "";
+        // Reset seen counters and stale recommendation reasons
+        pagesArr.forEach(p => { delete p.seen; delete p.recommendedBecause; });
+        // Reset like streak counter
+        postsWithoutLike = 0;
+        // Scroll to top
+        window.scrollTo(0, 0);
+        // The render loop is already running via rAF, new posts auto-generate
+    }
+
+    // Pull-to-refresh state
+    let pullStartY = 0;
+    let pullDist = 0;
+    let isPulling = false;
+    const PULL_THRESHOLD = 80;
+
+    function initPullToRefresh() {
+        const postsContainer = document.querySelector(".posts");
+
+        // Create pull indicator element
+        const indicator = document.createElement("div");
+        indicator.classList.add("pull-to-refresh-indicator");
+        indicator.id = "pullIndicator";
+        indicator.innerHTML = '<span class="spinner">↻</span> Pull to refresh';
+        postsContainer.parentNode.insertBefore(indicator, postsContainer);
+
+        postsContainer.addEventListener("touchstart", (e) => {
+            if (window.scrollY <= 0) {
+                pullStartY = e.touches[0].clientY;
+                isPulling = true;
+            }
+        }, { passive: true });
+
+        postsContainer.addEventListener("touchmove", (e) => {
+            if (!isPulling) return;
+            pullDist = e.touches[0].clientY - pullStartY;
+            if (pullDist < 0) pullDist = 0;
+            if (pullDist > 0 && window.scrollY <= 0) {
+                e.preventDefault();
+                indicator.classList.add("active");
+                const progress = Math.min(pullDist / PULL_THRESHOLD, 1);
+                indicator.style.height = (progress * 48) + "px";
+                indicator.style.opacity = progress;
+                if (pullDist >= PULL_THRESHOLD) {
+                    indicator.innerHTML = '<span class="spinner">↻</span> Release to refresh';
+                } else {
+                    indicator.innerHTML = '<span>↓</span> Pull to refresh';
+                }
+            }
+        }, { passive: false });
+
+        postsContainer.addEventListener("touchend", () => {
+            if (isPulling && pullDist >= PULL_THRESHOLD) {
+                indicator.innerHTML = '<span class="spinner">↻</span> Refreshing...';
+                setTimeout(() => {
+                    refreshFeed();
+                    indicator.classList.remove("active");
+                    indicator.style.height = "0";
+                    indicator.style.opacity = "0";
+                }, 300);
+            } else {
+                indicator.classList.remove("active");
+                indicator.style.height = "0";
+                indicator.style.opacity = "0";
+            }
+            isPulling = false;
+            pullDist = 0;
+        }, { passive: true });
+    }
+
     // Main initialization
     async function main() {
         startScreen.showPopover();
@@ -1092,6 +1220,15 @@
                 if (page) engagePost(page, 100);
             });
             startScreen.remove();
+
+            // Show floating refresh button and init pull-to-refresh
+            document.getElementById("refreshBtn").style.display = "flex";
+            document.getElementById("refreshBtn").onclick = (e) => {
+                e.stopPropagation();
+                refreshFeed();
+            };
+            initPullToRefresh();
+
             // If there's a shared article, show it first
             if (sharedArticle) {
                 sharedArticle.seen = (sharedArticle.seen ?? 0) + 1;
