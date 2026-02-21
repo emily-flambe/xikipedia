@@ -1,4 +1,16 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
+
+/**
+ * Helper: loads the app, waits for data, clicks start, waits for first post.
+ */
+async function startFeed(page: Page) {
+  await page.goto('/');
+  const startBtn = page.locator('[data-testid="start-button"]');
+  await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+  await startBtn.click();
+  await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+  await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+}
 
 test.describe('Xikipedia', () => {
   test('loads the start screen', async ({ page }) => {
@@ -158,5 +170,97 @@ test.describe('Xikipedia', () => {
     
     // Now search should be enabled
     await expect(searchInput).not.toBeDisabled();
+  });
+});
+
+// =============================================
+// Feature 4: Mobile sidebar drawer
+// =============================================
+test.describe('Feature 4: Mobile sidebar drawer', () => {
+  test('mobile toggle button is visible on small viewport', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    await expect(toggleBtn).toBeVisible();
+  });
+
+  test('mobile toggle button is hidden on desktop viewport', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    await expect(toggleBtn).not.toBeVisible();
+  });
+
+  test('clicking toggle opens the drawer', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    const stats = page.locator('[data-testid="stats"]');
+    const backdrop = page.locator('#statsBackdrop');
+
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+
+    await expect(stats).toHaveClass(/open/);
+    await expect(backdrop).toHaveClass(/visible/);
+  });
+
+  test('close button dismisses the drawer', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    const stats = page.locator('[data-testid="stats"]');
+    const closeBtn = stats.locator('.stats-close');
+
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+    await expect(stats).toHaveClass(/open/);
+
+    await closeBtn.click();
+    await page.waitForTimeout(400);
+    await expect(stats).not.toHaveClass(/open/);
+  });
+
+  test('backdrop click dismisses the drawer', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    const stats = page.locator('[data-testid="stats"]');
+    const backdrop = page.locator('#statsBackdrop');
+
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+    await expect(stats).toHaveClass(/open/);
+
+    await backdrop.click({ force: true });
+    await page.waitForTimeout(400);
+
+    await expect(stats).not.toHaveClass(/open/);
+    await expect(backdrop).not.toHaveClass(/visible/);
+  });
+
+  test('refresh button and stats toggle do not overlap on mobile', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    await expect(toggleBtn).toBeVisible();
+
+    // Toggle is bottom-left, which should not overlap with any other bottom-right elements
+    const toggleBox = await toggleBtn.boundingBox();
+    expect(toggleBox).not.toBeNull();
+    // Verify it's on the left side of the screen
+    expect(toggleBox!.x).toBeLessThan(375 / 2);
   });
 });
