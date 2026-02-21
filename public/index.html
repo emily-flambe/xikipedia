@@ -385,7 +385,7 @@
         /* === Feature 3: Sidebar category controls === */
         .stats-section-title {
             font-weight: bold;
-            color: #8899AA;
+            color: var(--text-secondary, #8899AA);
             margin: 8px 0 4px 0;
             font-size: 11px;
             text-transform: uppercase;
@@ -407,7 +407,7 @@
             min-width: 0;
         }
         .cat-row .cat-score {
-            color: #8899AA;
+            color: var(--text-secondary, #8899AA);
             min-width: 40px;
             text-align: right;
             margin-right: 4px;
@@ -415,10 +415,10 @@
         .cat-row .cat-ctrl {
             width: 20px;
             height: 20px;
-            border: 1px solid #38444D;
+            border: 1px solid var(--border-color, #38444D);
             border-radius: 4px;
             background: transparent;
-            color: #8899AA;
+            color: var(--text-secondary, #8899AA);
             cursor: pointer;
             font-size: 12px;
             display: flex;
@@ -428,18 +428,18 @@
             flex-shrink: 0;
         }
         .cat-row .cat-ctrl:hover {
-            background: #1C2732;
-            color: #FFF;
-            border-color: #2cafff;
+            background: var(--bg-secondary, #1C2732);
+            color: var(--text-primary, #FFF);
+            border-color: var(--accent-color, #2cafff);
         }
         .hidden-section {
             margin-top: 8px;
-            border-top: 1px solid #38444D;
+            border-top: 1px solid var(--border-color, #38444D);
             padding-top: 4px;
         }
         .hidden-toggle {
             cursor: pointer;
-            color: #8899AA;
+            color: var(--text-secondary, #8899AA);
             font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -451,7 +451,7 @@
             text-align: left;
         }
         .hidden-toggle:hover {
-            color: #FFF;
+            color: var(--text-primary, #FFF);
         }
         .hidden-list {
             display: none;
@@ -469,7 +469,7 @@
         }
         .hidden-row .cat-name {
             flex: 1;
-            color: #8899AA;
+            color: var(--text-secondary, #8899AA);
             text-decoration: line-through;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -478,9 +478,9 @@
         }
         .unhide-btn {
             font-size: 10px;
-            color: #2cafff;
+            color: var(--accent-color, #2cafff);
             background: none;
-            border: 1px solid #38444D;
+            border: 1px solid var(--border-color, #38444D);
             border-radius: 4px;
             cursor: pointer;
             padding: 2px 6px;
@@ -488,8 +488,8 @@
             flex-shrink: 0;
         }
         .unhide-btn:hover {
-            background: #1C2732;
-            border-color: #2cafff;
+            background: var(--bg-secondary, #1C2732);
+            border-color: var(--accent-color, #2cafff);
         }
     </style>
 </head>
@@ -821,7 +821,7 @@
                 unhideBtn.onclick = (e) => {
                     e.stopPropagation();
                     hiddenCategories.delete(cat);
-                    updateEngagement();
+                    scheduleEngagementUpdate();
                 };
 
                 row.appendChild(nameSpan);
@@ -1042,9 +1042,10 @@
             .map(() => pagesArr[Math.floor(Math.random() * pagesArr.length)])
             .map(post => {
                 const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -50000;
-                // Check if all categories are hidden
-                let allHidden = hiddenCategories.size > 0;
-                const postScore = [...post.allCategories].reduce(
+                // Check if all real categories (not p: page refs) are hidden
+                const realCats = [...post.allCategories].filter(c => !c.startsWith('p:'));
+                let allHidden = hiddenCategories.size > 0 && realCats.length > 0;
+                const postScore = realCats.reduce(
                     (sum, cat) => {
                         if (hiddenCategories.has(cat)) return sum;
                         allHidden = false;
@@ -1052,7 +1053,7 @@
                     },
                     initialScore
                 );
-                // Heavily penalize posts where all categories are hidden
+                // Heavily penalize posts where all real categories are hidden
                 post.score = allHidden ? initialScore - 1000000 : postScore;
                 return post;
             });
