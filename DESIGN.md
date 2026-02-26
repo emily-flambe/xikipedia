@@ -443,7 +443,7 @@ These are ideas for extending beyond the original:
 - [ ] Include article images/media gallery
 
 ### Algorithm
-- [ ] Adjustable algorithm aggressiveness slider
+- [x] Adjustable algorithm aggressiveness slider (PR #23)
 - [x] "Explore mode" that ignores preferences (PR #19)
 - [ ] Time-based decay for category scores
 
