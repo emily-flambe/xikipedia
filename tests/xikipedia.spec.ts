@@ -125,9 +125,18 @@ test.describe('Xikipedia', () => {
     await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
     await startBtn.click();
     
-    // Stats should be visible
+    // Toggle button should be visible
+    const toggleBtn = page.locator('#statsToggleBtn');
+    await expect(toggleBtn).toBeVisible({ timeout: 5000 });
+    
+    // Click toggle to open sidebar drawer
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+    
+    // Stats should be visible after opening
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats).toBeVisible({ timeout: 10000 });
+    await expect(stats).toHaveClass(/open/);
   });
 
   test('infinite scroll loads more posts', async ({ page }) => {
@@ -345,6 +354,10 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
 
+    // Open the sidebar drawer
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
+
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
     await expect(firstRow).toBeVisible({ timeout: 5000 });
@@ -365,6 +378,10 @@ test.describe('Feature 3: Sidebar category controls', () => {
 
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer first
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
@@ -417,6 +434,10 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
 
+    // Open the sidebar drawer
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
+
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats.locator('.stats-section-title').first()).toBeVisible({ timeout: 5000 });
     await expect(stats.locator('.stats-section-title').first()).toHaveText('Top Categories');
@@ -436,13 +457,15 @@ test.describe('Feature 4: Mobile sidebar drawer', () => {
     await expect(toggleBtn).toBeVisible();
   });
 
-  test('mobile toggle button is hidden on desktop viewport', async ({ page }) => {
+  test('toggle button is visible on all screen sizes', async ({ page }) => {
     test.setTimeout(180000);
+    // Toggle button should now be visible on ALL screen sizes
+    // because sidebar is always hidden by default and requires toggle to open
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeed(page);
 
     const toggleBtn = page.locator('#statsToggleBtn');
-    await expect(toggleBtn).not.toBeVisible();
+    await expect(toggleBtn).toBeVisible();
   });
 
   test('clicking toggle opens the drawer', async ({ page }) => {
