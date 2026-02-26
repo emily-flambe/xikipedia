@@ -2333,7 +2333,7 @@
         const indicator = document.createElement("div");
         indicator.classList.add("pull-to-refresh-indicator");
         indicator.id = "pullIndicator";
-        indicator.innerHTML = '<span class="spinner">↻</span> Pull to refresh';
+        indicator.innerHTML = '<span>↓</span> Pull to refresh';
         postsContainer.parentNode.insertBefore(indicator, postsContainer);
 
         // Common handlers for both touch and pointer events
@@ -2355,7 +2355,7 @@
                 indicator.style.height = (progress * 48) + "px";
                 indicator.style.opacity = progress;
                 if (pullDist >= PULL_THRESHOLD) {
-                    indicator.innerHTML = '<span class="spinner">↻</span> Release to refresh';
+                    indicator.innerHTML = '<span style="color: #22c55e">✓</span> Release to refresh!';
                 } else {
                     indicator.innerHTML = '<span>↓</span> Pull to refresh';
                 }
@@ -2365,11 +2365,14 @@
         function handlePullEnd() {
             if (isPulling && pullDist >= PULL_THRESHOLD) {
                 indicator.innerHTML = '<span class="spinner">↻</span> Refreshing...';
+                // Refresh immediately, then hide indicator
+                refreshFeed();
+                showToast("🔄 Feed refreshed!");
                 setTimeout(() => {
-                    refreshFeed();
                     indicator.classList.remove("active");
                     indicator.style.height = "0";
                     indicator.style.opacity = "0";
+                    indicator.innerHTML = '<span>↓</span> Pull to refresh';
                 }, 300);
             } else {
                 indicator.classList.remove("active");
@@ -2393,12 +2396,16 @@
 
         // Pointer events (desktop mouse + touch)
         let isPointerPulling = false;
+        let capturedPointerId = null;
+        
         postsContainer.addEventListener("pointerdown", (e) => {
             if (e.pointerType === 'touch') return; // Handled by touch events
             // Don't start pull if clicking on interactive elements
             const target = e.target;
             if (target.closest('button, a, input, [role="button"]')) return;
+            if (window.scrollY > 0) return; // Only at top of page
             isPointerPulling = true;
+            capturedPointerId = e.pointerId;
             handlePullStart(e.clientY);
             postsContainer.setPointerCapture(e.pointerId);
         });
@@ -2413,7 +2420,10 @@
             if (isPointerPulling) {
                 handlePullEnd();
                 isPointerPulling = false;
-                postsContainer.releasePointerCapture(e.pointerId);
+                if (capturedPointerId !== null) {
+                    try { postsContainer.releasePointerCapture(capturedPointerId); } catch(err) {}
+                    capturedPointerId = null;
+                }
             }
         });
 
@@ -2422,9 +2432,20 @@
                 indicator.classList.remove("active");
                 indicator.style.height = "0";
                 indicator.style.opacity = "0";
+                indicator.innerHTML = '<span>↓</span> Pull to refresh';
                 isPulling = false;
                 pullDist = 0;
                 isPointerPulling = false;
+                capturedPointerId = null;
+            }
+        });
+        
+        // Also handle lostpointercapture for robustness
+        postsContainer.addEventListener("lostpointercapture", (e) => {
+            if (isPointerPulling) {
+                handlePullEnd();
+                isPointerPulling = false;
+                capturedPointerId = null;
             }
         });
     }
