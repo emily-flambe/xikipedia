@@ -458,7 +458,7 @@ async function handlePutPreferences(
     return errorResponse('Invalid JSON body', 400);
   }
 
-  if (body.categoryScores && typeof body.categoryScores !== 'object') {
+  if (body.categoryScores && (typeof body.categoryScores !== 'object' || Array.isArray(body.categoryScores))) {
     return errorResponse('categoryScores must be an object', 400);
   }
   if (body.hiddenCategories && !Array.isArray(body.hiddenCategories)) {
