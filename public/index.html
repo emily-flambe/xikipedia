@@ -2197,6 +2197,8 @@
     window.pagesArr = pagesArr;
     // Expose postsWithoutLike as a getter for testing
     Object.defineProperty(window, 'postsWithoutLike', { get: () => postsWithoutLike });
+    // Expose refreshFeed for testing
+    window.refreshFeed = refreshFeed;
 
     window.onload = main;
 </script>
