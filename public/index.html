@@ -506,12 +506,39 @@
             font-size: 20px;
         }
         #exploreBtn.active {
-            background: var(--accent-color);
-            box-shadow: 0 0 12px var(--accent-color);
+            background: #22c55e;
+            box-shadow: 0 0 20px #22c55e, 0 0 40px #22c55e55;
+            animation: explorePulse 1.5s ease-in-out infinite;
+        }
+        @keyframes explorePulse {
+            0%, 100% { box-shadow: 0 0 20px #22c55e, 0 0 40px #22c55e55; }
+            50% { box-shadow: 0 0 30px #22c55e, 0 0 60px #22c55e88; }
+        }
+        .toast {
+            position: fixed;
+            bottom: 140px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+            animation: toastSlide 2s ease-out forwards;
+            pointer-events: none;
+        }
+        @keyframes toastSlide {
+            0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            85% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
         }
         #exploreBtn.active::after {
             content: "🎲";
-            filter: drop-shadow(0 0 4px white);
+            filter: drop-shadow(0 0 6px white);
         }
         #refreshBtn::after {
             content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" fill="white"/></svg>');
@@ -1448,6 +1475,17 @@
     }
 
     // Update the stats sidebar with interactive controls
+    // Toast notification helper
+    function showToast(message) {
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        toast.addEventListener('animationend', () => toast.remove());
+    }
+
     function updateEngagement() {
         const statsEl = document.querySelector(".stats");
         // Preserve close button for mobile drawer
@@ -2687,6 +2725,8 @@
             exploreBtn.classList.toggle("active", exploreMode);
             exploreBtn.setAttribute("aria-pressed", exploreMode);
             exploreBtn.setAttribute("aria-label", exploreMode ? "Exit explore mode" : "Enter explore mode");
+            // Show toast feedback
+            showToast(exploreMode ? "🎲 Explore mode ON - random articles!" : "🎯 Explore mode OFF - back to personalized");
         };
         initKeyboardShortcuts();
         initHistoryToggle();
