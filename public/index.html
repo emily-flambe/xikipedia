@@ -2007,6 +2007,184 @@
         }, { passive: true });
     }
 
+    // Keyboard shortcuts for power users
+    function initKeyboardShortcuts() {
+        // Get the post currently most visible in viewport
+        function getCurrentPost() {
+            const posts = document.querySelectorAll('.post');
+            const viewportCenter = window.innerHeight / 2;
+            let closest = null;
+            let closestDist = Infinity;
+
+            for (const post of posts) {
+                const rect = post.getBoundingClientRect();
+                const postCenter = rect.top + rect.height / 2;
+                const dist = Math.abs(postCenter - viewportCenter);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closest = post;
+                }
+            }
+            return closest;
+        }
+
+        // Scroll to a specific post index
+        function scrollToPost(post) {
+            if (!post) return;
+            post.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            post.focus();
+        }
+
+        // Get next/previous post relative to current
+        function getAdjacentPost(direction) {
+            const posts = Array.from(document.querySelectorAll('.post'));
+            const current = getCurrentPost();
+            if (!current) return posts[0] || null;
+            
+            const idx = posts.indexOf(current);
+            if (direction === 'next') {
+                return posts[idx + 1] || current;
+            } else {
+                return posts[idx - 1] || current;
+            }
+        }
+
+        // Show help modal
+        let helpVisible = false;
+        function toggleHelp() {
+            let helpEl = document.getElementById('keyboardHelp');
+            if (!helpEl) {
+                helpEl = document.createElement('div');
+                helpEl.id = 'keyboardHelp';
+                helpEl.innerHTML = `
+                    <div class="keyboard-help-content">
+                        <h3>⌨️ Keyboard Shortcuts</h3>
+                        <table>
+                            <tr><td><kbd>J</kbd></td><td>Next post</td></tr>
+                            <tr><td><kbd>K</kbd></td><td>Previous post</td></tr>
+                            <tr><td><kbd>L</kbd></td><td>Like post</td></tr>
+                            <tr><td><kbd>M</kbd></td><td>More like this</td></tr>
+                            <tr><td><kbd>N</kbd></td><td>Less like this</td></tr>
+                            <tr><td><kbd>O</kbd> / <kbd>Enter</kbd></td><td>Open on Wikipedia</td></tr>
+                            <tr><td><kbd>R</kbd></td><td>Refresh feed</td></tr>
+                            <tr><td><kbd>S</kbd></td><td>Toggle sidebar</td></tr>
+                            <tr><td><kbd>?</kbd></td><td>Show/hide this help</td></tr>
+                            <tr><td><kbd>Esc</kbd></td><td>Close sidebar/help</td></tr>
+                        </table>
+                        <p class="help-dismiss">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</p>
+                    </div>
+                `;
+                helpEl.style.cssText = `
+                    position: fixed; inset: 0; z-index: 10000;
+                    background: rgba(0,0,0,0.8); display: flex;
+                    align-items: center; justify-content: center;
+                `;
+                helpEl.querySelector('.keyboard-help-content').style.cssText = `
+                    background: var(--bg-secondary); color: var(--text-primary);
+                    padding: 24px 32px; border-radius: 12px; max-width: 320px;
+                `;
+                helpEl.querySelectorAll('kbd').forEach(k => {
+                    k.style.cssText = `
+                        background: var(--bg-tertiary); padding: 2px 8px;
+                        border-radius: 4px; font-family: monospace;
+                        border: 1px solid var(--border-color);
+                    `;
+                });
+                helpEl.querySelectorAll('td').forEach((td, i) => {
+                    td.style.padding = '4px 12px';
+                    if (i % 2 === 0) td.style.textAlign = 'right';
+                });
+                helpEl.querySelector('h3').style.marginTop = '0';
+                helpEl.querySelector('.help-dismiss').style.cssText = `
+                    text-align: center; opacity: 0.7; font-size: 0.9em; margin-bottom: 0;
+                `;
+                helpEl.onclick = () => toggleHelp();
+                document.body.appendChild(helpEl);
+                helpVisible = true;
+            } else {
+                helpEl.remove();
+                helpVisible = false;
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            // Don't fire shortcuts when typing in inputs
+            if (e.target.matches('input, textarea, select')) return;
+            // Don't fire if modifier keys are held (allow browser shortcuts)
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+            const key = e.key.toLowerCase();
+            const current = getCurrentPost();
+
+            switch (key) {
+                case 'j': // Next post
+                    e.preventDefault();
+                    scrollToPost(getAdjacentPost('next'));
+                    break;
+
+                case 'k': // Previous post
+                    e.preventDefault();
+                    scrollToPost(getAdjacentPost('prev'));
+                    break;
+
+                case 'l': // Like
+                    if (current) {
+                        e.preventDefault();
+                        const likeBtn = current.querySelector('[data-testid="like-button"]');
+                        if (likeBtn && !likeBtn.dataset.liked) likeBtn.click();
+                    }
+                    break;
+
+                case 'm': // More like this
+                    if (current) {
+                        e.preventDefault();
+                        const moreBtn = current.querySelector('.more-btn');
+                        if (moreBtn && !moreBtn.disabled) moreBtn.click();
+                    }
+                    break;
+
+                case 'n': // Less like this  
+                    if (current) {
+                        e.preventDefault();
+                        const lessBtn = current.querySelector('.less-btn');
+                        if (lessBtn && !lessBtn.disabled) lessBtn.click();
+                    }
+                    break;
+
+                case 'o': // Open on Wikipedia
+                case 'enter':
+                    if (current && e.key === 'o') { // Only 'o', Enter handled by post's own handler
+                        e.preventDefault();
+                        current.click();
+                    }
+                    break;
+
+                case 'r': // Refresh
+                    e.preventDefault();
+                    refreshFeed();
+                    break;
+
+                case 's': // Toggle sidebar
+                    e.preventDefault();
+                    document.getElementById('statsToggleBtn').click();
+                    break;
+
+                case '?': // Help
+                    e.preventDefault();
+                    toggleHelp();
+                    break;
+
+                case 'escape':
+                    if (helpVisible) {
+                        e.preventDefault();
+                        toggleHelp();
+                    }
+                    // Sidebar close is handled elsewhere
+                    break;
+            }
+        });
+    }
+
     // Start the feed (extracted so both auth and guest paths can use it)
     function startFeed(sharedArticle) {
         startScreen.hidePopover();
@@ -2022,6 +2200,7 @@
             refreshFeed();
         };
         initPullToRefresh();
+        initKeyboardShortcuts();
 
         // Show logout/delete buttons if logged in
         if (isLoggedIn()) {
