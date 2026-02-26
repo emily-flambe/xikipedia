@@ -421,22 +421,27 @@ test.describe('Feature 3: Sidebar category controls', () => {
     const firstRow = stats.locator('.cat-row').first();
     await expect(firstRow).toBeVisible({ timeout: 5000 });
 
-    // Get the category key and its score
+    // Capture category name and score BEFORE clicking
     const catName = await firstRow.locator('.cat-name').textContent();
     const scoreBefore = await firstRow.locator('.cat-score').textContent();
     const numBefore = parseInt(scoreBefore!.replace('+', ''));
+
+    // Get the actual category key for verification via JS globals
+    const catKey = await page.evaluate((name) => {
+      const scores = (window as any).categoryScores;
+      for (const [k, v] of Object.entries(scores)) {
+        if (k === name || (window as any).convertCat(k) === name) return k;
+      }
+      return null;
+    }, catName);
 
     // Click boost
     await firstRow.locator('.cat-ctrl').nth(0).click();
     await page.waitForTimeout(100);
 
-    // Re-query after re-render
-    const updatedRow = stats.locator('.cat-row').first();
-    const scoreAfter = await updatedRow.locator('.cat-score').textContent();
-    const numAfter = parseInt(scoreAfter!.replace('+', ''));
-
-    // Should have increased by 200
-    expect(numAfter).toBe(numBefore + 200);
+    // Verify via JS global (sidebar re-sorts, so DOM order changes)
+    const scoreAfter = await page.evaluate((key) => (window as any).categoryScores[key], catKey);
+    expect(scoreAfter).toBe(numBefore + 200);
   });
 
   test('bury button decreases category score by 200', async ({ page }) => {
