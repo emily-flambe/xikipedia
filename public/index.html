@@ -2077,7 +2077,6 @@
 
         let i = 0;
         const wikiLen = smoldata.pages.length;
-        console.log(`Processing ${wikiLen} articles...`);
         const loading = document.querySelector("#loading");
         let lastFrame = Date.now();
 
@@ -2120,8 +2119,6 @@
             tempPage.allCategories.add(...tempPage.links.map(e => `p:${e}`));
             pagesArr.push(tempPage);
         }
-
-        console.log(`Filtered ${filteredCount} short articles (less than 100 characters)`);
 
         loading.remove();
         document.getElementById('loadingProgress').style.display = 'none';
