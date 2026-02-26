@@ -460,18 +460,12 @@ test.describe('Feature 3: Sidebar category controls', () => {
     const firstRow = stats.locator('.cat-row').first();
     await expect(firstRow).toBeVisible({ timeout: 5000 });
 
+    // Capture category name and score BEFORE clicking
+    const catName = await firstRow.locator('.cat-name').textContent();
     const scoreBefore = await firstRow.locator('.cat-score').textContent();
     const numBefore = parseInt(scoreBefore!.replace('+', ''));
 
-    // Capture category name BEFORE clicking (sidebar will re-render and re-sort after)
-    const catName = await firstRow.locator('.cat-name').textContent();
-
-    // Click bury
-    await firstRow.locator('.cat-ctrl').nth(1).click();
-    await page.waitForTimeout(100);
-
-    // The sidebar re-renders -- the same category might move position
-    // Check via page.evaluate for accuracy using the name we captured before
+    // Get the actual category key for verification via JS globals
     const catKey = await page.evaluate((name) => {
       const scores = (window as any).categoryScores;
       for (const [k, v] of Object.entries(scores)) {
@@ -480,12 +474,14 @@ test.describe('Feature 3: Sidebar category controls', () => {
       return null;
     }, catName);
 
-    // The score for this category should have decreased
-    // We verify using the JS global since sidebar reorders
-    if (catKey) {
-      const scoreNow = await page.evaluate((key) => (window as any).categoryScores[key], catKey);
-      expect(scoreNow).toBe(numBefore - 200);
-    }
+    // Click bury
+    await firstRow.locator('.cat-ctrl').nth(1).click();
+    await page.waitForTimeout(100);
+
+    // Verify via JS global (sidebar re-sorts, so DOM order changes)
+    // Use toBeLessThanOrEqual because background view events may add additional -5 decay
+    const scoreAfter = await page.evaluate((key) => (window as any).categoryScores[key], catKey);
+    expect(scoreAfter).toBeLessThanOrEqual(numBefore - 200);
   });
 
   test('hide button adds category to hiddenCategories set', async ({ page }) => {
