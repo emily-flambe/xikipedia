@@ -338,12 +338,34 @@
         .retry-btn:hover {
             background: #1a9ae8;
         }
+        .why-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--bg-secondary, #192734);
+            color: var(--accent-color, #2cafff);
+            border: 1px solid var(--accent-color, #2cafff);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+        .why-btn:hover {
+            opacity: 1;
+        }
         .recommendation-reason {
             font-size: 12px;
             color: var(--accent-color);
             margin: 4px 0 8px 0;
             font-style: italic;
             opacity: 0.9;
+            background: var(--bg-secondary, #192734);
+            padding: 6px 10px;
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-color, #2cafff);
         }
         #themeToggle {
             position: fixed;
@@ -2027,11 +2049,28 @@
 
         postDiv.appendChild(postTitle);
 
-        // Display recommendation reason if available
+        // "Why this?" button for algorithm transparency
         if (nextPost.recommendedBecause && nextPost.recommendedBecause.length > 0) {
+            const whyBtn = document.createElement("button");
+            whyBtn.classList.add("why-btn");
+            whyBtn.innerText = "Why?";
+            whyBtn.setAttribute("aria-label", "Why was this recommended?");
+            whyBtn.setAttribute("aria-expanded", "false");
+            
             const reasonP = document.createElement("p");
             reasonP.classList.add("recommendation-reason");
-            reasonP.innerText = "Because you liked: " + nextPost.recommendedBecause.join(", ");
+            reasonP.style.display = "none";
+            reasonP.innerText = nextPost.recommendedBecause.join(", ");
+            
+            whyBtn.onclick = (e) => {
+                e.stopPropagation();
+                const isExpanded = reasonP.style.display !== "none";
+                reasonP.style.display = isExpanded ? "none" : "block";
+                whyBtn.setAttribute("aria-expanded", !isExpanded);
+                whyBtn.innerText = isExpanded ? "Why?" : "×";
+            };
+            
+            postDiv.appendChild(whyBtn);
             postDiv.appendChild(reasonP);
         }
 
