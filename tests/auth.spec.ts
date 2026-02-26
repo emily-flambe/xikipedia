@@ -543,9 +543,13 @@ test.describe('Preference persistence', () => {
     const scores = await page.evaluate(() => (window as any).categoryScores);
     // The saved scores should be merged in. Note: the app merges over defaults.
     // "given names" starts at -1000, but our saved value is also -1000, so check science.
+    // Note: viewing posts applies -5 decay per post to all categories, so we check
+    // a range rather than exact values. With up to ~10 posts viewed: -50 max decay.
     if (scores) {
-      expect(scores['science']).toBe(500);
-      expect(scores['nature']).toBe(300);
+      expect(scores['science']).toBeGreaterThanOrEqual(450); // saved 500, -50 max decay
+      expect(scores['science']).toBeLessThanOrEqual(500);
+      expect(scores['nature']).toBeGreaterThanOrEqual(250); // saved 300, -50 max decay
+      expect(scores['nature']).toBeLessThanOrEqual(300);
     }
   });
 
