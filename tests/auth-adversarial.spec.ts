@@ -543,15 +543,10 @@ test.describe('Preference payload edge cases', () => {
       },
     });
 
-    // Arrays are typeof 'object' in JS, so the validation `typeof !== 'object'`
-    // will NOT catch this. BUG: Arrays pass the object check.
-    // The frontend would break trying to use Object.entries on an array.
-    if (resp.status() === 200) {
-      console.warn(
-        'BUG: categoryScores accepts arrays. The typeof check does not distinguish arrays from objects.',
-      );
-    }
-    expect(resp.status()).not.toBe(500);
+    // Arrays should be rejected - categoryScores must be a plain object
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toBe('categoryScores must be an object');
   });
 
   test('null categoryScores and null hiddenCategories', async ({ page }) => {
