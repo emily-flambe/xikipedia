@@ -1363,8 +1363,10 @@
     }
 
     // Apply engagement score to post categories
-    function engagePost(post, amount) {
+    // skipHidden: when true, categories in hiddenCategories are not scored
+    function engagePost(post, amount, skipHidden = false) {
         post.allCategories.forEach(e => {
+            if (skipHidden && hiddenCategories.has(e)) return;
             categoryScores[e] = (categoryScores[e] ?? 0) + amount;
         });
         savePreferences();
@@ -1559,7 +1561,7 @@
             e.stopPropagation();
             if (moreBtn.disabled) return;
             moreBtn.disabled = true;
-            engagePost(nextPost, 150);
+            engagePost(nextPost, 150, true); // skipHidden=true for "More like this"
             updateEngagement();
             const gotIt = document.createElement("span");
             gotIt.classList.add("got-it");
@@ -2141,6 +2143,11 @@
             startFeed(sharedArticle);
         };
     }
+
+    // Expose state for testing
+    window.categoryScores = categoryScores;
+    window.hiddenCategories = hiddenCategories;
+    window.pagesArr = pagesArr;
 
     window.onload = main;
 </script>
