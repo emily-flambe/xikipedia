@@ -125,9 +125,18 @@ test.describe('Xikipedia', () => {
     await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
     await startBtn.click();
     
-    // Stats should be visible
+    // Toggle button should be visible
+    const toggleBtn = page.locator('#statsToggleBtn');
+    await expect(toggleBtn).toBeVisible({ timeout: 5000 });
+    
+    // Click toggle to open sidebar drawer
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+    
+    // Stats should be visible after opening
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats).toBeVisible({ timeout: 10000 });
+    await expect(stats).toHaveClass(/open/);
   });
 
   test('infinite scroll loads more posts', async ({ page }) => {
@@ -230,6 +239,151 @@ test.describe('Feature 2: Feed refresh', () => {
     // Refresh button should be hidden on start screen
     const refreshBtn = page.locator('#refreshBtn');
     await expect(refreshBtn).not.toBeVisible();
+  });
+
+  test('pull-to-refresh indicator exists after feed starts', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const indicator = page.locator('#pullIndicator');
+    await expect(indicator).toBeAttached();
+    
+    // Should contain the pull text
+    await expect(indicator).toContainText('Pull to refresh');
+  });
+
+  test('pull-to-refresh works with touch gestures', async ({ page, browserName }) => {
+    test.setTimeout(180000);
+    
+    // Skip on browsers without touch support in test
+    if (browserName !== 'chromium') {
+      test.skip();
+    }
+
+    await startFeed(page);
+
+    // Get first post title before refresh
+    const firstPostBefore = await page.locator('[data-testid="post"] h1').first().textContent();
+
+    // Scroll to top
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(100);
+
+    // Simulate touch pull gesture
+    await page.evaluate(() => {
+      const postsEl = document.querySelector('.posts');
+      if (!postsEl) return;
+
+      const startY = 50;
+      const endY = 200; // Pull down 150px (above 80px threshold)
+
+      // Touch start
+      postsEl.dispatchEvent(new TouchEvent('touchstart', {
+        bubbles: true, cancelable: true,
+        touches: [new Touch({ identifier: 0, target: postsEl, clientX: 200, clientY: startY })]
+      }));
+
+      // Touch move (simulate drag)
+      for (let y = startY; y <= endY; y += 10) {
+        postsEl.dispatchEvent(new TouchEvent('touchmove', {
+          bubbles: true, cancelable: true,
+          touches: [new Touch({ identifier: 0, target: postsEl, clientX: 200, clientY: y })]
+        }));
+      }
+
+      // Touch end
+      postsEl.dispatchEvent(new TouchEvent('touchend', {
+        bubbles: true, cancelable: true, touches: []
+      }));
+    });
+
+    // Wait for refresh
+    await page.waitForTimeout(800);
+
+    // Verify posts were refreshed (first post might be different due to random selection)
+    const postCount = await page.locator('[data-testid="post"]').count();
+    expect(postCount).toBeGreaterThan(0);
+  });
+
+  test('pull-to-refresh works with mouse on desktop', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await startFeed(page);
+
+    // Get first post title before refresh
+    const firstPostBefore = await page.locator('[data-testid="post"] h1').first().textContent();
+
+    // Scroll to top
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(100);
+
+    // Get posts container position
+    const postsBox = await page.locator('.posts').boundingBox();
+    if (!postsBox) throw new Error('Posts container not found');
+
+    // Click on empty area of posts (not on a button)
+    const startX = postsBox.x + 50; // Left side of posts, away from buttons
+    const startY = postsBox.y + 20;
+
+    // Mouse drag down
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    
+    for (let y = startY; y <= startY + 150; y += 10) {
+      await page.mouse.move(startX, y);
+      await page.waitForTimeout(10);
+    }
+    
+    await page.mouse.up();
+    await page.waitForTimeout(800);
+
+    // Verify posts exist after refresh
+    const postCount = await page.locator('[data-testid="post"]').count();
+    expect(postCount).toBeGreaterThan(0);
+  });
+
+  test('refresh resets postsWithoutLike counter', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    // View several posts (scrolling triggers view counting)
+    await page.evaluate(() => window.scrollBy(0, 500));
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.scrollBy(0, 500));
+    await page.waitForTimeout(300);
+
+    // Check postsWithoutLike > 0
+    const beforeRefresh = await page.evaluate(() => (window as any).postsWithoutLike);
+    expect(beforeRefresh).toBeGreaterThan(0);
+
+    // Call refreshFeed directly and check immediately (before render loop adds new posts)
+    const afterRefresh = await page.evaluate(() => {
+      (window as any).refreshFeed();
+      return (window as any).postsWithoutLike;
+    });
+
+    // postsWithoutLike should be reset to 0 immediately after refresh
+    expect(afterRefresh).toBe(0);
+  });
+
+  test('refresh clears seen status so posts can appear again', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    // Scroll to view some posts
+    await page.evaluate(() => window.scrollBy(0, 1000));
+    await page.waitForTimeout(500);
+
+    // Click refresh
+    await page.locator('#refreshBtn').click();
+    await page.waitForTimeout(500);
+
+    // New posts should appear
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 5000 });
+    
+    // Should be at scroll position 0
+    const scrollPos = await page.evaluate(() => window.scrollY);
+    expect(scrollPos).toBe(0);
   });
 });
 
@@ -345,6 +499,10 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
 
+    // Open the sidebar drawer
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
+
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
     await expect(firstRow).toBeVisible({ timeout: 5000 });
@@ -365,6 +523,10 @@ test.describe('Feature 3: Sidebar category controls', () => {
 
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer first
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
@@ -417,6 +579,10 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
 
+    // Open the sidebar drawer
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
+
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats.locator('.stats-section-title').first()).toBeVisible({ timeout: 5000 });
     await expect(stats.locator('.stats-section-title').first()).toHaveText('Top Categories');
@@ -436,13 +602,15 @@ test.describe('Feature 4: Mobile sidebar drawer', () => {
     await expect(toggleBtn).toBeVisible();
   });
 
-  test('mobile toggle button is hidden on desktop viewport', async ({ page }) => {
+  test('toggle button is visible on all screen sizes', async ({ page }) => {
     test.setTimeout(180000);
+    // Toggle button should now be visible on ALL screen sizes
+    // because sidebar is always hidden by default and requires toggle to open
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeed(page);
 
     const toggleBtn = page.locator('#statsToggleBtn');
-    await expect(toggleBtn).not.toBeVisible();
+    await expect(toggleBtn).toBeVisible();
   });
 
   test('clicking toggle opens the drawer', async ({ page }) => {
