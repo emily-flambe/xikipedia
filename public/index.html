@@ -62,7 +62,6 @@
             left: calc(50% + 330px);
             top: 20px;
             padding: 8px;
-            white-space: pre-wrap;
             font-family: monospace;
             font-size: 12px;
         }
@@ -463,6 +462,116 @@
         .post .button-spacer {
             flex: 1;
         }
+
+        /* === Feature 3: Sidebar category controls === */
+        .stats-section-title {
+            font-weight: bold;
+            color: var(--text-secondary, #8899AA);
+            margin: 8px 0 4px 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .cat-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .cat-row .cat-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .cat-row .cat-score {
+            color: var(--text-secondary, #8899AA);
+            min-width: 40px;
+            text-align: right;
+            margin-right: 4px;
+        }
+        .cat-row .cat-ctrl {
+            width: 20px;
+            height: 20px;
+            border: 1px solid var(--border-color, #38444D);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-secondary, #8899AA);
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            flex-shrink: 0;
+        }
+        .cat-row .cat-ctrl:hover {
+            background: var(--bg-secondary, #1C2732);
+            color: var(--text-primary, #FFF);
+            border-color: var(--accent-color, #2cafff);
+        }
+        .hidden-section {
+            margin-top: 8px;
+            border-top: 1px solid var(--border-color, #38444D);
+            padding-top: 4px;
+        }
+        .hidden-toggle {
+            cursor: pointer;
+            color: var(--text-secondary, #8899AA);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: none;
+            border: none;
+            padding: 4px 0;
+            font-family: monospace;
+            width: 100%;
+            text-align: left;
+        }
+        .hidden-toggle:hover {
+            color: var(--text-primary, #FFF);
+        }
+        .hidden-list {
+            display: none;
+        }
+        .hidden-list.expanded {
+            display: block;
+        }
+        .hidden-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .hidden-row .cat-name {
+            flex: 1;
+            color: var(--text-secondary, #8899AA);
+            text-decoration: line-through;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .unhide-btn {
+            font-size: 10px;
+            color: var(--accent-color, #2cafff);
+            background: none;
+            border: 1px solid var(--border-color, #38444D);
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-family: monospace;
+            flex-shrink: 0;
+        }
+        .unhide-btn:hover {
+            background: var(--bg-secondary, #1C2732);
+            border-color: var(--accent-color, #2cafff);
+        }
     </style>
 </head>
 <body>
@@ -551,6 +660,7 @@
         "given names": -1000,
         "surnames": -1000,
     };
+    const hiddenCategories = new Set();
     const defaultCategories = [
         "nature", "science", "animals", "anthropology", "places", 
         "sociology", "art", "mathematics", "games", "technology", 
@@ -663,16 +773,149 @@
     }
 
     // Update the stats sidebar
+    // Debounced sidebar update to prevent DOM thrash on rapid clicks
+    let engagementUpdateScheduled = false;
+    function scheduleEngagementUpdate() {
+        if (engagementUpdateScheduled) return;
+        engagementUpdateScheduled = true;
+        requestAnimationFrame(() => {
+            updateEngagement();
+            engagementUpdateScheduled = false;
+        });
+    }
+
+    // Update the stats sidebar with interactive controls
     function updateEngagement() {
+        const statsEl = document.querySelector(".stats");
+        statsEl.innerHTML = "";
+
         const sorted = Object.entries(categoryScores)
-            .filter(e => e[1])
+            .filter(([k, v]) => v && !hiddenCategories.has(k))
             .sort((a, b) => b[1] - a[1]);
         const top10 = sorted.slice(0, 10);
-        const bottom10 = sorted.slice(sorted.length - 10);
-        document.querySelector(".stats").innerText = 
-            top10.map(([k, v]) => `${convertCat(k)}: ${v}`).join("\n") + 
-            "\n...\n" + 
-            bottom10.map(([k, v]) => `${convertCat(k)}: ${v}`).join("\n");
+        const bottom10 = sorted.slice(Math.max(sorted.length - 10, 10));
+
+        function createCatRow(cat, score) {
+            const row = document.createElement("div");
+            row.classList.add("cat-row");
+
+            const nameSpan = document.createElement("span");
+            nameSpan.classList.add("cat-name");
+            nameSpan.title = convertCat(cat);
+            nameSpan.textContent = convertCat(cat);
+
+            const scoreSpan = document.createElement("span");
+            scoreSpan.classList.add("cat-score");
+            scoreSpan.textContent = score > 0 ? `+${score}` : String(score);
+
+            const boostBtn = document.createElement("button");
+            boostBtn.classList.add("cat-ctrl");
+            boostBtn.textContent = "+";
+            boostBtn.title = "Boost this category";
+            boostBtn.setAttribute("aria-label", `Boost ${convertCat(cat)}`);
+            boostBtn.onclick = (e) => {
+                e.stopPropagation();
+                categoryScores[cat] = (categoryScores[cat] || 0) + 200;
+                scheduleEngagementUpdate();
+            };
+
+            const buryBtn = document.createElement("button");
+            buryBtn.classList.add("cat-ctrl");
+            buryBtn.textContent = "\u2212";
+            buryBtn.title = "Bury this category";
+            buryBtn.setAttribute("aria-label", `Bury ${convertCat(cat)}`);
+            buryBtn.onclick = (e) => {
+                e.stopPropagation();
+                categoryScores[cat] = (categoryScores[cat] || 0) - 200;
+                scheduleEngagementUpdate();
+            };
+
+            const hideBtn = document.createElement("button");
+            hideBtn.classList.add("cat-ctrl");
+            hideBtn.textContent = "\u00d7";
+            hideBtn.title = "Hide this category";
+            hideBtn.setAttribute("aria-label", `Hide ${convertCat(cat)}`);
+            hideBtn.onclick = (e) => {
+                e.stopPropagation();
+                hiddenCategories.add(cat);
+                scheduleEngagementUpdate();
+            };
+
+            row.appendChild(nameSpan);
+            row.appendChild(scoreSpan);
+            row.appendChild(boostBtn);
+            row.appendChild(buryBtn);
+            row.appendChild(hideBtn);
+            return row;
+        }
+
+        // Top categories
+        if (top10.length) {
+            const topTitle = document.createElement("div");
+            topTitle.classList.add("stats-section-title");
+            topTitle.textContent = "Top Categories";
+            statsEl.appendChild(topTitle);
+            top10.forEach(([k, v]) => statsEl.appendChild(createCatRow(k, v)));
+        }
+
+        // Bottom categories
+        if (bottom10.length) {
+            const bottomTitle = document.createElement("div");
+            bottomTitle.classList.add("stats-section-title");
+            bottomTitle.textContent = "Bottom Categories";
+            bottomTitle.style.marginTop = "12px";
+            statsEl.appendChild(bottomTitle);
+            bottom10.forEach(([k, v]) => statsEl.appendChild(createCatRow(k, v)));
+        }
+
+        // Hidden categories section
+        if (hiddenCategories.size > 0) {
+            const hiddenSection = document.createElement("div");
+            hiddenSection.classList.add("hidden-section");
+
+            const toggleBtn = document.createElement("button");
+            toggleBtn.classList.add("hidden-toggle");
+            toggleBtn.textContent = `Hidden (${hiddenCategories.size}) \u25B6`;
+            toggleBtn.setAttribute("aria-expanded", "false");
+            toggleBtn.setAttribute("aria-label", `Show ${hiddenCategories.size} hidden categories`);
+
+            const hiddenList = document.createElement("div");
+            hiddenList.classList.add("hidden-list");
+
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                const expanded = hiddenList.classList.toggle("expanded");
+                toggleBtn.textContent = `Hidden (${hiddenCategories.size}) ${expanded ? "\u25BC" : "\u25B6"}`;
+                toggleBtn.setAttribute("aria-expanded", String(expanded));
+            };
+
+            hiddenCategories.forEach(cat => {
+                const row = document.createElement("div");
+                row.classList.add("hidden-row");
+
+                const nameSpan = document.createElement("span");
+                nameSpan.classList.add("cat-name");
+                nameSpan.textContent = convertCat(cat);
+
+                const unhideBtn = document.createElement("button");
+                unhideBtn.classList.add("unhide-btn");
+                unhideBtn.textContent = "unhide";
+                unhideBtn.setAttribute("aria-label", `Unhide ${convertCat(cat)}`);
+                unhideBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    hiddenCategories.delete(cat);
+                    scheduleEngagementUpdate();
+                };
+
+                row.appendChild(nameSpan);
+                row.appendChild(unhideBtn);
+                hiddenList.appendChild(row);
+            });
+
+            hiddenSection.appendChild(toggleBtn);
+            hiddenSection.appendChild(hiddenList);
+            statsEl.appendChild(hiddenSection);
+        }
     }
 
     // Apply engagement score to post categories

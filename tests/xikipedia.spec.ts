@@ -331,3 +331,94 @@ test.describe('Feature 1: More/Less feedback buttons', () => {
     await expect(moreBtn).toBeDisabled();
   });
 });
+
+// =============================================
+// Feature 3: Sidebar category controls
+// =============================================
+test.describe('Feature 3: Sidebar category controls', () => {
+  test('sidebar shows boost/bury/hide buttons for each category', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await startFeed(page);
+
+    // Like a post to populate sidebar
+    await page.locator('[data-testid="like-button"]').first().click();
+    await page.waitForTimeout(200);
+
+    const stats = page.locator('[data-testid="stats"]');
+    const firstRow = stats.locator('.cat-row').first();
+    await expect(firstRow).toBeVisible({ timeout: 5000 });
+
+    // Each row should have 3 control buttons: boost (+), bury (-), hide (x)
+    const controls = firstRow.locator('.cat-ctrl');
+    await expect(controls).toHaveCount(3);
+
+    await expect(controls.nth(0)).toHaveText('+');
+    await expect(controls.nth(1)).toHaveText('\u2212');
+    await expect(controls.nth(2)).toHaveText('\u00d7');
+  });
+
+  test('boost button increases category score', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await startFeed(page);
+
+    await page.locator('[data-testid="like-button"]').first().click();
+    await page.waitForTimeout(200);
+
+    const stats = page.locator('[data-testid="stats"]');
+    const firstRow = stats.locator('.cat-row').first();
+    await expect(firstRow).toBeVisible({ timeout: 5000 });
+
+    const scoreEl = firstRow.locator('.cat-score');
+    const scoreBefore = await scoreEl.textContent();
+
+    const boostBtn = firstRow.locator('.cat-ctrl').nth(0);
+    await boostBtn.click();
+    await page.waitForTimeout(100);
+
+    const updatedFirstRow = stats.locator('.cat-row').first();
+    const scoreAfter = await updatedFirstRow.locator('.cat-score').textContent();
+
+    const before = parseInt(scoreBefore!.replace('+', ''));
+    const after = parseInt(scoreAfter!.replace('+', ''));
+    expect(after).toBeGreaterThan(before);
+  });
+
+  test('hide button moves category to hidden section', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await startFeed(page);
+
+    await page.locator('[data-testid="like-button"]').first().click();
+    await page.waitForTimeout(200);
+
+    const stats = page.locator('[data-testid="stats"]');
+    const firstRow = stats.locator('.cat-row').first();
+    await expect(firstRow).toBeVisible({ timeout: 5000 });
+
+    const hideBtn = firstRow.locator('.cat-ctrl').nth(2);
+    await hideBtn.click();
+    await page.waitForTimeout(100);
+
+    const hiddenSection = stats.locator('.hidden-section');
+    await expect(hiddenSection).toBeVisible();
+
+    const hiddenToggle = hiddenSection.locator('.hidden-toggle');
+    await expect(hiddenToggle).toContainText('Hidden (');
+    await expect(hiddenToggle).toContainText('1)');
+  });
+
+  test('sidebar shows Top Categories section title', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await startFeed(page);
+
+    await page.locator('[data-testid="like-button"]').first().click();
+    await page.waitForTimeout(200);
+
+    const stats = page.locator('[data-testid="stats"]');
+    await expect(stats.locator('.stats-section-title').first()).toBeVisible({ timeout: 5000 });
+    await expect(stats.locator('.stats-section-title').first()).toHaveText('Top Categories');
+  });
+});
