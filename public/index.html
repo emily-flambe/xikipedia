@@ -695,6 +695,61 @@
             border-color: var(--accent-color, #2cafff);
         }
 
+        /* === Algorithm aggressiveness slider === */
+        .algo-slider-section {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color, #38444D);
+        }
+        .algo-slider-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-secondary, #8899AA);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .algo-slider-value {
+            font-family: monospace;
+            color: var(--accent-color, #2cafff);
+        }
+        .algo-slider {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: var(--bg-secondary, #1C2732);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+        .algo-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-color, #2cafff);
+            cursor: pointer;
+            border: 2px solid var(--bg-primary, #15202B);
+        }
+        .algo-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-color, #2cafff);
+            cursor: pointer;
+            border: 2px solid var(--bg-primary, #15202B);
+        }
+        .algo-slider-hint {
+            font-size: 10px;
+            color: var(--text-secondary, #8899AA);
+            margin-top: 4px;
+            opacity: 0.7;
+        }
+
         /* === Feature 4: Mobile sidebar drawer === */
         #statsToggleBtn {
             position: fixed;
@@ -1030,6 +1085,7 @@
     ];
     let postsWithoutLike = 0;
     let exploreMode = false;
+    let algorithmAggressiveness = 50; // 0-100: 0=random, 50=balanced, 100=strict scoring
     const DATA_SIZE = 225690064;
 
     // ============================================
@@ -1092,7 +1148,8 @@
         saveTimeout = setTimeout(() => {
             const body = {
                 categoryScores: categoryScores,
-                hiddenCategories: Array.from(hiddenCategories)
+                hiddenCategories: Array.from(hiddenCategories),
+                algorithmAggressiveness: algorithmAggressiveness
             };
             fetch('/api/preferences', {
                 method: 'PUT',
@@ -1336,6 +1393,41 @@
         const closeBtn = statsEl.querySelector(".stats-close");
         statsEl.innerHTML = "";
         if (closeBtn) statsEl.appendChild(closeBtn);
+
+        // Algorithm aggressiveness slider
+        const sliderSection = document.createElement("div");
+        sliderSection.classList.add("algo-slider-section");
+
+        const sliderLabel = document.createElement("div");
+        sliderLabel.classList.add("algo-slider-label");
+        sliderLabel.innerHTML = `<span>Algorithm</span><span class="algo-slider-value">${algorithmAggressiveness}%</span>`;
+
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = "0";
+        slider.max = "100";
+        slider.step = "5";
+        slider.value = String(algorithmAggressiveness);
+        slider.classList.add("algo-slider");
+        slider.setAttribute("aria-label", "Algorithm aggressiveness");
+        slider.oninput = (e) => {
+            algorithmAggressiveness = parseInt(e.target.value, 10);
+            sliderLabel.querySelector(".algo-slider-value").textContent = `${algorithmAggressiveness}%`;
+            savePreferences();
+        };
+
+        const hint = document.createElement("div");
+        hint.classList.add("algo-slider-hint");
+        hint.textContent = algorithmAggressiveness === 0 ? "🎲 Pure random" :
+                          algorithmAggressiveness < 30 ? "🎯 Mostly random" :
+                          algorithmAggressiveness < 70 ? "⚖️ Balanced" :
+                          algorithmAggressiveness < 100 ? "🔥 Strong preferences" :
+                          "🎯 Strict scoring";
+
+        sliderSection.appendChild(sliderLabel);
+        sliderSection.appendChild(slider);
+        sliderSection.appendChild(hint);
+        statsEl.appendChild(sliderSection);
 
         const sorted = Object.entries(categoryScores)
             .filter(([k, v]) => v && !hiddenCategories.has(k))
@@ -1770,8 +1862,8 @@
 
     // Get next post using the scoring algorithm
     function getNextPost() {
-        // Explore mode: return purely random post (still avoid recently seen)
-        if (exploreMode) {
+        // Explore mode OR aggressiveness 0: return purely random post (still avoid recently seen)
+        if (exploreMode || algorithmAggressiveness === 0) {
             for (let i = 0; i < 100; i++) {
                 const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
                 if ((randomPost.seen ?? 0) < 2) {
@@ -1785,12 +1877,15 @@
             return randomPost;
         }
 
+        // Scale category influence by aggressiveness (50 = normal, 100 = 2x, 25 = 0.5x)
+        const aggFactor = algorithmAggressiveness / 50;
+
         const potentialPosts = [...Array(10000)]
             .map(() => pagesArr[Math.floor(Math.random() * pagesArr.length)])
             .map(post => {
                 const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -50000;
                 const postScore = [...post.allCategories].reduce(
-                    (sum, cat) => sum + (categoryScores[cat] ?? 0),
+                    (sum, cat) => sum + (categoryScores[cat] ?? 0) * aggFactor,
                     initialScore
                 );
                 post.score = postScore;
@@ -2248,6 +2343,7 @@
                             <tr><td><kbd>O</kbd> / <kbd>Enter</kbd></td><td>Open on Wikipedia</td></tr>
                             <tr><td><kbd>R</kbd></td><td>Refresh feed</td></tr>
                             <tr><td><kbd>E</kbd></td><td>Toggle explore mode</td></tr>
+                            <tr><td><kbd>A</kbd></td><td>Cycle algorithm strength</td></tr>
                             <tr><td><kbd>H</kbd></td><td>Toggle history</td></tr>
                             <tr><td><kbd>S</kbd></td><td>Toggle sidebar</td></tr>
                             <tr><td><kbd>?</kbd></td><td>Show/hide this help</td></tr>
@@ -2349,6 +2445,15 @@
                 case 'e': // Toggle explore mode
                     e.preventDefault();
                     document.getElementById('exploreBtn').click();
+                    break;
+
+                case 'a': // Cycle algorithm aggressiveness
+                    e.preventDefault();
+                    const presets = [0, 25, 50, 75, 100];
+                    const currentIdx = presets.indexOf(algorithmAggressiveness);
+                    algorithmAggressiveness = presets[(currentIdx + 1) % presets.length];
+                    scheduleEngagementUpdate();
+                    savePreferences();
                     break;
 
                 case 'h': // Toggle history
@@ -2545,6 +2650,11 @@
                     prefs.hiddenCategories.forEach(cat => hiddenCategories.add(cat));
                 }
 
+                // Apply saved algorithmAggressiveness if present
+                if (typeof prefs.algorithmAggressiveness === 'number') {
+                    algorithmAggressiveness = Math.max(0, Math.min(100, prefs.algorithmAggressiveness));
+                }
+
                 // Auto-start the feed
                 startFeed(sharedArticle);
                 return;
@@ -2575,6 +2685,11 @@
     window.categoryScores = categoryScores;
     window.hiddenCategories = hiddenCategories;
     window.pagesArr = pagesArr;
+    // Expose algorithmAggressiveness as getter/setter for testing
+    Object.defineProperty(window, 'algorithmAggressiveness', {
+        get: () => algorithmAggressiveness,
+        set: (v) => { algorithmAggressiveness = v; }
+    });
     // Expose postsWithoutLike as a getter for testing
     Object.defineProperty(window, 'postsWithoutLike', { get: () => postsWithoutLike });
     // Expose refreshFeed for testing
