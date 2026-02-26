@@ -452,7 +452,7 @@ These are ideas for extending beyond the original:
 - [x] Save preferences to localStorage (via auth/D1)
 - [x] Share article functionality
 - [x] Keyboard shortcuts (J/K/L/M/N/R/S/?)
-- [ ] Reading history
+- [x] Reading history (PR #21)
 
 ### Technical
 - [ ] Service worker for offline support
