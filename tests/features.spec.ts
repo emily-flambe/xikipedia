@@ -438,7 +438,7 @@ test.describe('Feature 3: Sidebar category controls', () => {
     expect(numAfter).toBe(numBefore + 200);
   });
 
-  test.skip('bury button decreases category score by 200', async ({ page }) => {
+  test('bury button decreases category score by 200', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
@@ -453,19 +453,22 @@ test.describe('Feature 3: Sidebar category controls', () => {
     const scoreBefore = await firstRow.locator('.cat-score').textContent();
     const numBefore = parseInt(scoreBefore!.replace('+', ''));
 
+    // Capture category name BEFORE clicking (sidebar will re-render and re-sort after)
+    const catName = await firstRow.locator('.cat-name').textContent();
+
     // Click bury
     await firstRow.locator('.cat-ctrl').nth(1).click();
     await page.waitForTimeout(100);
 
     // The sidebar re-renders -- the same category might move position
-    // Check via page.evaluate for accuracy
+    // Check via page.evaluate for accuracy using the name we captured before
     const catKey = await page.evaluate((name) => {
       const scores = (window as any).categoryScores;
       for (const [k, v] of Object.entries(scores)) {
         if (k === name || (window as any).convertCat(k) === name) return k;
       }
       return null;
-    }, await firstRow.locator('.cat-name').textContent());
+    }, catName);
 
     // The score for this category should have decreased
     // We verify using the JS global since sidebar reorders
@@ -988,14 +991,13 @@ test.describe('Cross-feature edge cases', () => {
     expect(result.postScore).toBe(0);
   });
 
-  test.skip('pull-to-refresh indicator element exists after feed starts', async ({ page }) => {
+  test('pull-to-refresh indicator element exists after feed starts', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await startFeedWithMock(page);
 
     const indicator = page.locator('#pullIndicator');
     await expect(indicator).toBeAttached();
-    // Initially height should be 0 (collapsed)
-    const height = await indicator.evaluate((el: HTMLElement) => el.offsetHeight);
-    expect(height).toBe(0);
+    // Initially the indicator should not have the 'active' class (collapsed state)
+    await expect(indicator).not.toHaveClass(/active/);
   });
 });
