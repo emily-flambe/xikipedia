@@ -1089,6 +1089,12 @@
     const seenPostIds = new Set(); // Hard block: never show same post twice
     const DATA_SIZE = 225690064;
 
+    // === Randomness features ===
+    let postsSinceRandom = 0;           // Serendipity: counter for random injection
+    let lastTopCategory = null;         // Variety: track dominant category
+    let consecutiveSameCategory = 0;    // Variety: count streak in same category
+    const exploredCategories = new Set(); // Roulette: categories we've engaged with
+
     // Load persisted seen posts from localStorage
     function loadSeenPosts() {
         try {
@@ -1595,6 +1601,10 @@
         post.allCategories.forEach(e => {
             if (skipHidden && hiddenCategories.has(e)) return;
             categoryScores[e] = (categoryScores[e] ?? 0) + amount;
+            // Track explored categories for roulette feature
+            if (amount > 0) {
+                exploredCategories.add(e);
+            }
         });
         savePreferences();
         return amount;
@@ -1898,23 +1908,62 @@
         saveSeenPosts();
     }
 
+    // Get a purely random unseen post (helper) - with hard blocking
+    function getRandomPost() {
+        for (let i = 0; i < 1000; i++) {
+            const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
+            if (!seenPostIds.has(randomPost.id)) {
+                markPostSeen(randomPost);
+                randomPost.recommendedBecause = ['🎲 Serendipity'];
+                return randomPost;
+            }
+        }
+        // Fallback: if we've seen everything
+        console.warn('Exhausted unique posts, allowing repeat');
+        const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
+        markPostSeen(randomPost);
+        randomPost.recommendedBecause = ['🎲 Serendipity'];
+        return randomPost;
+    }
+
     // Get next post using the scoring algorithm
     function getNextPost() {
-        // Explore mode OR aggressiveness 0: return purely random post (hard block seen)
+        // Explore mode OR aggressiveness 0: return purely random post
         if (exploreMode || algorithmAggressiveness === 0) {
-            for (let i = 0; i < 1000; i++) {
-                const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-                // Hard block: skip if already seen this session
-                if (!seenPostIds.has(randomPost.id)) {
-                    markPostSeen(randomPost);
-                    return randomPost;
-                }
+            return getRandomPost();
+        }
+
+        // === SERENDIPITY INJECTION ===
+        // Every 5-10 posts, inject a random one to break filter bubbles
+        postsSinceRandom++;
+        const serendipityThreshold = 5 + Math.floor(Math.random() * 6); // 5-10
+        if (postsSinceRandom >= serendipityThreshold) {
+            postsSinceRandom = 0;
+            return getRandomPost();
+        }
+
+        // === VARIETY ENFORCEMENT ===
+        // Penalize if we've had 4+ posts from the same dominant category
+        let varietyPenaltyCategory = null;
+        if (consecutiveSameCategory >= 4 && lastTopCategory) {
+            varietyPenaltyCategory = lastTopCategory;
+        }
+
+        // === CATEGORY ROULETTE ===
+        // 10% chance to boost a random unexplored category
+        let rouletteBoostCategory = null;
+        if (Math.random() < 0.1) {
+            // Find categories we haven't engaged with yet
+            const allCats = new Set();
+            pagesArr.slice(0, 1000).forEach(p => p.allCategories?.forEach(c => allCats.add(c)));
+            const unexplored = [...allCats].filter(c => 
+                !exploredCategories.has(c) && 
+                !hiddenCategories.has(c) &&
+                c !== 'given names' && c !== 'surnames'
+            );
+            if (unexplored.length > 0) {
+                rouletteBoostCategory = unexplored[Math.floor(Math.random() * unexplored.length)];
             }
-            // Fallback: if we've seen everything, allow repeats with warning
-            console.warn('Exhausted unique posts, allowing repeat');
-            const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-            markPostSeen(randomPost);
-            return randomPost;
         }
 
         // Scale category influence by aggressiveness (50 = normal, 100 = 2x, 25 = 0.5x)
@@ -1927,8 +1976,22 @@
             .map(post => {
                 // Stronger penalty (10x) as backup for any edge cases
                 const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -500000;
-                const postScore = [...post.allCategories].reduce(
-                    (sum, cat) => sum + (categoryScores[cat] ?? 0) * aggFactor,
+                let postScore = [...post.allCategories].reduce(
+                    (sum, cat) => {
+                        let catScore = (categoryScores[cat] ?? 0) * aggFactor;
+                        
+                        // Variety: penalize overexposed category
+                        if (cat === varietyPenaltyCategory) {
+                            catScore -= 5000;
+                        }
+                        
+                        // Roulette: boost unexplored category
+                        if (cat === rouletteBoostCategory) {
+                            catScore += 3000;
+                        }
+                        
+                        return sum + catScore;
+                    },
                     initialScore
                 );
                 post.score = postScore;
@@ -1981,14 +2044,30 @@
         // Track top contributing categories for transparency
         const categoryContributions = [...bestPost.allCategories]
             .map(cat => ({ cat, score: categoryScores[cat] || 0 }))
-            .filter(c => c.score > 0)  // Only positive contributions
+            .filter(c => c.score > 0)
             .sort((a, b) => b.score - a.score)
             .slice(0, 3);
 
         if (categoryContributions.length > 0) {
             bestPost.recommendedBecause = categoryContributions.map(c => convertCat(c.cat));
+            
+            // Track for variety enforcement
+            const topCat = categoryContributions[0].cat;
+            if (topCat === lastTopCategory) {
+                consecutiveSameCategory++;
+            } else {
+                lastTopCategory = topCat;
+                consecutiveSameCategory = 1;
+            }
         } else {
             bestPost.recommendedBecause = null;
+            lastTopCategory = null;
+            consecutiveSameCategory = 0;
+        }
+
+        // Roulette feedback
+        if (rouletteBoostCategory && bestPost.allCategories.has(rouletteBoostCategory)) {
+            bestPost.recommendedBecause = ['🎰 ' + convertCat(rouletteBoostCategory)];
         }
 
         return bestPost;
@@ -2156,6 +2235,11 @@
         pagesArr.forEach(p => { delete p.seen; delete p.recommendedBecause; });
         // Reset like streak counter
         postsWithoutLike = 0;
+        // Reset randomness counters
+        postsSinceRandom = 0;
+        lastTopCategory = null;
+        consecutiveSameCategory = 0;
+        // Note: exploredCategories persists across refresh (intentional)
         // Scroll to top
         window.scrollTo(0, 0);
         // The render loop is already running via rAF, new posts auto-generate
