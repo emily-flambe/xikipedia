@@ -382,6 +382,50 @@
             transition: opacity 0.2s;
         }
         #historyToggle:hover { opacity: 1; }
+        .keyboard-hint {
+            position: fixed;
+            bottom: 45px;
+            left: 16px;
+            background: rgba(44, 175, 255, 0.9);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 11px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            animation: hintFadeIn 0.3s ease-out;
+        }
+        .keyboard-hint kbd {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .keyboard-hint button {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0 0 0 4px;
+            opacity: 0.7;
+            line-height: 1;
+        }
+        .keyboard-hint button:hover { opacity: 1; }
+        .keyboard-hint.fade-out {
+            animation: hintFadeOut 0.5s ease-out forwards;
+        }
+        @keyframes hintFadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes hintFadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
         .history-panel {
             position: fixed;
             bottom: 120px;
@@ -1036,6 +1080,10 @@
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
         <button id="historyToggle" class="inline-tooltip" aria-label="Show reading history" data-tooltip="History (H)" style="display:none">📜</button>
+    </div>
+    <div id="keyboardHint" class="keyboard-hint" style="display:none">
+        Press <kbd>?</kbd> for keyboard shortcuts
+        <button id="keyboardHintDismiss" aria-label="Dismiss hint">×</button>
     </div>
     <div id="historyPanel" class="history-panel" style="display:none">
         <div class="history-header">
@@ -1776,6 +1824,44 @@
         close.onclick = () => {
             panel.style.display = 'none';
         };
+    }
+
+    // Initialize keyboard shortcut hint for first-time users
+    function initKeyboardHint() {
+        const hint = document.getElementById('keyboardHint');
+        const dismiss = document.getElementById('keyboardHintDismiss');
+        const storageKey = 'xiki_keyboard_hint_seen';
+        
+        // Don't show if user has seen it before
+        if (localStorage.getItem(storageKey)) return;
+        
+        // Show the hint
+        hint.style.display = 'flex';
+        
+        // Mark as seen
+        localStorage.setItem(storageKey, 'true');
+        
+        // Auto-dismiss after 8 seconds
+        const autoDismiss = setTimeout(() => {
+            hint.classList.add('fade-out');
+            setTimeout(() => hint.style.display = 'none', 500);
+        }, 8000);
+        
+        // Manual dismiss
+        dismiss.onclick = () => {
+            clearTimeout(autoDismiss);
+            hint.classList.add('fade-out');
+            setTimeout(() => hint.style.display = 'none', 500);
+        };
+        
+        // Also dismiss if user presses ?
+        document.addEventListener('keydown', function dismissOnQuestion(e) {
+            if (e.key === '?') {
+                clearTimeout(autoDismiss);
+                hint.style.display = 'none';
+                document.removeEventListener('keydown', dismissOnQuestion);
+            }
+        });
     }
 
     // Show double-tap heart animation
@@ -2794,6 +2880,7 @@
         };
         initKeyboardShortcuts();
         initHistoryToggle();
+        initKeyboardHint();
 
         // Show logout/delete buttons if logged in
         if (isLoggedIn()) {
