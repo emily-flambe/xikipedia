@@ -19,10 +19,43 @@ Xikipedia presents Simple Wikipedia articles in an infinite-scroll feed (like Ti
 
 ## Features
 
+### Core
 - 📱 Algorithmically curated Wikipedia content
 - 🔒 Privacy-first: all data stays in your browser
 - ☁️ Zero backend: runs entirely client-side
 - 🧠 No ML required: simple weighted scoring
+
+### Algorithm Controls
+- 🎚️ **Algorithm Slider** - Control preference strength (0-100%)
+- 🎲 **Explore Mode** - Pure random content discovery
+- ⏱️ **Time-Based Decay** - Old preferences fade naturally
+- 🚫 **No Repeats** - Never see the same article twice
+
+### Anti-Filter-Bubble
+- ✨ **Serendipity Injection** - Random posts every 5-10 articles
+- 🎰 **Category Roulette** - Boosts unexplored topics
+- 🔄 **Variety Enforcement** - Forces topic switches
+
+### UX Features
+- ⌨️ **Keyboard Shortcuts** - Full keyboard navigation
+- 📜 **Reading History** - View last 50 articles
+- 👍👎 **More/Less Buttons** - Fine-tune preferences
+- 📲 **Pull-to-Refresh** - Mobile-friendly refresh
+- 🌙 **Dark/Light Mode** - Persistent theme
+
+### Keyboard Shortcuts
+| Key | Action |
+|-----|--------|
+| `J` / `K` | Navigate posts |
+| `L` | Like current post |
+| `M` / `N` | More / Less like this |
+| `O` / `Enter` | Open on Wikipedia |
+| `R` | Refresh feed |
+| `E` | Toggle explore mode |
+| `A` | Cycle algorithm strength |
+| `H` | Toggle history |
+| `S` | Toggle sidebar |
+| `?` | Show help |
 
 ## Tech Stack
 
