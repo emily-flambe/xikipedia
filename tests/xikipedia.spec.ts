@@ -232,3 +232,102 @@ test.describe('Feature 2: Feed refresh', () => {
     await expect(refreshBtn).not.toBeVisible();
   });
 });
+
+// =============================================
+// Feature 1: Post-level feedback buttons
+// =============================================
+test.describe('Feature 1: More/Less feedback buttons', () => {
+  test('each post has More and Less feedback buttons', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const moreBtn = firstPost.locator('.more-btn');
+    const lessBtn = firstPost.locator('.less-btn');
+
+    await expect(moreBtn).toBeVisible();
+    await expect(lessBtn).toBeVisible();
+    await expect(moreBtn).toHaveText('More like this');
+    await expect(lessBtn).toHaveText('Less like this');
+  });
+
+  test('More button shows Got it animation on click', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const moreBtn = firstPost.locator('.more-btn');
+
+    await moreBtn.click();
+
+    // "Got it" span should appear
+    const gotIt = moreBtn.locator('.got-it');
+    await expect(gotIt).toBeAttached();
+    await expect(gotIt).toHaveText('Got it');
+  });
+
+  test('Less button shows Got it animation on click', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const lessBtn = firstPost.locator('.less-btn');
+
+    await lessBtn.click();
+
+    const gotIt = lessBtn.locator('.got-it');
+    await expect(gotIt).toBeAttached();
+    await expect(gotIt).toHaveText('Got it');
+  });
+
+  test('feedback buttons do not trigger post click (open Wikipedia)', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    // Listen for new tabs/popups (would indicate Wikipedia opened)
+    let popupOpened = false;
+    page.on('popup', () => { popupOpened = true; });
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const moreBtn = firstPost.locator('.more-btn');
+
+    await moreBtn.click();
+    await page.waitForTimeout(500); // Wait for potential delayed navigation
+
+    expect(popupOpened).toBe(false);
+  });
+
+  test('more/less buttons have proper aria-labels', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const moreBtn = firstPost.locator('.more-btn');
+    const lessBtn = firstPost.locator('.less-btn');
+
+    const moreLabel = await moreBtn.getAttribute('aria-label');
+    const lessLabel = await lessBtn.getAttribute('aria-label');
+
+    expect(moreLabel).toContain('More like this:');
+    expect(lessLabel).toContain('Less like this:');
+
+    // The label should include the article title
+    const postTitle = await firstPost.locator('h1').textContent();
+    expect(moreLabel).toContain(postTitle!);
+    expect(lessLabel).toContain(postTitle!);
+  });
+
+  test('feedback buttons disable after click to prevent spam', async ({ page }) => {
+    test.setTimeout(180000);
+    await startFeed(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const moreBtn = firstPost.locator('.more-btn');
+
+    await moreBtn.click();
+    await page.waitForTimeout(100);
+
+    // Button should be disabled after first click
+    await expect(moreBtn).toBeDisabled();
+  });
+});

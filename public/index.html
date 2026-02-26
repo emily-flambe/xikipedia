@@ -134,7 +134,7 @@
             content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16c-.8 0-1.5.3-2 .8l-7-4c.1-.3.1-.5.1-.8s0-.5-.1-.8l7-4c.5.5 1.2.8 2 .8 1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3c0 .3 0 .5.1.8l-7 4c-.5-.5-1.2-.8-2-.8-1.7 0-3 1.3-3 3s1.3 3 3 3c.8 0 1.5-.3 2-.8l7 4c-.1.3-.1.5-.1.8 0 1.7 1.3 3 3 3s3-1.3 3-3-1.3-3-3-3z" fill="%232cafff"/></svg>');
         }
         .post .button-row {
-            align-self: end;
+            align-self: stretch;
             display: flex;
             gap: 8px;
         }
@@ -431,6 +431,37 @@
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
+        }
+
+        /* === Feature 1: More/Less feedback buttons === */
+        .post .more-btn::after {
+            content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 20h2c.55 0 1-.45 1-1v-9c0-.55-.45-1-1-1H2v11zm19.83-7.12c.11-.25.17-.52.17-.8V11c0-1.1-.9-2-2-2h-5.5l.92-4.65c.05-.22.02-.46-.08-.66-.23-.45-.52-.86-.88-1.22L14 2 7.59 8.41C7.21 8.79 7 9.3 7 9.83v7.84C7 18.95 8.05 20 9.34 20h8.11c.7 0 1.36-.37 1.72-.97l2.66-6.15z" fill="%238899AA"/></svg>');
+        }
+        .post .less-btn::after {
+            content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 4h-2c-.55 0-1 .45-1 1v9c0 .55.45 1 1 1h2V4zM2.17 11.12c-.11.25-.17.52-.17.8V13c0 1.1.9 2 2 2h5.5l-.92 4.65c-.05.22-.02.46.08.66.23.45.52.86.88 1.22L10 22l6.41-6.41c.38-.38.59-.89.59-1.42V6.34C17 5.05 15.95 4 14.66 4h-8.1c-.71 0-1.36.37-1.72.97l-2.67 6.15z" fill="%238899AA"/></svg>');
+        }
+        .post .feedback-btn {
+            position: relative;
+            font-size: 14px;
+        }
+        .post .feedback-btn .got-it {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: var(--accent-color, #2cafff);
+            white-space: nowrap;
+            pointer-events: none;
+            animation: gotItFade 1s ease-out forwards;
+        }
+        @keyframes gotItFade {
+            0% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            70% { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+        }
+        .post .button-spacer {
+            flex: 1;
         }
     </style>
 </head>
@@ -831,6 +862,47 @@
             postDiv.appendChild(postImg);
         }
 
+        // More like this / Less like this feedback buttons
+        const moreBtn = document.createElement("button");
+        moreBtn.innerText = "More like this";
+        moreBtn.classList.add("more-btn", "feedback-btn");
+        moreBtn.setAttribute("aria-label", `More like this: ${nextPost.title}`);
+        moreBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (moreBtn.disabled) return;
+            moreBtn.disabled = true;
+            engagePost(nextPost, 150);
+            updateEngagement();
+            const gotIt = document.createElement("span");
+            gotIt.classList.add("got-it");
+            gotIt.textContent = "Got it";
+            moreBtn.appendChild(gotIt);
+            gotIt.addEventListener("animationend", () => gotIt.remove());
+        };
+
+        const lessBtn = document.createElement("button");
+        lessBtn.innerText = "Less like this";
+        lessBtn.classList.add("less-btn", "feedback-btn");
+        lessBtn.setAttribute("aria-label", `Less like this: ${nextPost.title}`);
+        lessBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (lessBtn.disabled) return;
+            lessBtn.disabled = true;
+            engagePost(nextPost, -150);
+            updateEngagement();
+            const gotIt = document.createElement("span");
+            gotIt.classList.add("got-it");
+            gotIt.textContent = "Got it";
+            lessBtn.appendChild(gotIt);
+            gotIt.addEventListener("animationend", () => gotIt.remove());
+        };
+
+        buttonRow.appendChild(moreBtn);
+        buttonRow.appendChild(lessBtn);
+        // Spacer pushes share/like to the right
+        const spacer = document.createElement("div");
+        spacer.classList.add("button-spacer");
+        buttonRow.appendChild(spacer);
         buttonRow.appendChild(shareBtn);
         buttonRow.appendChild(postYes);
         postDiv.appendChild(buttonRow);
