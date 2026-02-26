@@ -1021,7 +1021,7 @@
             loadingDetails.innerText = '';
             await new Promise(requestAnimationFrame);
             await new Promise(requestAnimationFrame);
-            return JSON.parse(new TextDecoder().decode(bytes));
+            return JSON.parse(new TextDecoder().decode(bytes.subarray(0, responseSize)));
 
         } catch (error) {
             console.error('Download failed:', error);
