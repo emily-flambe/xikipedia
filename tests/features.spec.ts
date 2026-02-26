@@ -571,13 +571,16 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test.skip('unhide button restores a category', async ({ page }) => {
-    // Skip: unhide functionality not yet implemented
+  test('unhide button restores a category', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer (required on all screen sizes since PR #16)
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats.locator('.cat-row').first()).toBeVisible({ timeout: 5000 });
@@ -804,14 +807,17 @@ test.describe('Feature 4: Mobile sidebar drawer', () => {
 // Cross-feature and edge case tests
 // =============================================
 test.describe('Cross-feature edge cases', () => {
-  test.skip('hidden categories survive feed refresh', async ({ page }) => {
-    // Skip: hidden categories don't persist through refresh yet
+  test('hidden categories survive feed refresh', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
     // Like, then hide
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer (required on all screen sizes since PR #16)
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats.locator('.cat-row').first()).toBeVisible({ timeout: 5000 });
@@ -820,6 +826,10 @@ test.describe('Cross-feature edge cases', () => {
 
     const hiddenBefore = await page.evaluate(() => (window as any).hiddenCategories.size);
     expect(hiddenBefore).toBe(1);
+
+    // Close sidebar by clicking backdrop (it intercepts clicks when open)
+    await page.locator('#statsBackdrop').click();
+    await page.waitForTimeout(300);
 
     // Refresh feed
     await page.locator('#refreshBtn').click();
