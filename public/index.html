@@ -1843,19 +1843,20 @@
         indicator.innerHTML = '<span class="spinner">↻</span> Pull to refresh';
         postsContainer.parentNode.insertBefore(indicator, postsContainer);
 
-        postsContainer.addEventListener("touchstart", (e) => {
+        // Common handlers for both touch and pointer events
+        function handlePullStart(clientY) {
             if (window.scrollY <= 0) {
-                pullStartY = e.touches[0].clientY;
+                pullStartY = clientY;
                 isPulling = true;
             }
-        }, { passive: true });
+        }
 
-        postsContainer.addEventListener("touchmove", (e) => {
+        function handlePullMove(clientY, preventDefault) {
             if (!isPulling) return;
-            pullDist = e.touches[0].clientY - pullStartY;
+            pullDist = clientY - pullStartY;
             if (pullDist < 0) pullDist = 0;
             if (pullDist > 0 && window.scrollY <= 0) {
-                e.preventDefault();
+                if (preventDefault) preventDefault();
                 indicator.classList.add("active");
                 const progress = Math.min(pullDist / PULL_THRESHOLD, 1);
                 indicator.style.height = (progress * 48) + "px";
@@ -1866,9 +1867,9 @@
                     indicator.innerHTML = '<span>↓</span> Pull to refresh';
                 }
             }
-        }, { passive: false });
+        }
 
-        postsContainer.addEventListener("touchend", () => {
+        function handlePullEnd() {
             if (isPulling && pullDist >= PULL_THRESHOLD) {
                 indicator.innerHTML = '<span class="spinner">↻</span> Refreshing...';
                 setTimeout(() => {
@@ -1884,7 +1885,52 @@
             }
             isPulling = false;
             pullDist = 0;
+        }
+
+        // Touch events (mobile)
+        postsContainer.addEventListener("touchstart", (e) => {
+            handlePullStart(e.touches[0].clientY);
         }, { passive: true });
+
+        postsContainer.addEventListener("touchmove", (e) => {
+            handlePullMove(e.touches[0].clientY, () => e.preventDefault());
+        }, { passive: false });
+
+        postsContainer.addEventListener("touchend", handlePullEnd, { passive: true });
+
+        // Pointer events (desktop mouse + touch)
+        let isPointerPulling = false;
+        postsContainer.addEventListener("pointerdown", (e) => {
+            if (e.pointerType === 'touch') return; // Handled by touch events
+            isPointerPulling = true;
+            handlePullStart(e.clientY);
+            postsContainer.setPointerCapture(e.pointerId);
+        });
+
+        postsContainer.addEventListener("pointermove", (e) => {
+            if (e.pointerType === 'touch' || !isPointerPulling) return;
+            handlePullMove(e.clientY, () => e.preventDefault());
+        });
+
+        postsContainer.addEventListener("pointerup", (e) => {
+            if (e.pointerType === 'touch') return;
+            if (isPointerPulling) {
+                handlePullEnd();
+                isPointerPulling = false;
+                postsContainer.releasePointerCapture(e.pointerId);
+            }
+        });
+
+        postsContainer.addEventListener("pointercancel", (e) => {
+            if (isPointerPulling) {
+                indicator.classList.remove("active");
+                indicator.style.height = "0";
+                indicator.style.opacity = "0";
+                isPulling = false;
+                pullDist = 0;
+                isPointerPulling = false;
+            }
+        });
     }
 
     // ============================================
