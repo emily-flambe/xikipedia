@@ -1106,7 +1106,8 @@
         const ageMs = Date.now() - lastEngaged;
         const ageHours = ageMs / (1000 * 60 * 60);
         // Decay: starts at 1.0, halves every 2 hours, floor at 0.1
-        return Math.max(0.1, Math.pow(0.5, ageHours / 2));
+        // Faster decay: halves every hour (was every 2 hours)
+        return Math.max(0.1, Math.pow(0.5, ageHours));
     }
 
     // Load persisted seen posts from localStorage
@@ -1792,7 +1793,8 @@
             postYes.dataset.liked = "true";
             postYes.setAttribute("aria-pressed", "true");
             if (!postYes.dataset.engaged) {
-                postYes.dataset.engaged = engagePost(nextPost, 50 + postsWithoutLike * 4);
+                // Reduced impact: 30 base + 2 per post (was 50 + 4)
+                postYes.dataset.engaged = engagePost(nextPost, 30 + postsWithoutLike * 2);
                 // Update session stats for likes
                 articlesLiked++;
                 currentStreak++;
@@ -1961,7 +1963,8 @@
         // === VARIETY ENFORCEMENT ===
         // Penalize if we've had 4+ posts from the same dominant category
         let varietyPenaltyCategory = null;
-        if (consecutiveSameCategory >= 4 && lastTopCategory) {
+        // Stricter variety: penalize after 2 consecutive posts (was 4)
+        if (consecutiveSameCategory >= 2 && lastTopCategory) {
             varietyPenaltyCategory = lastTopCategory;
         }
 
