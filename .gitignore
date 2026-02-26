@@ -37,3 +37,6 @@ __pycache__/
 
 # Wrangler
 .wrangler/
+
+# Claude agent worktrees
+.claude/
