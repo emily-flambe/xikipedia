@@ -866,9 +866,18 @@
             cursor: pointer;
             border: 2px solid var(--bg-primary, #15202B);
         }
+        .algo-slider-scale {
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: var(--text-secondary, #8899AA);
+            margin-top: 2px;
+            opacity: 0.7;
+        }
         .algo-slider-hint {
             font-size: 10px;
             color: var(--text-secondary, #8899AA);
+            margin-top: 4px;
             margin-top: 4px;
             opacity: 0.7;
         }
@@ -1590,7 +1599,7 @@
 
         const sliderLabel = document.createElement("div");
         sliderLabel.classList.add("algo-slider-label");
-        sliderLabel.innerHTML = `<span>Algorithm</span><span class="algo-slider-value">${algorithmAggressiveness}%</span>`;
+        sliderLabel.innerHTML = `<span>Personalization</span><span class="algo-slider-value">${algorithmAggressiveness}%</span>`;
 
         const slider = document.createElement("input");
         slider.type = "range";
@@ -1606,6 +1615,10 @@
             savePreferences();
         };
 
+        const scaleLabels = document.createElement("div");
+        scaleLabels.classList.add("algo-slider-scale");
+        scaleLabels.innerHTML = `<span>Random</span><span>Personalized</span>`;
+
         const hint = document.createElement("div");
         hint.classList.add("algo-slider-hint");
         hint.textContent = algorithmAggressiveness === 0 ? "🎲 Pure random" :
@@ -1616,6 +1629,7 @@
 
         sliderSection.appendChild(sliderLabel);
         sliderSection.appendChild(slider);
+        sliderSection.appendChild(scaleLabels);
         sliderSection.appendChild(hint);
         statsEl.appendChild(sliderSection);
 
