@@ -410,7 +410,7 @@ test.describe('JWT token attacks', () => {
 // =============================================================================
 
 test.describe('Deleted user token reuse', () => {
-  test.skip('deleted user token can still write preferences (orphan data bug)', async ({ page }) => {
+  test('deleted user token is rejected for preferences (security fix)', async ({ page }) => {
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -419,13 +419,15 @@ test.describe('Deleted user token reuse', () => {
 
     // Delete account
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: JSON.stringify({ password: 'password123' }),
     });
     expect(delResp.ok()).toBe(true);
 
-    // BUG: The token is still valid (JWT signature is fine, expiry is in the future).
-    // Attempting to PUT preferences should fail because the user no longer exists,
-    // but it might succeed and create an orphan preferences row.
+    // Try to write preferences with the now-invalid token
     const putResp = await page.request.put('/api/preferences', {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -437,24 +439,13 @@ test.describe('Deleted user token reuse', () => {
       },
     });
 
-    // EXPECTED BEHAVIOR: Should return 401 or 403 since user is deleted.
-    // ACTUAL BEHAVIOR: May return 200 and create orphan data.
-    // If this test passes, the bug is confirmed. If it fails, the bug was fixed.
-    // We test BOTH possible outcomes to document the behavior:
-    if (putResp.status() === 200) {
-      // BUG CONFIRMED: Token still works after account deletion.
-      // This creates orphan preference rows for deleted user IDs.
-      // Marking as a known issue.
-      console.warn(
-        'BUG: Deleted user token can still write preferences. ' +
-        'JWT is valid but user_id no longer exists in users table.',
-      );
-    }
-    // Regardless of bug status, the response should NOT be a 500 server error
-    expect(putResp.status()).not.toBe(500);
+    // Token is cryptographically valid but user no longer exists - should be rejected
+    expect(putResp.status()).toBe(401);
+    const body = await putResp.json();
+    expect(body.error).toBe('User not found');
   });
 
-  test('deleted user token can still read preferences', async ({ page }) => {
+  test('deleted user token is rejected for reading preferences', async ({ page }) => {
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -471,15 +462,19 @@ test.describe('Deleted user token reuse', () => {
     });
 
     await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: JSON.stringify({ password: 'password123' }),
     });
 
     const getResp = await page.request.get('/api/preferences', {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    // Should ideally return 401, but documents actual behavior
-    expect(getResp.status()).not.toBe(500);
+    // Token is cryptographically valid but user no longer exists - should be rejected
+    expect(getResp.status()).toBe(401);
   });
 });
 
