@@ -445,7 +445,7 @@ These are ideas for extending beyond the original:
 ### Algorithm
 - [x] Adjustable algorithm aggressiveness slider (PR #23)
 - [x] "Explore mode" that ignores preferences (PR #19)
-- [ ] Time-based decay for category scores
+- [x] Time-based decay for category scores (PR #27)
 
 ### UX
 - [x] Dark/light theme toggle
