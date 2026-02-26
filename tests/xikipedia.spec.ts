@@ -492,7 +492,8 @@ test.describe('Feature 4: Mobile sidebar drawer', () => {
     await page.waitForTimeout(400);
     await expect(stats).toHaveClass(/open/);
 
-    await backdrop.click({ force: true });
+    // Click on left side of backdrop (center would hit the drawer on top)
+    await backdrop.click({ force: true, position: { x: 30, y: 400 } });
     await page.waitForTimeout(400);
 
     await expect(stats).not.toHaveClass(/open/);
