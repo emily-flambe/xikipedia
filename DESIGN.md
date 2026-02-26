@@ -448,10 +448,12 @@ These are ideas for extending beyond the original:
 - [ ] Time-based decay for category scores
 
 ### UX
-- [ ] Dark/light theme toggle
-- [ ] Save preferences to localStorage (opt-in)
-- [ ] Share article functionality
+- [x] Dark/light theme toggle
+- [x] Save preferences to localStorage (via auth/D1)
+- [x] Share article functionality
+- [x] Keyboard shortcuts (J/K/L/M/N/R/S/?)
 - [ ] Reading history
+- [ ] "Explore mode" button (ignore preferences, show random)
 
 ### Technical
 - [ ] Service worker for offline support
