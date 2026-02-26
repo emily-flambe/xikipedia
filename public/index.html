@@ -490,6 +490,49 @@
         .floating-btn:hover {
             transform: scale(1.1);
         }
+        /* Tooltip styles for buttons */
+        [data-tooltip] {
+            position: relative;
+        }
+        [data-tooltip]::before {
+            content: attr(data-tooltip);
+            position: absolute;
+            right: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            margin-right: 10px;
+            padding: 6px 10px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 4px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        [data-tooltip]:hover::before {
+            opacity: 1;
+        }
+        /* Inline tooltips (for session stats bar) */
+        .inline-tooltip[data-tooltip]::before {
+            right: auto;
+            left: 50%;
+            top: auto;
+            bottom: 100%;
+            transform: translateX(-50%);
+            margin-right: 0;
+            margin-bottom: 8px;
+        }
+        /* Left-side buttons need tooltip on right */
+        .tooltip-right[data-tooltip]::before {
+            right: auto;
+            left: 100%;
+            margin-right: 0;
+            margin-left: 10px;
+        }
         .floating-btn:active {
             transform: scale(0.9);
         }
@@ -987,12 +1030,12 @@
     </style>
 </head>
 <body>
-    <button id="themeToggle" aria-label="Toggle dark/light mode">&#127769;</button>
+    <button id="themeToggle" class="inline-tooltip" aria-label="Toggle dark/light mode" data-tooltip="Theme">&#127769;</button>
     <p id="loading">Loading...</p>
     <div class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
-        <button id="historyToggle" aria-label="Show reading history" style="display:none">📜</button>
+        <button id="historyToggle" class="inline-tooltip" aria-label="Show reading history" data-tooltip="History (H)" style="display:none">📜</button>
     </div>
     <div id="historyPanel" class="history-panel" style="display:none">
         <div class="history-header">
@@ -1005,9 +1048,9 @@
         <button class="stats-close" aria-label="Close sidebar">&times;</button>
     </aside>
     <div class="stats-backdrop" id="statsBackdrop"></div>
-    <button id="statsToggleBtn" aria-label="Open category stats"></button>
-    <button class="floating-btn" id="refreshBtn" aria-label="Refresh feed" style="display:none"></button>
-    <button class="floating-btn" id="exploreBtn" aria-label="Toggle explore mode" style="display:none"></button>
+    <button id="statsToggleBtn" class="tooltip-right" aria-label="Open category stats" data-tooltip="Stats (S)"></button>
+    <button class="floating-btn" id="refreshBtn" aria-label="Refresh feed" data-tooltip="Refresh (R)" style="display:none"></button>
+    <button class="floating-btn" id="exploreBtn" aria-label="Toggle explore mode" data-tooltip="Explore (E)" style="display:none"></button>
     <div id="startScreen" popover="manual">
         <div>
             <h1>Xikipedia</h1>
