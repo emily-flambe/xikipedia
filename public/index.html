@@ -572,6 +572,97 @@
             background: var(--bg-secondary, #1C2732);
             border-color: var(--accent-color, #2cafff);
         }
+
+        /* === Feature 4: Mobile sidebar drawer === */
+        #statsToggleBtn {
+            position: fixed;
+            left: 24px;
+            bottom: 24px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--accent-color, #2cafff);
+            border: none;
+            cursor: pointer;
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: transform 0.2s;
+        }
+        #statsToggleBtn:hover {
+            transform: scale(1.1);
+        }
+        #statsToggleBtn:active {
+            transform: scale(0.9);
+        }
+        #statsToggleBtn::after {
+            content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z" fill="white"/></svg>');
+        }
+        @media (max-width: 1000px) {
+            #statsToggleBtn {
+                display: flex;
+            }
+            .stats {
+                display: block !important;
+                position: fixed;
+                right: -320px;
+                top: 0;
+                left: auto;
+                height: 100%;
+                width: 300px;
+                max-width: 80vw;
+                z-index: 200;
+                border-radius: 0;
+                border: none;
+                border-left: 1px solid var(--border-color, #38444D);
+                background: var(--bg-primary, #15202B);
+                transition: right 0.3s ease;
+                overflow-y: auto;
+                box-sizing: border-box;
+                padding: 16px;
+                padding-top: 48px;
+            }
+            .stats.open {
+                right: 0;
+            }
+        }
+        .stats-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 199;
+        }
+        .stats-backdrop.visible {
+            display: block;
+        }
+        .stats-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: var(--text-secondary, #8899AA);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px 8px;
+            line-height: 1;
+            display: none;
+            z-index: 201;
+        }
+        .stats-close:hover {
+            color: var(--text-primary, #FFF);
+        }
+        @media (max-width: 1000px) {
+            .stats-close {
+                display: block;
+            }
+        }
     </style>
 </head>
 <body>
@@ -581,7 +672,11 @@
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
     </div>
-    <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores"></aside>
+    <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores">
+        <button class="stats-close" aria-label="Close sidebar">&times;</button>
+    </aside>
+    <div class="stats-backdrop" id="statsBackdrop"></div>
+    <button id="statsToggleBtn" aria-label="Open category stats"></button>
     <button class="floating-btn" id="refreshBtn" aria-label="Refresh feed" style="display:none"></button>
     <div id="startScreen" popover="manual">
         <div>
@@ -787,7 +882,10 @@
     // Update the stats sidebar with interactive controls
     function updateEngagement() {
         const statsEl = document.querySelector(".stats");
+        // Preserve close button for mobile drawer
+        const closeBtn = statsEl.querySelector(".stats-close");
         statsEl.innerHTML = "";
+        if (closeBtn) statsEl.appendChild(closeBtn);
 
         const sorted = Object.entries(categoryScores)
             .filter(([k, v]) => v && !hiddenCategories.has(k))
@@ -1442,6 +1540,77 @@
         }, { passive: true });
     }
 
+    // ============================================
+    // Feature 4: Mobile Sidebar Drawer
+    // ============================================
+    function initMobileDrawer() {
+        const statsEl = document.querySelector(".stats");
+        const backdrop = document.getElementById("statsBackdrop");
+        const toggleBtn = document.getElementById("statsToggleBtn");
+        const closeBtn = statsEl.querySelector(".stats-close");
+
+        function openDrawer() {
+            statsEl.classList.add("open");
+            backdrop.classList.add("visible");
+        }
+
+        function closeDrawer() {
+            statsEl.classList.remove("open");
+            backdrop.classList.remove("visible");
+        }
+
+        toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            openDrawer();
+        };
+
+        backdrop.onclick = () => closeDrawer();
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && statsEl.classList.contains("open")) {
+                closeDrawer();
+            }
+        });
+
+        if (closeBtn) {
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                closeDrawer();
+            };
+        }
+
+        // Swipe-to-dismiss on the drawer
+        let drawerTouchStartX = 0;
+        let drawerTouchCurrentX = 0;
+        let isDragging = false;
+
+        statsEl.addEventListener("touchstart", (e) => {
+            drawerTouchStartX = e.touches[0].clientX;
+            drawerTouchCurrentX = e.touches[0].clientX;
+            isDragging = true;
+        }, { passive: true });
+
+        statsEl.addEventListener("touchmove", (e) => {
+            if (!isDragging) return;
+            drawerTouchCurrentX = e.touches[0].clientX;
+            const dx = drawerTouchCurrentX - drawerTouchStartX;
+            if (dx > 20) {
+                statsEl.style.transform = `translateX(${dx}px)`;
+            }
+        }, { passive: true });
+
+        statsEl.addEventListener("touchend", () => {
+            if (!isDragging) return;
+            const dx = drawerTouchCurrentX - drawerTouchStartX;
+            statsEl.style.transform = "";
+            if (dx > 80) {
+                closeDrawer();
+            }
+            isDragging = false;
+            drawerTouchCurrentX = 0;
+        }, { passive: true });
+    }
+
     // Main initialization
     async function main() {
         startScreen.showPopover();
@@ -1535,6 +1704,9 @@
                 if (page) engagePost(page, 100);
             });
             startScreen.remove();
+
+            // Initialize mobile sidebar drawer
+            initMobileDrawer();
 
             // Show floating refresh button and init pull-to-refresh
             document.getElementById("refreshBtn").style.display = "flex";

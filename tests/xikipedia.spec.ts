@@ -422,3 +422,80 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await expect(stats.locator('.stats-section-title').first()).toHaveText('Top Categories');
   });
 });
+
+// =============================================
+// Feature 4: Mobile sidebar drawer
+// =============================================
+test.describe('Feature 4: Mobile sidebar drawer', () => {
+  test('mobile toggle button is visible on small viewport', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    await expect(toggleBtn).toBeVisible();
+  });
+
+  test('mobile toggle button is hidden on desktop viewport', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    await expect(toggleBtn).not.toBeVisible();
+  });
+
+  test('clicking toggle opens the drawer', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    const stats = page.locator('[data-testid="stats"]');
+    const backdrop = page.locator('#statsBackdrop');
+
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+
+    await expect(stats).toHaveClass(/open/);
+    await expect(backdrop).toHaveClass(/visible/);
+  });
+
+  test('close button dismisses the drawer', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    const stats = page.locator('[data-testid="stats"]');
+    const closeBtn = stats.locator('.stats-close');
+
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+    await expect(stats).toHaveClass(/open/);
+
+    await closeBtn.click();
+    await page.waitForTimeout(400);
+    await expect(stats).not.toHaveClass(/open/);
+  });
+
+  test('backdrop click dismisses the drawer', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await startFeed(page);
+
+    const toggleBtn = page.locator('#statsToggleBtn');
+    const stats = page.locator('[data-testid="stats"]');
+    const backdrop = page.locator('#statsBackdrop');
+
+    await toggleBtn.click();
+    await page.waitForTimeout(400);
+    await expect(stats).toHaveClass(/open/);
+
+    await backdrop.click({ force: true });
+    await page.waitForTimeout(400);
+
+    await expect(stats).not.toHaveClass(/open/);
+    await expect(backdrop).not.toHaveClass(/visible/);
+  });
+});
