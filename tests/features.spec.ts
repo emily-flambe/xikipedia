@@ -405,14 +405,17 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await expect(controls.nth(2)).toHaveText('\u00d7');  // Unicode multiply
   });
 
-  test.skip('boost button increases category score by 200', async ({ page }) => {
-    // Skip: flaky in CI - times out clicking sidebar buttons
+  test('boost button increases category score by 200', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
     // Like to populate sidebar
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer (required on all screen sizes since PR #16)
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
@@ -436,14 +439,17 @@ test.describe('Feature 3: Sidebar category controls', () => {
     expect(numAfter).toBe(numBefore + 200);
   });
 
-  test.skip('bury button decreases category score by 200', async ({ page }) => {
-    // Skip: flaky in CI - times out clicking sidebar buttons
+  test('bury button decreases category score by 200', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
     // Like to populate sidebar
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer (required on all screen sizes since PR #16)
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
@@ -477,14 +483,17 @@ test.describe('Feature 3: Sidebar category controls', () => {
     }
   });
 
-  test.skip('hide button adds category to hiddenCategories set', async ({ page }) => {
-    // Skip: flaky in CI - times out clicking sidebar buttons
+  test('hide button adds category to hiddenCategories set', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
     // Like to populate sidebar
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer (required on all screen sizes since PR #16)
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
@@ -502,13 +511,16 @@ test.describe('Feature 3: Sidebar category controls', () => {
     expect(hiddenAfter).toBe(1);
   });
 
-  test.skip('hidden section appears after hiding a category', async ({ page }) => {
-    // Skip: flaky in CI - times out clicking sidebar buttons
+  test('hidden section appears after hiding a category', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer (required on all screen sizes since PR #16)
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats.locator('.cat-row').first()).toBeVisible({ timeout: 5000 });
@@ -525,13 +537,16 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await expect(stats.locator('.hidden-toggle')).toContainText('Hidden (1)');
   });
 
-  test.skip('hidden toggle expands and collapses the hidden list', async ({ page }) => {
-    // Skip: flaky in CI - times out clicking sidebar buttons
+  test('hidden toggle expands and collapses the hidden list', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
+
+    // Open the sidebar drawer (required on all screen sizes since PR #16)
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats.locator('.cat-row').first()).toBeVisible({ timeout: 5000 });
