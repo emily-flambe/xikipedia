@@ -444,7 +444,7 @@ These are ideas for extending beyond the original:
 
 ### Algorithm
 - [ ] Adjustable algorithm aggressiveness slider
-- [ ] "Explore mode" that ignores preferences
+- [x] "Explore mode" that ignores preferences (PR #19)
 - [ ] Time-based decay for category scores
 
 ### UX
@@ -453,7 +453,6 @@ These are ideas for extending beyond the original:
 - [x] Share article functionality
 - [x] Keyboard shortcuts (J/K/L/M/N/R/S/?)
 - [ ] Reading history
-- [ ] "Explore mode" button (ignore preferences, show random)
 
 ### Technical
 - [ ] Service worker for offline support
