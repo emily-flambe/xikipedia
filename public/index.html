@@ -418,6 +418,22 @@
             right: 24px;
             bottom: 24px;
         }
+        #exploreBtn {
+            right: 24px;
+            bottom: 84px;
+        }
+        #exploreBtn::after {
+            content: "🎲";
+            font-size: 20px;
+        }
+        #exploreBtn.active {
+            background: var(--accent-color);
+            box-shadow: 0 0 12px var(--accent-color);
+        }
+        #exploreBtn.active::after {
+            content: "🎲";
+            filter: drop-shadow(0 0 4px white);
+        }
         #refreshBtn::after {
             content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" fill="white"/></svg>');
         }
@@ -813,6 +829,7 @@
     <div class="stats-backdrop" id="statsBackdrop"></div>
     <button id="statsToggleBtn" aria-label="Open category stats"></button>
     <button class="floating-btn" id="refreshBtn" aria-label="Refresh feed" style="display:none"></button>
+    <button class="floating-btn" id="exploreBtn" aria-label="Toggle explore mode" style="display:none"></button>
     <div id="startScreen" popover="manual">
         <div>
             <h1>Xikipedia</h1>
@@ -924,6 +941,7 @@
         "music", "human sexuality"
     ];
     let postsWithoutLike = 0;
+    let exploreMode = false;
     const DATA_SIZE = 225690064;
 
     // ============================================
@@ -1605,6 +1623,21 @@
 
     // Get next post using the scoring algorithm
     function getNextPost() {
+        // Explore mode: return purely random post (still avoid recently seen)
+        if (exploreMode) {
+            for (let i = 0; i < 100; i++) {
+                const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
+                if ((randomPost.seen ?? 0) < 2) {
+                    randomPost.seen = (randomPost.seen ?? 0) + 1;
+                    return randomPost;
+                }
+            }
+            // Fallback if we can't find unseen post
+            const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
+            randomPost.seen = (randomPost.seen ?? 0) + 1;
+            return randomPost;
+        }
+
         const potentialPosts = [...Array(10000)]
             .map(() => pagesArr[Math.floor(Math.random() * pagesArr.length)])
             .map(post => {
@@ -2067,6 +2100,7 @@
                             <tr><td><kbd>N</kbd></td><td>Less like this</td></tr>
                             <tr><td><kbd>O</kbd> / <kbd>Enter</kbd></td><td>Open on Wikipedia</td></tr>
                             <tr><td><kbd>R</kbd></td><td>Refresh feed</td></tr>
+                            <tr><td><kbd>E</kbd></td><td>Toggle explore mode</td></tr>
                             <tr><td><kbd>S</kbd></td><td>Toggle sidebar</td></tr>
                             <tr><td><kbd>?</kbd></td><td>Show/hide this help</td></tr>
                             <tr><td><kbd>Esc</kbd></td><td>Close sidebar/help</td></tr>
@@ -2164,6 +2198,11 @@
                     refreshFeed();
                     break;
 
+                case 'e': // Toggle explore mode
+                    e.preventDefault();
+                    document.getElementById('exploreBtn').click();
+                    break;
+
                 case 's': // Toggle sidebar
                     e.preventDefault();
                     document.getElementById('statsToggleBtn').click();
@@ -2200,6 +2239,17 @@
             refreshFeed();
         };
         initPullToRefresh();
+
+        // Show explore mode toggle button
+        const exploreBtn = document.getElementById("exploreBtn");
+        exploreBtn.style.display = "flex";
+        exploreBtn.onclick = (e) => {
+            e.stopPropagation();
+            exploreMode = !exploreMode;
+            exploreBtn.classList.toggle("active", exploreMode);
+            exploreBtn.setAttribute("aria-pressed", exploreMode);
+            exploreBtn.setAttribute("aria-label", exploreMode ? "Exit explore mode" : "Enter explore mode");
+        };
         initKeyboardShortcuts();
 
         // Show logout/delete buttons if logged in
@@ -2375,6 +2425,11 @@
     Object.defineProperty(window, 'postsWithoutLike', { get: () => postsWithoutLike });
     // Expose refreshFeed for testing
     window.refreshFeed = refreshFeed;
+    // Expose exploreMode for testing
+    Object.defineProperty(window, 'exploreMode', {
+        get: () => exploreMode,
+        set: (v) => { exploreMode = v; }
+    });
 
     window.onload = main;
 </script>
