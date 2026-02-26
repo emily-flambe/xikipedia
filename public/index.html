@@ -1095,6 +1095,20 @@
     let consecutiveSameCategory = 0;    // Variety: count streak in same category
     const exploredCategories = new Set(); // Roulette: categories we've engaged with
 
+    // === Time-based decay ===
+    const categoryLastEngaged = {};     // Track when each category was last positively engaged
+    const sessionStartTime = Date.now();
+    
+    // Calculate decay factor based on age (0.5 per hour, minimum 0.1)
+    function getDecayFactor(category) {
+        const lastEngaged = categoryLastEngaged[category];
+        if (!lastEngaged) return 0.5; // Never engaged = 50% weight
+        const ageMs = Date.now() - lastEngaged;
+        const ageHours = ageMs / (1000 * 60 * 60);
+        // Decay: starts at 1.0, halves every 2 hours, floor at 0.1
+        return Math.max(0.1, Math.pow(0.5, ageHours / 2));
+    }
+
     // Load persisted seen posts from localStorage
     function loadSeenPosts() {
         try {
@@ -1602,8 +1616,10 @@
             if (skipHidden && hiddenCategories.has(e)) return;
             categoryScores[e] = (categoryScores[e] ?? 0) + amount;
             // Track explored categories for roulette feature
+            // Track engagement time for decay feature
             if (amount > 0) {
                 exploredCategories.add(e);
+                categoryLastEngaged[e] = Date.now();
             }
         });
         savePreferences();
@@ -1978,7 +1994,9 @@
                 const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -500000;
                 let postScore = [...post.allCategories].reduce(
                     (sum, cat) => {
-                        let catScore = (categoryScores[cat] ?? 0) * aggFactor;
+                        // Apply time-based decay to category score
+                        const baseScore = (categoryScores[cat] ?? 0) * aggFactor;
+                        let catScore = baseScore * getDecayFactor(cat);
                         
                         // Variety: penalize overexposed category
                         if (cat === varietyPenaltyCategory) {
