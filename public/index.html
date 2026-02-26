@@ -1086,7 +1086,38 @@
     let postsWithoutLike = 0;
     let exploreMode = false;
     let algorithmAggressiveness = 50; // 0-100: 0=random, 50=balanced, 100=strict scoring
+    const seenPostIds = new Set(); // Hard block: never show same post twice
     const DATA_SIZE = 225690064;
+
+    // Load persisted seen posts from localStorage
+    function loadSeenPosts() {
+        try {
+            const saved = localStorage.getItem('xiki_seen_posts');
+            if (saved) {
+                const ids = JSON.parse(saved);
+                if (Array.isArray(ids)) {
+                    ids.forEach(id => seenPostIds.add(id));
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load seen posts:', e);
+        }
+    }
+
+    // Save seen posts to localStorage (debounced, keeps last 5000)
+    let saveSeenTimeout = null;
+    function saveSeenPosts() {
+        if (saveSeenTimeout) clearTimeout(saveSeenTimeout);
+        saveSeenTimeout = setTimeout(() => {
+            try {
+                // Keep only last 5000 to avoid localStorage bloat
+                const ids = [...seenPostIds].slice(-5000);
+                localStorage.setItem('xiki_seen_posts', JSON.stringify(ids));
+            } catch (e) {
+                console.warn('Failed to save seen posts:', e);
+            }
+        }, 1000);
+    }
 
     // ============================================
     // Auth state management
@@ -1860,20 +1891,29 @@
         updateHistoryUI();
     }
 
+    // Mark a post as seen (hard block + persist)
+    function markPostSeen(post) {
+        seenPostIds.add(post.id);
+        post.seen = (post.seen ?? 0) + 1;
+        saveSeenPosts();
+    }
+
     // Get next post using the scoring algorithm
     function getNextPost() {
-        // Explore mode OR aggressiveness 0: return purely random post (still avoid recently seen)
+        // Explore mode OR aggressiveness 0: return purely random post (hard block seen)
         if (exploreMode || algorithmAggressiveness === 0) {
-            for (let i = 0; i < 100; i++) {
+            for (let i = 0; i < 1000; i++) {
                 const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-                if ((randomPost.seen ?? 0) < 2) {
-                    randomPost.seen = (randomPost.seen ?? 0) + 1;
+                // Hard block: skip if already seen this session
+                if (!seenPostIds.has(randomPost.id)) {
+                    markPostSeen(randomPost);
                     return randomPost;
                 }
             }
-            // Fallback if we can't find unseen post
+            // Fallback: if we've seen everything, allow repeats with warning
+            console.warn('Exhausted unique posts, allowing repeat');
             const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-            randomPost.seen = (randomPost.seen ?? 0) + 1;
+            markPostSeen(randomPost);
             return randomPost;
         }
 
@@ -1882,8 +1922,11 @@
 
         const potentialPosts = [...Array(10000)]
             .map(() => pagesArr[Math.floor(Math.random() * pagesArr.length)])
+            // Hard block: filter out already-seen posts
+            .filter(post => !seenPostIds.has(post.id))
             .map(post => {
-                const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -50000;
+                // Stronger penalty (10x) as backup for any edge cases
+                const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -500000;
                 const postScore = [...post.allCategories].reduce(
                     (sum, cat) => sum + (categoryScores[cat] ?? 0) * aggFactor,
                     initialScore
@@ -1891,6 +1934,22 @@
                 post.score = postScore;
                 return post;
             });
+
+        // If all sampled posts were seen, sample more aggressively
+        if (potentialPosts.length === 0) {
+            console.warn('All sampled posts seen, trying harder...');
+            for (let i = 0; i < 10000; i++) {
+                const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
+                if (!seenPostIds.has(randomPost.id)) {
+                    markPostSeen(randomPost);
+                    return randomPost;
+                }
+            }
+            // True fallback - everything seen
+            const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
+            markPostSeen(randomPost);
+            return randomPost;
+        }
 
         let highestScore = -Infinity;
         let bestPost = potentialPosts[0];
@@ -1917,7 +1976,7 @@
             });
         }
 
-        bestPost.seen = (bestPost.seen ?? 0) + 1;
+        markPostSeen(bestPost);
 
         // Track top contributing categories for transparency
         const categoryContributions = [...bestPost.allCategories]
@@ -2526,6 +2585,9 @@
 
     // Main initialization
     async function main() {
+        // Load persisted seen posts before anything else
+        loadSeenPosts();
+
         startScreen.showPopover();
 
         // Configure auth section based on login state
@@ -2685,11 +2747,18 @@
     window.categoryScores = categoryScores;
     window.hiddenCategories = hiddenCategories;
     window.pagesArr = pagesArr;
+    window.seenPostIds = seenPostIds;
     // Expose algorithmAggressiveness as getter/setter for testing
     Object.defineProperty(window, 'algorithmAggressiveness', {
         get: () => algorithmAggressiveness,
         set: (v) => { algorithmAggressiveness = v; }
     });
+    // Clear seen posts (for testing or fresh start)
+    window.clearSeenPosts = () => {
+        seenPostIds.clear();
+        localStorage.removeItem('xiki_seen_posts');
+        pagesArr.forEach(p => p.seen = 0);
+    };
     // Expose postsWithoutLike as a getter for testing
     Object.defineProperty(window, 'postsWithoutLike', { get: () => postsWithoutLike });
     // Expose refreshFeed for testing
