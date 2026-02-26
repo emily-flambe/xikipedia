@@ -581,6 +581,15 @@
             70% { opacity: 1; transform: translateX(-50%) translateY(-4px); }
             100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
         }
+        @keyframes postSlideAway {
+            0% { opacity: 1; transform: translateX(0); max-height: 1000px; }
+            50% { opacity: 0; transform: translateX(-100px); max-height: 1000px; }
+            100% { opacity: 0; transform: translateX(-100px); max-height: 0; padding: 0; margin: 0; border: none; }
+        }
+        .post.sliding-away {
+            animation: postSlideAway 0.4s ease-out forwards;
+            overflow: hidden;
+        }
         .post .button-spacer {
             flex: 1;
         }
@@ -1895,7 +1904,14 @@
             gotIt.classList.add("got-it");
             gotIt.textContent = "Got it";
             lessBtn.appendChild(gotIt);
-            gotIt.addEventListener("animationend", () => gotIt.remove());
+            gotIt.addEventListener("animationend", () => {
+                gotIt.remove();
+                // Slide the post away after "Got it" animation
+                postDiv.classList.add("sliding-away");
+                postDiv.addEventListener("animationend", () => {
+                    postDiv.remove();
+                }, { once: true });
+            });
         };
 
         buttonRow.appendChild(moreBtn);
