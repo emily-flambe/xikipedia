@@ -1902,6 +1902,9 @@
         let isPointerPulling = false;
         postsContainer.addEventListener("pointerdown", (e) => {
             if (e.pointerType === 'touch') return; // Handled by touch events
+            // Don't start pull if clicking on interactive elements
+            const target = e.target;
+            if (target.closest('button, a, input, [role="button"]')) return;
             isPointerPulling = true;
             handlePullStart(e.clientY);
             postsContainer.setPointerCapture(e.pointerId);
