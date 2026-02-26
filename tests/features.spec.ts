@@ -743,12 +743,17 @@ test.describe('Feature 4: Mobile sidebar drawer', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await startFeedWithMock(page);
 
-    // Open drawer
+    // Like a post FIRST (before opening drawer) to populate sidebar
+    await page.locator('[data-testid="like-button"]').first().click();
+    await page.waitForTimeout(200);
+
+    // Now open drawer
     await page.locator('#statsToggleBtn').click();
     await page.waitForTimeout(400);
 
-    // Like a post to trigger updateEngagement (which re-renders sidebar innerHTML)
-    await page.locator('[data-testid="like-button"]').first().click();
+    // Like another post to trigger updateEngagement re-render while drawer is open
+    // Use force:true since drawer may partially cover the button
+    await page.locator('[data-testid="like-button"]').nth(1).click({ force: true });
     await page.waitForTimeout(200);
 
     // Close button should still function after re-render
