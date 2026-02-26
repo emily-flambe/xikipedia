@@ -23,7 +23,10 @@ const MOCK_SMOLDATA = {
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 function uniqueUser(): string {
-  return `testuser_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  // Username must be 3-20 chars, alphanumeric + underscores only
+  const timestamp = Date.now().toString(36).slice(-4); // 4 chars
+  const random = Math.random().toString(36).slice(2, 6); // 4 chars
+  return `u${timestamp}${random}`; // 9 chars total: "u" + 4 + 4
 }
 
 /**
@@ -893,7 +896,8 @@ test.describe('API edge cases', () => {
 
     // Delete the account
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);
 
@@ -995,7 +999,8 @@ test.describe('API edge cases', () => {
 
     // Delete
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);
 

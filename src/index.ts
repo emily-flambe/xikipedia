@@ -177,25 +177,25 @@ async function verifyToken(
   token: string,
   secret: string,
 ): Promise<TokenPayload | null> {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-
-  const [headerB64, payloadB64, signatureB64] = parts;
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const key = await getSigningKey(secret);
-  const signatureBytes = base64UrlDecode(signatureB64);
-
-  const valid = await crypto.subtle.verify(
-    'HMAC',
-    key,
-    signatureBytes,
-    new TextEncoder().encode(signingInput),
-  );
-
-  if (!valid) return null;
-
   try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const [headerB64, payloadB64, signatureB64] = parts;
+    const signingInput = `${headerB64}.${payloadB64}`;
+
+    const key = await getSigningKey(secret);
+    const signatureBytes = base64UrlDecode(signatureB64);
+
+    const valid = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      signatureBytes,
+      new TextEncoder().encode(signingInput),
+    );
+
+    if (!valid) return null;
+
     const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadB64));
     const payload: TokenPayload = JSON.parse(payloadJson);
 
@@ -206,6 +206,7 @@ async function verifyToken(
 
     return payload;
   } catch {
+    // Invalid token format, base64 decode error, or JSON parse error
     return null;
   }
 }
