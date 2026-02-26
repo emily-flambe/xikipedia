@@ -368,6 +368,85 @@
             border-radius: 20px;
             font-size: 12px;
             z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #historyToggle {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0 4px;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        #historyToggle:hover { opacity: 1; }
+        .history-panel {
+            position: fixed;
+            bottom: 120px;
+            left: 16px;
+            width: 280px;
+            max-height: 300px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            z-index: 101;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: bold;
+        }
+        .history-header button {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0 4px;
+        }
+        .history-list {
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .history-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s;
+        }
+        .history-item:hover { background: var(--bg-tertiary); }
+        .history-item img {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        .history-item .no-thumb {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .history-item-title {
+            flex: 1;
+            font-size: 13px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         @media (max-width: 600px) {
             .session-stats { display: none; }
@@ -822,6 +901,14 @@
     <div class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
+        <button id="historyToggle" aria-label="Show reading history" style="display:none">📜</button>
+    </div>
+    <div id="historyPanel" class="history-panel" style="display:none">
+        <div class="history-header">
+            <span>📜 Reading History</span>
+            <button id="historyClose" aria-label="Close history">×</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
     </div>
     <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores">
         <button class="stats-close" aria-label="Close sidebar">&times;</button>
@@ -927,6 +1014,7 @@
     // Session stats tracking
     let articlesViewed = 0;
     let articlesLiked = 0;
+    const viewedHistory = []; // Track viewed articles for history feature
     let currentStreak = 0;
     let maxStreak = 0;
 
@@ -1395,6 +1483,61 @@
         document.getElementById('likeCount').textContent = articlesLiked;
     }
 
+    // Update history panel UI
+    function updateHistoryUI() {
+        const list = document.getElementById('historyList');
+        if (!list) return;
+        
+        list.innerHTML = viewedHistory.map(item => `
+            <div class="history-item" data-id="${item.id}" tabindex="0">
+                ${item.thumb 
+                    ? `<img src="${item.thumb}" alt="" loading="lazy">` 
+                    : `<div class="no-thumb">📄</div>`}
+                <span class="history-item-title">${item.title}</span>
+            </div>
+        `).join('');
+        
+        // Add click handlers to scroll to article
+        list.querySelectorAll('.history-item').forEach(el => {
+            el.onclick = () => {
+                const id = el.dataset.id;
+                const post = document.querySelector(`.post[data-id="${id}"]`);
+                if (post) {
+                    post.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    post.focus();
+                } else {
+                    // Article not in DOM anymore, re-show it
+                    const article = pagesArr.find(p => p.id == id);
+                    if (article) {
+                        createNextPost(article);
+                        setTimeout(() => {
+                            const newPost = document.querySelector(`.post[data-id="${id}"]`);
+                            if (newPost) newPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 100);
+                    }
+                }
+                document.getElementById('historyPanel').style.display = 'none';
+            };
+        });
+    }
+
+    // Initialize history toggle
+    function initHistoryToggle() {
+        const toggle = document.getElementById('historyToggle');
+        const panel = document.getElementById('historyPanel');
+        const close = document.getElementById('historyClose');
+        
+        toggle.style.display = 'inline-block';
+        
+        toggle.onclick = () => {
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        };
+        
+        close.onclick = () => {
+            panel.style.display = 'none';
+        };
+    }
+
     // Show double-tap heart animation
     function showDoubleTapHeart(postDiv) {
         const heart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1430,6 +1573,7 @@
         postDiv.classList.add("post");
         postDiv.dataset.testid = "post";
         postDiv.dataset.title = nextPost.title;
+        postDiv.dataset.id = nextPost.id;
         postDiv.setAttribute("tabindex", "0");
         postDiv.setAttribute("aria-label", `Article: ${nextPost.title}. Press Enter to open on Wikipedia.`);
 
@@ -1618,7 +1762,10 @@
 
         // Update session stats
         articlesViewed++;
+        viewedHistory.unshift({ title: nextPost.title, id: nextPost.id, thumb: nextPost.thumb });
+        if (viewedHistory.length > 50) viewedHistory.pop(); // Keep last 50
         updateSessionStats();
+        updateHistoryUI();
     }
 
     // Get next post using the scoring algorithm
@@ -2101,6 +2248,7 @@
                             <tr><td><kbd>O</kbd> / <kbd>Enter</kbd></td><td>Open on Wikipedia</td></tr>
                             <tr><td><kbd>R</kbd></td><td>Refresh feed</td></tr>
                             <tr><td><kbd>E</kbd></td><td>Toggle explore mode</td></tr>
+                            <tr><td><kbd>H</kbd></td><td>Toggle history</td></tr>
                             <tr><td><kbd>S</kbd></td><td>Toggle sidebar</td></tr>
                             <tr><td><kbd>?</kbd></td><td>Show/hide this help</td></tr>
                             <tr><td><kbd>Esc</kbd></td><td>Close sidebar/help</td></tr>
@@ -2203,6 +2351,11 @@
                     document.getElementById('exploreBtn').click();
                     break;
 
+                case 'h': // Toggle history
+                    e.preventDefault();
+                    document.getElementById('historyToggle').click();
+                    break;
+
                 case 's': // Toggle sidebar
                     e.preventDefault();
                     document.getElementById('statsToggleBtn').click();
@@ -2251,6 +2404,7 @@
             exploreBtn.setAttribute("aria-label", exploreMode ? "Exit explore mode" : "Enter explore mode");
         };
         initKeyboardShortcuts();
+        initHistoryToggle();
 
         // Show logout/delete buttons if logged in
         if (isLoggedIn()) {
@@ -2425,6 +2579,7 @@
     Object.defineProperty(window, 'postsWithoutLike', { get: () => postsWithoutLike });
     // Expose refreshFeed for testing
     window.refreshFeed = refreshFeed;
+    window.viewedHistory = viewedHistory;
     // Expose exploreMode for testing
     Object.defineProperty(window, 'exploreMode', {
         get: () => exploreMode,
