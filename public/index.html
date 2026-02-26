@@ -2148,6 +2148,8 @@
     window.categoryScores = categoryScores;
     window.hiddenCategories = hiddenCategories;
     window.pagesArr = pagesArr;
+    // Expose postsWithoutLike as a getter for testing
+    Object.defineProperty(window, 'postsWithoutLike', { get: () => postsWithoutLike });
 
     window.onload = main;
 </script>

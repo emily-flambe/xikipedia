@@ -332,7 +332,7 @@ test.describe('Feature 2: Feed refresh', () => {
     expect(seenAfter).toBeLessThan(seenBefore);
   });
 
-  test.skip('BUG: postsWithoutLike is not reset on refresh', async ({ page }) => {
+  test('postsWithoutLike resets on refresh', async ({ page }) => {
     await startFeedWithMock(page);
 
     // Scroll to generate posts without liking any
@@ -348,14 +348,12 @@ test.describe('Feature 2: Feed refresh', () => {
     await page.locator('#refreshBtn').click();
     await page.waitForTimeout(500);
 
-    // Bug: postsWithoutLike should be 0 (or small from new auto-generated posts)
-    // but it carries over the old value and keeps accumulating
+    // Counter should reset to 0 (or small from new auto-generated posts)
     const countAfter = await page.evaluate(() => (window as any).postsWithoutLike);
-    // This assertion DOCUMENTS THE BUG: counter keeps growing
-    expect(countAfter).toBeGreaterThanOrEqual(countBefore);
+    expect(countAfter).toBeLessThan(countBefore);
   });
 
-  test.skip('BUG: inflated like boost after refresh without likes', async ({ page }) => {
+  test('like boost grows with posts viewed in current session', async ({ page }) => {
     await startFeedWithMock(page);
 
     // Generate many posts without liking
@@ -364,22 +362,21 @@ test.describe('Feature 2: Feed refresh', () => {
       await page.waitForTimeout(200);
     }
 
-    // Refresh and generate more
+    const counterBeforeRefresh = await page.evaluate(() => (window as any).postsWithoutLike);
+
+    // Refresh resets the counter
     await page.locator('#refreshBtn').click();
     await page.waitForTimeout(500);
-    for (let i = 0; i < 3; i++) {
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(200);
-    }
+
+    const counterAfterRefresh = await page.evaluate(() => (window as any).postsWithoutLike);
+    // Counter should be much smaller after refresh
+    expect(counterAfterRefresh).toBeLessThan(counterBeforeRefresh);
 
     // The like boost formula is: 50 + postsWithoutLike * 4
-    // With accumulated counter, the boost is absurdly large
-    const counter = await page.evaluate(() => (window as any).postsWithoutLike);
-    const theoreticalBoost = 50 + counter * 4;
-
-    // A single like after viewing ~50 posts across 2 sessions gives 250+ boost
-    // This is disproportionate - a normal session of ~10 posts gives 90
-    expect(theoreticalBoost).toBeGreaterThan(150);
+    // This encourages engagement while preventing excessive accumulation
+    const boost = 50 + counterAfterRefresh * 4;
+    expect(boost).toBeGreaterThanOrEqual(50); // minimum boost
+    expect(boost).toBeLessThan(counterBeforeRefresh * 4 + 50); // less than pre-refresh would have been
   });
 });
 
