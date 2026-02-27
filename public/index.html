@@ -385,7 +385,124 @@
             background: #dc2626;
             border-color: #dc2626;
             color: #fff;
-            cursor: default;
+        }
+        .category-chip.reduced {
+            background: #f59e0b;
+            border-color: #f59e0b;
+            color: #000;
+        }
+        .category-chip.boosted {
+            background: #22c55e;
+            border-color: #22c55e;
+            color: #fff;
+        }
+        /* Category action dropdown */
+        .category-chip-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        .category-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 4px;
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 100px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .category-chip-wrapper:hover .category-dropdown,
+        .category-chip:focus + .category-dropdown,
+        .category-dropdown:hover {
+            display: flex;
+        }
+        .category-dropdown button {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .category-dropdown button:hover {
+            background: var(--bg-primary);
+        }
+        .category-dropdown button.active {
+            background: var(--accent-color);
+            color: #fff;
+        }
+        /* Mood mode buttons */
+        .mood-section {
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .mood-section h4 {
+            margin: 0 0 8px 0;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .mood-buttons {
+            display: flex;
+            gap: 6px;
+        }
+        .mood-btn {
+            flex: 1;
+            padding: 8px 4px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .mood-btn:hover {
+            border-color: var(--accent-color);
+        }
+        .mood-btn.active {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #fff;
+        }
+        .mood-btn .mood-icon {
+            display: block;
+            font-size: 16px;
+            margin-bottom: 2px;
+        }
+        /* Presets section with h4 title */
+        .presets-section {
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .presets-section h4 {
+            margin: 0 0 8px 0;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        /* Color-coded preset buttons by type */
+        .preset-btn[data-type="boost"].active {
+            background: #22c55e;
+            border-color: #22c55e;
+        }
+        .preset-btn[data-type="block"].active {
+            background: #dc2626;
+            border-color: #dc2626;
         }
         #themeToggle {
             position: fixed;
@@ -1308,76 +1425,216 @@
         "surnames": -1000,
     };
     const hiddenCategories = new Set();
+    const reducedCategories = new Set();  // 75% less likely to show
+    const boostedCategories = new Set();  // 3x more likely to show
+    
+    // Mood modes: normal, light (hide dark topics), deep (STEM/academic focus)
+    let moodMode = 'normal';
     
     // Filter presets - pre-built category groups
     const filterPresets = {
         noDark: {
             name: "🚫 No dark topics",
+            type: "block",
             categories: ["war", "wars", "death", "deaths", "murder", "murders", "crime", "crimes", 
                         "disaster", "disasters", "disease", "diseases", "terrorism", "genocide",
-                        "violence", "accidents", "famine", "poverty", "torture", "execution"]
+                        "violence", "accidents", "famine", "poverty", "torture", "execution",
+                        "suicide", "assassination", "massacre", "bombing", "shooting"]
         },
         noPolitics: {
             name: "🏛️ No politics",
+            type: "block",
             categories: ["politicians", "politics", "political parties", "elections", "governments",
                         "presidents", "prime ministers", "senators", "congress", "parliament",
-                        "democrats", "republicans", "conservatives", "liberals"]
+                        "democrats", "republicans", "conservatives", "liberals", "political",
+                        "diplomacy", "treaties", "legislation"]
         },
-        stemFocus: {
+        stemBoost: {
             name: "🔬 STEM boost",
+            type: "boost",
             categories: ["science", "technology", "mathematics", "engineering", "physics", 
-                        "chemistry", "biology", "computer science", "astronomy", "medicine"]
+                        "chemistry", "biology", "computer science", "astronomy", "medicine",
+                        "geology", "ecology", "genetics", "neuroscience", "algorithms"]
         },
-        cultureFocus: {
+        cultureBoost: {
             name: "🎨 Culture boost",
+            type: "boost",
             categories: ["art", "music", "film", "literature", "theatre", "dance", 
-                        "painting", "sculpture", "poetry", "novels", "architecture"]
+                        "painting", "sculpture", "poetry", "novels", "architecture",
+                        "photography", "fashion", "design", "museums", "galleries"]
+        },
+        historyBoost: {
+            name: "📜 History boost",
+            type: "boost",
+            categories: ["history", "ancient", "medieval", "archaeology", "civilizations",
+                        "empires", "dynasties", "historical", "centuries", "antiquity"]
+        },
+        natureBoost: {
+            name: "🌿 Nature boost",
+            type: "boost",
+            categories: ["nature", "animals", "plants", "wildlife", "ecology", "environment",
+                        "forests", "oceans", "mountains", "conservation", "species"]
+        }
+    };
+    
+    // Mood mode presets - define what each mood does
+    const moodPresets = {
+        light: {
+            block: ["war", "wars", "death", "deaths", "murder", "murders", "crime", "crimes",
+                   "disaster", "disasters", "disease", "diseases", "terrorism", "genocide",
+                   "violence", "accidents", "famine", "poverty", "torture", "execution",
+                   "suicide", "assassination", "massacre", "bombing", "shooting"],
+            boost: ["art", "music", "nature", "animals", "food", "sports", "games", "comedy",
+                   "entertainment", "travel", "festivals", "holidays", "culture"]
+        },
+        deep: {
+            block: ["celebrities", "entertainment", "sports", "athletes", "actors", "musicians",
+                   "reality television", "social media", "influencers", "pop culture"],
+            boost: ["science", "philosophy", "mathematics", "history", "literature", "physics",
+                   "chemistry", "biology", "psychology", "sociology", "anthropology", "economics",
+                   "linguistics", "archaeology", "astronomy", "medicine", "engineering"]
         }
     };
     
     // Active filter presets
     const activePresets = new Set();
     
-    // Save blocked categories to localStorage
-    function saveBlockedCategories() {
+    // Save all category filters to localStorage
+    function saveCategoryFilters() {
         localStorage.setItem('xiki_blocked_categories', JSON.stringify(Array.from(hiddenCategories)));
+        localStorage.setItem('xiki_reduced_categories', JSON.stringify(Array.from(reducedCategories)));
+        localStorage.setItem('xiki_boosted_categories', JSON.stringify(Array.from(boostedCategories)));
         localStorage.setItem('xiki_active_presets', JSON.stringify(Array.from(activePresets)));
+        localStorage.setItem('xiki_mood_mode', moodMode);
     }
     
-    // Load blocked categories from localStorage
-    function loadBlockedCategories() {
+    // Load all category filters from localStorage
+    function loadCategoryFilters() {
         try {
-            const saved = localStorage.getItem('xiki_blocked_categories');
-            if (saved) {
-                JSON.parse(saved).forEach(cat => hiddenCategories.add(cat));
-            }
+            const blocked = localStorage.getItem('xiki_blocked_categories');
+            if (blocked) JSON.parse(blocked).forEach(cat => hiddenCategories.add(cat));
+            
+            const reduced = localStorage.getItem('xiki_reduced_categories');
+            if (reduced) JSON.parse(reduced).forEach(cat => reducedCategories.add(cat));
+            
+            const boosted = localStorage.getItem('xiki_boosted_categories');
+            if (boosted) JSON.parse(boosted).forEach(cat => boostedCategories.add(cat));
+            
             const savedPresets = localStorage.getItem('xiki_active_presets');
-            if (savedPresets) {
-                JSON.parse(savedPresets).forEach(p => activePresets.add(p));
-            }
+            if (savedPresets) JSON.parse(savedPresets).forEach(p => activePresets.add(p));
+            
+            const savedMood = localStorage.getItem('xiki_mood_mode');
+            if (savedMood) moodMode = savedMood;
         } catch (e) {
-            console.warn('Failed to load blocked categories:', e);
+            console.warn('Failed to load category filters:', e);
         }
     }
     
-    // Apply a filter preset
+    // Legacy alias for backward compatibility
+    function saveBlockedCategories() { saveCategoryFilters(); }
+    function loadBlockedCategories() { loadCategoryFilters(); }
+    
+    // Apply a filter preset (supports both block and boost types)
     function toggleFilterPreset(presetKey) {
         const preset = filterPresets[presetKey];
         if (!preset) return;
         
+        const targetSet = preset.type === 'boost' ? boostedCategories : hiddenCategories;
+        
         if (activePresets.has(presetKey)) {
             // Disable preset - remove categories
             activePresets.delete(presetKey);
-            preset.categories.forEach(cat => hiddenCategories.delete(cat));
+            preset.categories.forEach(cat => targetSet.delete(cat));
             showToast(`Disabled: ${preset.name}`);
         } else {
             // Enable preset - add categories
             activePresets.add(presetKey);
-            preset.categories.forEach(cat => hiddenCategories.add(cat));
+            preset.categories.forEach(cat => targetSet.add(cat));
             showToast(`Enabled: ${preset.name}`);
         }
-        saveBlockedCategories();
+        saveCategoryFilters();
+        updatePresetButtons();
         scheduleEngagementUpdate();
+    }
+    
+    // Set mood mode (normal, light, deep)
+    function setMoodMode(mode) {
+        if (mode === moodMode) return;
+        
+        // Clear previous mood's effects (only for non-normal modes)
+        if (moodMode !== 'normal' && moodPresets[moodMode]) {
+            const prev = moodPresets[moodMode];
+            prev.block?.forEach(cat => hiddenCategories.delete(cat));
+            prev.boost?.forEach(cat => boostedCategories.delete(cat));
+        }
+        
+        moodMode = mode;
+        
+        // Apply new mood's effects
+        if (mode !== 'normal' && moodPresets[mode]) {
+            const preset = moodPresets[mode];
+            preset.block?.forEach(cat => hiddenCategories.add(cat));
+            preset.boost?.forEach(cat => boostedCategories.add(cat));
+        }
+        
+        saveCategoryFilters();
+        updateMoodButtons();
+        scheduleEngagementUpdate();
+        
+        const moodNames = { normal: '⚖️ Normal', light: '☀️ Light', deep: '🧠 Deep Dive' };
+        showToast(`Mood: ${moodNames[mode]}`);
+    }
+    
+    // Update mood button UI state
+    function updateMoodButtons() {
+        document.querySelectorAll('.mood-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mood === moodMode);
+        });
+    }
+    
+    // Update preset button UI state
+    function updatePresetButtons() {
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.classList.toggle('active', activePresets.has(btn.dataset.preset));
+        });
+    }
+    
+    // Set category filter action (block, reduce, boost, clear)
+    function setCategoryFilter(category, action) {
+        // Clear from all sets first
+        hiddenCategories.delete(category);
+        reducedCategories.delete(category);
+        boostedCategories.delete(category);
+        
+        // Apply new action
+        switch (action) {
+            case 'block':
+                hiddenCategories.add(category);
+                showToast(`🚫 Blocked: ${convertCat(category)}`);
+                break;
+            case 'reduce':
+                reducedCategories.add(category);
+                showToast(`⬇️ Reduced: ${convertCat(category)}`);
+                break;
+            case 'boost':
+                boostedCategories.add(category);
+                showToast(`⬆️ Boosted: ${convertCat(category)}`);
+                break;
+            case 'clear':
+                showToast(`✓ Cleared: ${convertCat(category)}`);
+                break;
+        }
+        
+        saveCategoryFilters();
+        scheduleEngagementUpdate();
+    }
+    
+    // Get current filter status for a category
+    function getCategoryFilterStatus(category) {
+        if (hiddenCategories.has(category)) return 'blocked';
+        if (reducedCategories.has(category)) return 'reduced';
+        if (boostedCategories.has(category)) return 'boosted';
+        return 'normal';
     }
     
     const defaultCategories = [
@@ -1799,14 +2056,48 @@
         sliderSection.appendChild(hint);
         statsEl.appendChild(sliderSection);
 
+        // Mood mode section
+        const moodSection = document.createElement("div");
+        moodSection.classList.add("mood-section");
+        
+        const moodTitle = document.createElement("h4");
+        moodTitle.textContent = "Reading Mood";
+        moodSection.appendChild(moodTitle);
+        
+        const moodButtons = document.createElement("div");
+        moodButtons.classList.add("mood-buttons");
+        
+        const moods = [
+            { id: 'light', icon: '☀️', label: 'Light' },
+            { id: 'normal', icon: '⚖️', label: 'Normal' },
+            { id: 'deep', icon: '🧠', label: 'Deep' }
+        ];
+        
+        moods.forEach(({ id, icon, label }) => {
+            const btn = document.createElement("button");
+            btn.classList.add("mood-btn");
+            btn.dataset.mood = id;
+            if (moodMode === id) btn.classList.add("active");
+            btn.innerHTML = `<span class="mood-icon">${icon}</span>${label}`;
+            btn.setAttribute("aria-label", `${label} reading mode`);
+            btn.setAttribute("aria-pressed", moodMode === id);
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                setMoodMode(id);
+            };
+            moodButtons.appendChild(btn);
+        });
+        
+        moodSection.appendChild(moodButtons);
+        statsEl.appendChild(moodSection);
+
         // Filter presets section
         const presetsSection = document.createElement("div");
-        presetsSection.classList.add("filter-presets-section");
+        presetsSection.classList.add("presets-section");
         
-        const presetsLabel = document.createElement("div");
-        presetsLabel.classList.add("section-label");
-        presetsLabel.textContent = "Quick Filters";
-        presetsSection.appendChild(presetsLabel);
+        const presetsTitle = document.createElement("h4");
+        presetsTitle.textContent = "Quick Filters";
+        presetsSection.appendChild(presetsTitle);
         
         const presetsGrid = document.createElement("div");
         presetsGrid.classList.add("presets-grid");
@@ -1814,14 +2105,14 @@
         Object.entries(filterPresets).forEach(([key, preset]) => {
             const btn = document.createElement("button");
             btn.classList.add("preset-btn");
+            btn.dataset.preset = key;
+            btn.dataset.type = preset.type;
             if (activePresets.has(key)) btn.classList.add("active");
             btn.textContent = preset.name;
             btn.setAttribute("aria-pressed", activePresets.has(key));
             btn.onclick = (e) => {
                 e.stopPropagation();
                 toggleFilterPreset(key);
-                btn.classList.toggle("active");
-                btn.setAttribute("aria-pressed", activePresets.has(key));
             };
             presetsGrid.appendChild(btn);
         });
@@ -2235,25 +2526,72 @@
             reasonDiv.classList.add("recommendation-reason");
             reasonDiv.style.display = "none";
             
-            // Create clickable category chips
+            // Create clickable category chips with dropdown menu
             nextPost.recommendedBecause.forEach((cat, idx) => {
+                const wrapper = document.createElement("div");
+                wrapper.classList.add("category-chip-wrapper");
+                
+                // Find the raw category name (before convertCat)
+                const rawCat = [...nextPost.allCategories].find(c => convertCat(c) === cat) || cat;
+                const currentStatus = getCategoryFilterStatus(rawCat);
+                
                 const chip = document.createElement("button");
                 chip.classList.add("category-chip");
-                chip.textContent = cat;
-                chip.setAttribute("aria-label", `Block ${cat}`);
-                chip.title = "Click to block this category";
+                if (currentStatus !== 'normal') chip.classList.add(currentStatus);
+                
+                const statusIcons = { blocked: '🚫 ', reduced: '⬇️ ', boosted: '⬆️ ', normal: '' };
+                chip.textContent = statusIcons[currentStatus] + cat;
+                chip.setAttribute("aria-label", `Filter options for ${cat}`);
+                chip.title = "Click for filter options";
+                
+                // Create dropdown menu
+                const dropdown = document.createElement("div");
+                dropdown.classList.add("category-dropdown");
+                
+                const actions = [
+                    { action: 'boost', label: '⬆️ Boost', desc: 'Show more' },
+                    { action: 'reduce', label: '⬇️ Reduce', desc: 'Show less' },
+                    { action: 'block', label: '🚫 Block', desc: 'Never show' },
+                    { action: 'clear', label: '✓ Clear', desc: 'Remove filter' }
+                ];
+                
+                actions.forEach(({ action, label }) => {
+                    const btn = document.createElement("button");
+                    btn.textContent = label;
+                    if (currentStatus === action || (currentStatus === 'normal' && action === 'clear')) {
+                        btn.classList.add('active');
+                    }
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        setCategoryFilter(rawCat, action);
+                        
+                        // Update chip appearance
+                        const newStatus = getCategoryFilterStatus(rawCat);
+                        chip.className = 'category-chip';
+                        if (newStatus !== 'normal') chip.classList.add(newStatus);
+                        chip.textContent = statusIcons[newStatus] + cat;
+                        
+                        // Update dropdown active states
+                        dropdown.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                        if (newStatus === 'normal') {
+                            dropdown.querySelector('button:last-child').classList.add('active');
+                        } else {
+                            btn.classList.add('active');
+                        }
+                    };
+                    dropdown.appendChild(btn);
+                });
+                
                 chip.onclick = (e) => {
                     e.stopPropagation();
-                    // Find the raw category name (before convertCat)
-                    const rawCat = [...nextPost.allCategories].find(c => convertCat(c) === cat) || cat;
-                    hiddenCategories.add(rawCat);
-                    saveBlockedCategories();
-                    chip.classList.add("blocked");
-                    chip.textContent = `🚫 ${cat}`;
-                    showToast(`Blocked: ${cat}`);
-                    scheduleEngagementUpdate();
+                    // Toggle dropdown visibility on mobile (hover works on desktop)
+                    const isVisible = dropdown.style.display === 'flex';
+                    dropdown.style.display = isVisible ? 'none' : 'flex';
                 };
-                reasonDiv.appendChild(chip);
+                
+                wrapper.appendChild(chip);
+                wrapper.appendChild(dropdown);
+                reasonDiv.appendChild(wrapper);
             });
             
             whyBtn.onclick = (e) => {
@@ -2430,6 +2768,16 @@
                         // Apply time-based decay to category score
                         const baseScore = (categoryScores[cat] ?? 0) * aggFactor;
                         let catScore = baseScore * getDecayFactor(cat);
+                        
+                        // === USER CATEGORY FILTERS ===
+                        // Boosted categories get 3x score bonus
+                        if (boostedCategories.has(cat)) {
+                            catScore += 2000;
+                        }
+                        // Reduced categories get 75% penalty
+                        if (reducedCategories.has(cat)) {
+                            catScore -= 1500;
+                        }
                         
                         // Variety: penalize overexposed category
                         if (cat === varietyPenaltyCategory) {
