@@ -12,8 +12,6 @@ Schedule: Monthly on the 1st
 import brotli
 import json
 import os
-import subprocess
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -133,55 +131,51 @@ def r2_wikipedia_data(
 ) -> str:
     """
     Upload the processed data to Cloudflare R2 bucket.
-    Requires wrangler CLI and CLOUDFLARE_API_TOKEN env var.
+    Uses the S3-compatible R2 API directly via requests.
+    Requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN env vars.
     """
-    # Write to temp file
-    with tempfile.NamedTemporaryFile(
-        mode='w',
-        suffix='.json',
-        delete=False,
-        encoding='utf-8'
-    ) as f:
-        json.dump(processed_wikipedia_data, f)
-        temp_path = f.name
-    
-    try:
-        file_size = os.path.getsize(temp_path)
-        context.log.info(f"Uploading {file_size / 1024 / 1024:.2f} MB to R2...")
-        
-        # Use wrangler to upload
-        result = subprocess.run(
-            [
-                "npx", "wrangler", "r2", "object", "put",
-                f"{R2_BUCKET}/{R2_KEY}",
-                "--file", temp_path,
-                "--content-type", "application/json",
-                "--remote"
-            ],
-            capture_output=True,
-            text=True,
-            timeout=600,
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+    api_token = os.environ.get("CLOUDFLARE_API_TOKEN")
+
+    if not account_id or not api_token:
+        context.log.error(f"CLOUDFLARE_ACCOUNT_ID set: {bool(account_id)}")
+        context.log.error(f"CLOUDFLARE_API_TOKEN set: {bool(api_token)}")
+        raise RuntimeError(
+            "Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN env vars"
         )
-        
-        if result.returncode != 0:
-            context.log.error(f"Wrangler stderr: {result.stderr}")
-            raise RuntimeError(f"R2 upload failed: {result.stderr}")
-        
-        context.log.info("Upload complete!")
-        context.log.info(result.stdout)
-        
-        context.add_output_metadata({
-            "bucket": R2_BUCKET,
-            "key": R2_KEY,
-            "size_mb": round(file_size / 1024 / 1024, 2),
-            "upload_time": datetime.now().isoformat(),
-        })
-        
-        return f"r2://{R2_BUCKET}/{R2_KEY}"
-        
-    finally:
-        # Cleanup temp file
-        os.unlink(temp_path)
+
+    data_bytes = json.dumps(processed_wikipedia_data).encode("utf-8")
+    context.log.info(f"Uploading {len(data_bytes) / 1024 / 1024:.2f} MB to R2...")
+
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
+        f"/r2/buckets/{R2_BUCKET}/objects/{R2_KEY}"
+    )
+
+    response = requests.put(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_token}",
+            "Content-Type": "application/json",
+        },
+        data=data_bytes,
+        timeout=600,
+    )
+
+    if response.status_code not in (200, 201):
+        context.log.error(f"R2 upload failed: {response.status_code} {response.text[:500]}")
+        raise RuntimeError(f"R2 upload failed: {response.status_code} {response.text[:500]}")
+
+    context.log.info("Upload complete!")
+
+    context.add_output_metadata({
+        "bucket": R2_BUCKET,
+        "key": R2_KEY,
+        "size_mb": round(len(data_bytes) / 1024 / 1024, 2),
+        "upload_time": datetime.now().isoformat(),
+    })
+
+    return f"r2://{R2_BUCKET}/{R2_KEY}"
 
 
 # Define the job
