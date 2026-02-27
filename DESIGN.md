@@ -455,7 +455,7 @@ These are ideas for extending beyond the original:
 - [x] Reading history (PR #21)
 
 ### Technical
-- [ ] Service worker for offline support
+- [x] Service worker for offline support (PR #43, #44, #45)
 - [ ] Incremental dataset updates
 - [ ] WebWorker for algorithm processing
 
