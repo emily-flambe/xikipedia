@@ -8,7 +8,10 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "npx playwright test",
-    "test:ui": "npx playwright test --ui"
+    "test:ui": "npx playwright test --ui",
+    "generate-data": "node scripts/generate-data.mjs",
+    "generate-chunked-data": "node scripts/generate-chunked-data.mjs",
+    "generate-test-data": "node scripts/generate-chunked-data.mjs --test"
   },
   "keywords": [
     "wikipedia",

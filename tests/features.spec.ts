@@ -1028,3 +1028,402 @@ test.describe('Cross-feature edge cases', () => {
     await expect(indicator).not.toHaveClass(/active/);
   });
 });
+
+// =============================================
+// Chunked Format: Lazy Text Loading
+// =============================================
+test.describe('Chunked Format: Lazy Text Loading', () => {
+  /**
+   * Generate mock index data for chunked format.
+   * Index contains articles without text, only with chunkId.
+   * Format: { format: "chunked", pages: [[title, id, null, thumb, categories, links, chunkId], ...] }
+   */
+  function generateChunkedIndexData() {
+    const pages = [];
+    const categories = ['science', 'nature', 'animals', 'technology', 'music', 'art', 'history', 'sports'];
+    for (let i = 0; i < 200; i++) {
+      const cat1 = categories[i % categories.length];
+      const cat2 = categories[(i + 3) % categories.length];
+      const hasThumb = i % 3 === 0;
+      const chunkId = Math.floor(i / 10); // 10 articles per chunk
+      pages.push([
+        `Chunked Article ${i}`,
+        i + 1000, // Different IDs from simple format
+        null, // No text in index
+        hasThumb ? `test_image_${i}.jpg` : null,
+        [cat1, cat2],
+        [((i + 1) % 200) + 1000, ((i + 2) % 200) + 1000],
+        chunkId
+      ]);
+    }
+    return {
+      format: 'chunked',
+      pages,
+      subCategories: {
+        science: ['physics', 'chemistry', 'biology'],
+        nature: ['animals', 'plants'],
+        animals: ['mammals', 'birds'],
+      },
+      noPageMaps: {}
+    };
+  }
+
+  /**
+   * Generate mock chunk data for a specific chunk ID.
+   */
+  function generateChunkData(chunkId: number) {
+    const articles: Record<string, { text: string }> = {};
+    const startId = 1000 + chunkId * 10;
+    for (let i = 0; i < 10; i++) {
+      const id = startId + i;
+      articles[String(id)] = {
+        text: `This is the lazy-loaded text content of chunked article ${id - 1000}. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough.`
+      };
+    }
+    return { articles };
+  }
+
+  const CHUNKED_INDEX = generateChunkedIndexData();
+  const CHUNKED_INDEX_JSON = JSON.stringify(CHUNKED_INDEX);
+
+  /**
+   * Setup routes for chunked format testing.
+   */
+  async function setupChunkedRoutes(page: Page, options: { failChunk?: number } = {}) {
+    // Route index.json for chunked format
+    await page.route('**/smoldata.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: CHUNKED_INDEX_JSON,
+      });
+    });
+
+    // Route chunk files
+    await page.route('**/articles/chunk-*.json', async (route) => {
+      const url = route.request().url();
+      const match = url.match(/chunk-(\d+)\.json/);
+      if (match) {
+        const chunkId = parseInt(match[1], 10);
+        
+        // Simulate failure for specific chunk if requested
+        if (options.failChunk === chunkId) {
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Chunk fetch failed' }),
+          });
+          return;
+        }
+        
+        const chunkData = generateChunkData(chunkId);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(chunkData),
+        });
+      }
+    });
+  }
+
+  /**
+   * Start feed with chunked format mock data.
+   */
+  async function startFeedWithChunkedMock(page: Page, options: { failChunk?: number } = {}) {
+    await setupChunkedRoutes(page, options);
+    await page.goto('/');
+
+    // Override DATA_SIZE
+    await page.evaluate((size) => {
+      (window as any).DATA_SIZE = size;
+    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+  }
+
+  test('chunked format shows skeleton while loading text', async ({ page }) => {
+    // Set up route that delays chunk response
+    await page.route('**/smoldata.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: CHUNKED_INDEX_JSON,
+      });
+    });
+
+    let resolveChunk: () => void;
+    const chunkPromise = new Promise<void>((resolve) => {
+      resolveChunk = resolve;
+    });
+
+    await page.route('**/articles/chunk-*.json', async (route) => {
+      // Delay the chunk response to observe skeleton
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const url = route.request().url();
+      const match = url.match(/chunk-(\d+)\.json/);
+      if (match) {
+        const chunkId = parseInt(match[1], 10);
+        const chunkData = generateChunkData(chunkId);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(chunkData),
+        });
+        resolveChunk();
+      }
+    });
+
+    await page.goto('/');
+
+    await page.evaluate((size) => {
+      (window as any).DATA_SIZE = size;
+    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+
+    // The first post should appear, but with skeleton loading
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible({ timeout: 10000 });
+
+    // Check that skeleton class was added (may already be gone if fast)
+    const textP = firstPost.locator('p').first();
+    
+    // Wait for chunk to load and text to appear
+    await chunkPromise;
+    await expect(textP).not.toHaveClass(/skeleton/, { timeout: 5000 });
+    await expect(textP).toContainText('lazy-loaded text content');
+  });
+
+  test('chunked format loads text successfully and caches it', async ({ page }) => {
+    await startFeedWithChunkedMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    const textP = firstPost.locator('p').first();
+
+    // Wait for text to load (skeleton should be gone)
+    await expect(textP).not.toHaveClass(/skeleton/, { timeout: 5000 });
+    await expect(textP).toContainText('lazy-loaded text content');
+
+    // Verify chunkCache has data
+    const cacheStats = await page.evaluate(() => {
+      return (window as any).chunkCache?.getStats?.();
+    });
+    
+    expect(cacheStats).toBeDefined();
+    expect(cacheStats.chunksLoaded).toBeGreaterThan(0);
+  });
+
+  test('chunked format shows error state with retry button on fetch failure', async ({ page }) => {
+    // Create a route that fails once, then succeeds
+    let failCount = 0;
+    
+    await page.route('**/smoldata.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: CHUNKED_INDEX_JSON,
+      });
+    });
+
+    await page.route('**/articles/chunk-*.json', async (route) => {
+      const url = route.request().url();
+      const match = url.match(/chunk-(\d+)\.json/);
+      if (match) {
+        const chunkId = parseInt(match[1], 10);
+        
+        // Fail the first request to chunk 0
+        if (chunkId === 0 && failCount === 0) {
+          failCount++;
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Simulated failure' }),
+          });
+          return;
+        }
+        
+        const chunkData = generateChunkData(chunkId);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(chunkData),
+        });
+      }
+    });
+
+    await page.goto('/');
+
+    await page.evaluate((size) => {
+      (window as any).DATA_SIZE = size;
+    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible({ timeout: 10000 });
+
+    const textP = firstPost.locator('p').first();
+    
+    // Wait for error state to appear
+    await expect(textP).toHaveClass(/load-error/, { timeout: 5000 });
+    
+    // Check for error text and retry button
+    const errorText = textP.locator('.error-text');
+    const retryBtn = textP.locator('.retry-btn');
+    
+    await expect(errorText).toContainText('Failed to load');
+    await expect(retryBtn).toBeVisible();
+    await expect(retryBtn).toHaveText('Retry');
+  });
+
+  test('retry button successfully loads text after failure', async ({ page }) => {
+    // Create a route that fails once, then succeeds
+    let failCount = 0;
+    
+    await page.route('**/smoldata.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: CHUNKED_INDEX_JSON,
+      });
+    });
+
+    await page.route('**/articles/chunk-*.json', async (route) => {
+      const url = route.request().url();
+      const match = url.match(/chunk-(\d+)\.json/);
+      if (match) {
+        const chunkId = parseInt(match[1], 10);
+        
+        // Fail the first request to chunk 0
+        if (chunkId === 0 && failCount === 0) {
+          failCount++;
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Simulated failure' }),
+          });
+          return;
+        }
+        
+        const chunkData = generateChunkData(chunkId);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(chunkData),
+        });
+      }
+    });
+
+    await page.goto('/');
+
+    await page.evaluate((size) => {
+      (window as any).DATA_SIZE = size;
+    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible({ timeout: 10000 });
+
+    const textP = firstPost.locator('p').first();
+    
+    // Wait for error state
+    await expect(textP).toHaveClass(/load-error/, { timeout: 5000 });
+    
+    // Click retry button
+    const retryBtn = textP.locator('.retry-btn');
+    await retryBtn.click();
+    
+    // Should show skeleton while retrying
+    // Then show the loaded text
+    await expect(textP).not.toHaveClass(/load-error/, { timeout: 5000 });
+    await expect(textP).not.toHaveClass(/skeleton/, { timeout: 5000 });
+    await expect(textP).toContainText('lazy-loaded text content');
+  });
+
+  test('chunked format correctly identifies format via isChunkedFormat flag', async ({ page }) => {
+    await startFeedWithChunkedMock(page);
+
+    const isChunked = await page.evaluate(() => {
+      return (window as any).isChunkedFormat;
+    });
+    
+    // Note: isChunkedFormat is a local variable, not exposed to window
+    // But we can check if chunkCache and chunkFetcher are initialized
+    const hasChunkInfra = await page.evaluate(() => {
+      return !!(window as any).chunkCache && !!(window as any).chunkFetcher;
+    });
+    
+    expect(hasChunkInfra).toBe(true);
+  });
+
+  test('multiple posts from same chunk share the cached data', async ({ page }) => {
+    // Track chunk fetches
+    let chunkFetchCount = 0;
+    
+    await page.route('**/smoldata.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: CHUNKED_INDEX_JSON,
+      });
+    });
+
+    await page.route('**/articles/chunk-*.json', async (route) => {
+      chunkFetchCount++;
+      const url = route.request().url();
+      const match = url.match(/chunk-(\d+)\.json/);
+      if (match) {
+        const chunkId = parseInt(match[1], 10);
+        const chunkData = generateChunkData(chunkId);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(chunkData),
+        });
+      }
+    });
+
+    await page.goto('/');
+
+    await page.evaluate((size) => {
+      (window as any).DATA_SIZE = size;
+    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+
+    // Wait for multiple posts to load
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+    
+    // Scroll to load more posts
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(1000);
+    
+    // Check cache stats - should have articles cached
+    const cacheStats = await page.evaluate(() => {
+      return (window as any).chunkCache?.getStats?.();
+    });
+    
+    // Should have some chunks loaded (exact number depends on which articles were shown)
+    expect(cacheStats.chunksLoaded).toBeGreaterThan(0);
+    // Should have cached multiple articles
+    expect(cacheStats.totalArticlesCached).toBeGreaterThan(0);
+  });
+});

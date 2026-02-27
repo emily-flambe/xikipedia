@@ -50,7 +50,7 @@
             border: 1px solid var(--border-color);
             border-top: none;
             height: fit-content;
-            padding-top: env(safe-area-inset-top, 0px);
+            padding-top: calc(16px + env(safe-area-inset-top, 0px));
         }
         @media (max-width: 650px) {
             .posts {
@@ -1331,6 +1331,45 @@
                 animation: none;
                 background: var(--bg-tertiary);
             }
+        }
+
+        /* === Error state with retry for chunked format === */
+        .post p.load-error {
+            color: var(--text-secondary);
+            font-style: italic;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .post p.load-error .error-text {
+            color: #f59e0b;
+        }
+
+        .post p.load-error .retry-btn {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .post p.load-error .retry-btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--text-secondary);
+        }
+
+        .post p.load-error .retry-btn:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .post p.load-error .retry-btn::before {
+            content: "🔄 ";
         }
 
         /* === Offline Indicator === */
@@ -3064,21 +3103,19 @@
 
         postTitle.innerText = nextPost.title;
         
-        // Handle text loading (supports both simple and chunked formats)
-        if (nextPost.text) {
-            // Text already loaded (simple format or cached chunk)
-            postP.innerText = nextPost.text;
-        } else if (isChunkedFormat && nextPost.chunkId !== undefined && chunkFetcher) {
-            // Chunked format: show skeleton and fetch on demand
+        // Helper function to fetch text for chunked format (supports retry)
+        const fetchChunkedText = () => {
+            // Reset to skeleton state
+            postP.className = '';
             postP.classList.add("skeleton");
             postP.setAttribute("aria-busy", "true");
-            postP.innerText = ""; // Skeleton CSS handles appearance
+            postP.innerHTML = ""; // Clear any previous content
             
-            // Fetch text asynchronously
             chunkFetcher.getArticleText(nextPost.id, nextPost.chunkId)
                 .then(text => {
                     postP.classList.remove("skeleton");
                     postP.removeAttribute("aria-busy");
+                    postP.innerHTML = ""; // Clear skeleton
                     postP.innerText = text || "[Article text unavailable]";
                     // Cache the text on the article object for future reference
                     nextPost.text = text;
@@ -3086,9 +3123,37 @@
                 .catch(err => {
                     console.warn('Failed to load article text:', err);
                     postP.classList.remove("skeleton");
+                    postP.classList.add("load-error");
                     postP.removeAttribute("aria-busy");
-                    postP.innerText = "[Failed to load article text]";
+                    postP.innerHTML = ""; // Clear any previous content
+                    
+                    // Create error message with retry button
+                    const errorText = document.createElement("span");
+                    errorText.classList.add("error-text");
+                    errorText.innerText = "Failed to load article text";
+                    
+                    const retryBtn = document.createElement("button");
+                    retryBtn.classList.add("retry-btn");
+                    retryBtn.innerText = "Retry";
+                    retryBtn.setAttribute("aria-label", "Retry loading article text");
+                    retryBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        postP.classList.remove("load-error");
+                        fetchChunkedText(); // Recursively retry
+                    };
+                    
+                    postP.appendChild(errorText);
+                    postP.appendChild(retryBtn);
                 });
+        };
+        
+        // Handle text loading (supports both simple and chunked formats)
+        if (nextPost.text) {
+            // Text already loaded (simple format or cached chunk)
+            postP.innerText = nextPost.text;
+        } else if (isChunkedFormat && nextPost.chunkId !== undefined && chunkFetcher) {
+            // Chunked format: show skeleton and fetch on demand
+            fetchChunkedText();
         } else {
             // Fallback
             postP.innerText = nextPost.text || "";
@@ -4512,6 +4577,10 @@
     }
 
     function showUpdateToast() {
+        // Don't show if user already dismissed in this session
+        if (sessionStorage.getItem('xiki-update-dismissed')) {
+            return;
+        }
         updateAvailable = true;
         const toast = document.getElementById('updateToast');
         if (toast) {
@@ -4524,7 +4593,8 @@
         if (toast) {
             toast.classList.remove('visible');
         }
-        // Reset flag so future updates can show the toast again
+        // Remember that user dismissed the toast this session
+        sessionStorage.setItem('xiki-update-dismissed', 'true');
         updateAvailable = false;
     }
 
