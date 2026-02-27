@@ -84,6 +84,10 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
   if (event.data?.type === 'GET_CACHE_SIZE') {
+    if (!event.ports?.[0]) {
+      console.warn('GET_CACHE_SIZE: No MessagePort provided');
+      return;
+    }
     getCacheSize().then(size => {
       event.ports[0].postMessage({ type: 'CACHE_SIZE', size });
     });
@@ -98,7 +102,10 @@ async function staleWhileRevalidate(request, cacheName) {
   
   const fetchPromise = fetch(request).then(response => {
     if (response.ok) {
-      cache.put(request, response.clone());
+      cache.put(request, response.clone()).catch(err => {
+        // Handle quota errors gracefully - cache is full but response still works
+        console.warn('Cache put failed (quota?):', err.message);
+      });
       // Notify about update (for index.html)
       notifyClients({ 
         type: 'CONTENT_UPDATED', 
@@ -186,7 +193,8 @@ async function enforceCacheLimit(cache, maxSize) {
     }
   }
   
-  // LRU eviction: delete oldest entries until under limit
+  // FIFO eviction: delete entries in cache.keys() order until under limit
+  // Note: This is not true LRU - cache.keys() order is insertion order, not access order
   while (totalSize > maxSize && entries.length > 0) {
     const oldest = entries.shift();
     await cache.delete(oldest.request);

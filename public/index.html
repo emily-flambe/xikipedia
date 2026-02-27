@@ -3810,6 +3810,8 @@
         if (toast) {
             toast.classList.remove('visible');
         }
+        // Reset flag so future updates can show the toast again
+        updateAvailable = false;
     }
 
     // Online/offline status tracking and UI setup (needs DOM)
@@ -3858,15 +3860,15 @@
     });
 </script>
     <!-- Offline indicator -->
-    <div id="offlineIndicator" role="status" aria-live="polite">
+    <div id="offlineIndicator" role="status" aria-live="polite" data-testid="offlineIndicator">
         You're offline
     </div>
 
     <!-- Update toast -->
-    <div id="updateToast" role="alert" aria-live="assertive">
+    <div id="updateToast" role="alert" aria-live="assertive" data-testid="updateToast">
         <span>A new version is available!</span>
-        <button id="updateBtn">Refresh to update</button>
-        <button class="dismiss" id="updateDismiss">Not now</button>
+        <button id="updateBtn" aria-label="Refresh page to apply update">Refresh to update</button>
+        <button class="dismiss" id="updateDismiss" aria-label="Dismiss update notification">Not now</button>
     </div>
 </body>
 </html>
