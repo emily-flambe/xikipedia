@@ -1335,7 +1335,7 @@
         </div>
         <p>
             <strong>Xikipedia</strong> is a pseudo social media feed that algorithmically shows you content from 
-            <a href="https://simple.wikipedia.org/">Simple Wikipedia</a>. It is made as a demonstration of how 
+            <a href="https://simple.wikipedia.org/">Simple Wikipedia</a> (click any article to read the full version on <a href="https://en.wikipedia.org/">Wikipedia</a>). It is made as a demonstration of how 
             even a basic non-ML algorithm with no data from other users can quickly learn what you engage with 
             to suggest you more similar content. No data is collected or shared here, the algorithm runs locally 
             and the data disappears once you refresh or close the tab.
@@ -2412,7 +2412,7 @@
         postDiv.setAttribute("aria-label", `Article: ${nextPost.title}. Press Enter to open on Wikipedia.`);
 
         const openWikipedia = () => {
-            window.open(`https://simple.wikipedia.org/wiki/${nextPost.title.replace(/ /g, '_')}`);
+            window.open(`https://en.wikipedia.org/wiki/${nextPost.title.replace(/ /g, '_')}`);
             if (!postDiv.dataset.engaged) {
                 postDiv.dataset.engaged = engagePost(nextPost, 75);
             }
