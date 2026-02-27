@@ -52,6 +52,13 @@
             height: fit-content;
             padding-top: env(safe-area-inset-top, 0px);
         }
+        @media (max-width: 650px) {
+            .posts {
+                max-width: 100%;
+                border-left: none;
+                border-right: none;
+            }
+        }
         .posts:has(.post) {
             margin-bottom: 1000px;
         }
