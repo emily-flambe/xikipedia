@@ -357,15 +357,34 @@
             opacity: 1;
         }
         .recommendation-reason {
-            font-size: 12px;
-            color: var(--accent-color);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
             margin: 4px 0 8px 0;
-            font-style: italic;
-            opacity: 0.9;
-            background: var(--bg-secondary, #192734);
             padding: 6px 10px;
+            background: var(--bg-secondary, #192734);
             border-radius: 8px;
             border-left: 3px solid var(--accent-color, #2cafff);
+        }
+        .category-chip {
+            font-size: 11px;
+            color: var(--text-primary);
+            background: var(--bg-primary, #15202B);
+            border: 1px solid var(--accent-color, #2cafff);
+            border-radius: 12px;
+            padding: 3px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .category-chip:hover {
+            background: var(--accent-color, #2cafff);
+            color: #fff;
+        }
+        .category-chip.blocked {
+            background: #dc2626;
+            border-color: #dc2626;
+            color: #fff;
+            cursor: default;
         }
         #themeToggle {
             position: fixed;
@@ -546,12 +565,24 @@
             background: #2cafff;
             border: none;
             cursor: pointer;
-            z-index: 100;
+            z-index: 250;
             display: flex;
             align-items: center;
             justify-content: center;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
             transition: transform 0.2s, opacity 0.2s;
+        }
+        @media (max-width: 600px) {
+            .floating-btn {
+                width: 56px;
+                height: 56px;
+            }
+            #refreshBtn {
+                bottom: 20px !important;
+            }
+            #exploreBtn {
+                bottom: 86px !important;
+            }
         }
         .floating-btn:hover {
             transform: scale(1.1);
@@ -903,6 +934,46 @@
             margin-top: 4px;
             opacity: 0.7;
         }
+        
+        /* === Filter Presets === */
+        .filter-presets-section {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color, #38444D);
+        }
+        .section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary, #8899AA);
+            margin-bottom: 8px;
+        }
+        .presets-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .preset-btn {
+            font-size: 10px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color, #38444D);
+            background: var(--bg-primary, #15202B);
+            color: var(--text-secondary, #8899AA);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+        .preset-btn:hover {
+            border-color: var(--accent-color, #2cafff);
+            color: var(--text-primary);
+        }
+        .preset-btn.active {
+            background: var(--accent-color, #2cafff);
+            border-color: var(--accent-color, #2cafff);
+            color: #fff;
+        }
 
         /* === Feature 4: Mobile sidebar drawer === */
         #statsToggleBtn {
@@ -1236,6 +1307,78 @@
         "surnames": -1000,
     };
     const hiddenCategories = new Set();
+    
+    // Filter presets - pre-built category groups
+    const filterPresets = {
+        noDark: {
+            name: "🚫 No dark topics",
+            categories: ["war", "wars", "death", "deaths", "murder", "murders", "crime", "crimes", 
+                        "disaster", "disasters", "disease", "diseases", "terrorism", "genocide",
+                        "violence", "accidents", "famine", "poverty", "torture", "execution"]
+        },
+        noPolitics: {
+            name: "🏛️ No politics",
+            categories: ["politicians", "politics", "political parties", "elections", "governments",
+                        "presidents", "prime ministers", "senators", "congress", "parliament",
+                        "democrats", "republicans", "conservatives", "liberals"]
+        },
+        stemFocus: {
+            name: "🔬 STEM boost",
+            categories: ["science", "technology", "mathematics", "engineering", "physics", 
+                        "chemistry", "biology", "computer science", "astronomy", "medicine"]
+        },
+        cultureFocus: {
+            name: "🎨 Culture boost",
+            categories: ["art", "music", "film", "literature", "theatre", "dance", 
+                        "painting", "sculpture", "poetry", "novels", "architecture"]
+        }
+    };
+    
+    // Active filter presets
+    const activePresets = new Set();
+    
+    // Save blocked categories to localStorage
+    function saveBlockedCategories() {
+        localStorage.setItem('xiki_blocked_categories', JSON.stringify(Array.from(hiddenCategories)));
+        localStorage.setItem('xiki_active_presets', JSON.stringify(Array.from(activePresets)));
+    }
+    
+    // Load blocked categories from localStorage
+    function loadBlockedCategories() {
+        try {
+            const saved = localStorage.getItem('xiki_blocked_categories');
+            if (saved) {
+                JSON.parse(saved).forEach(cat => hiddenCategories.add(cat));
+            }
+            const savedPresets = localStorage.getItem('xiki_active_presets');
+            if (savedPresets) {
+                JSON.parse(savedPresets).forEach(p => activePresets.add(p));
+            }
+        } catch (e) {
+            console.warn('Failed to load blocked categories:', e);
+        }
+    }
+    
+    // Apply a filter preset
+    function toggleFilterPreset(presetKey) {
+        const preset = filterPresets[presetKey];
+        if (!preset) return;
+        
+        if (activePresets.has(presetKey)) {
+            // Disable preset - remove categories
+            activePresets.delete(presetKey);
+            preset.categories.forEach(cat => hiddenCategories.delete(cat));
+            showToast(`Disabled: ${preset.name}`);
+        } else {
+            // Enable preset - add categories
+            activePresets.add(presetKey);
+            preset.categories.forEach(cat => hiddenCategories.add(cat));
+            showToast(`Enabled: ${preset.name}`);
+        }
+        saveBlockedCategories();
+        scheduleEngagementUpdate();
+    }
+    
     const defaultCategories = [
         "nature", "science", "animals", "anthropology", "places",
         "sociology", "art", "mathematics", "games", "technology",
@@ -1655,6 +1798,36 @@
         sliderSection.appendChild(hint);
         statsEl.appendChild(sliderSection);
 
+        // Filter presets section
+        const presetsSection = document.createElement("div");
+        presetsSection.classList.add("filter-presets-section");
+        
+        const presetsLabel = document.createElement("div");
+        presetsLabel.classList.add("section-label");
+        presetsLabel.textContent = "Quick Filters";
+        presetsSection.appendChild(presetsLabel);
+        
+        const presetsGrid = document.createElement("div");
+        presetsGrid.classList.add("presets-grid");
+        
+        Object.entries(filterPresets).forEach(([key, preset]) => {
+            const btn = document.createElement("button");
+            btn.classList.add("preset-btn");
+            if (activePresets.has(key)) btn.classList.add("active");
+            btn.textContent = preset.name;
+            btn.setAttribute("aria-pressed", activePresets.has(key));
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                toggleFilterPreset(key);
+                btn.classList.toggle("active");
+                btn.setAttribute("aria-pressed", activePresets.has(key));
+            };
+            presetsGrid.appendChild(btn);
+        });
+        
+        presetsSection.appendChild(presetsGrid);
+        statsEl.appendChild(presetsSection);
+
         const sorted = Object.entries(categoryScores)
             .filter(([k, v]) => v && !hiddenCategories.has(k))
             .sort((a, b) => b[1] - a[1]);
@@ -2057,21 +2230,41 @@
             whyBtn.setAttribute("aria-label", "Why was this recommended?");
             whyBtn.setAttribute("aria-expanded", "false");
             
-            const reasonP = document.createElement("p");
-            reasonP.classList.add("recommendation-reason");
-            reasonP.style.display = "none";
-            reasonP.innerText = nextPost.recommendedBecause.join(", ");
+            const reasonDiv = document.createElement("div");
+            reasonDiv.classList.add("recommendation-reason");
+            reasonDiv.style.display = "none";
+            
+            // Create clickable category chips
+            nextPost.recommendedBecause.forEach((cat, idx) => {
+                const chip = document.createElement("button");
+                chip.classList.add("category-chip");
+                chip.textContent = cat;
+                chip.setAttribute("aria-label", `Block ${cat}`);
+                chip.title = "Click to block this category";
+                chip.onclick = (e) => {
+                    e.stopPropagation();
+                    // Find the raw category name (before convertCat)
+                    const rawCat = [...nextPost.allCategories].find(c => convertCat(c) === cat) || cat;
+                    hiddenCategories.add(rawCat);
+                    saveBlockedCategories();
+                    chip.classList.add("blocked");
+                    chip.textContent = `🚫 ${cat}`;
+                    showToast(`Blocked: ${cat}`);
+                    scheduleEngagementUpdate();
+                };
+                reasonDiv.appendChild(chip);
+            });
             
             whyBtn.onclick = (e) => {
                 e.stopPropagation();
-                const isExpanded = reasonP.style.display !== "none";
-                reasonP.style.display = isExpanded ? "none" : "block";
+                const isExpanded = reasonDiv.style.display !== "none";
+                reasonDiv.style.display = isExpanded ? "none" : "flex";
                 whyBtn.setAttribute("aria-expanded", !isExpanded);
                 whyBtn.innerText = isExpanded ? "Why?" : "×";
             };
             
             postDiv.appendChild(whyBtn);
-            postDiv.appendChild(reasonP);
+            postDiv.appendChild(reasonDiv);
         }
 
         postDiv.appendChild(postP);
@@ -2952,6 +3145,7 @@
     async function main() {
         // Load persisted seen posts before anything else
         loadSeenPosts();
+        loadBlockedCategories();
 
         startScreen.showPopover();
 
