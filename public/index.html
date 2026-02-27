@@ -1582,6 +1582,11 @@
         localStorage.setItem('xiki_boosted_categories', JSON.stringify(Array.from(boostedCategories)));
         localStorage.setItem('xiki_active_presets', JSON.stringify(Array.from(activePresets)));
         localStorage.setItem('xiki_mood_mode', moodMode);
+        
+        // Sync filters to worker
+        if (algorithmWorker) {
+            algorithmWorker.syncFilters(hiddenCategories, reducedCategories, boostedCategories);
+        }
     }
     
     // Load all category filters from localStorage
@@ -1774,6 +1779,260 @@
             }
         }, 1000);
     }
+
+    // ============================================
+    // WebWorker Algorithm Manager
+    // ============================================
+
+    class AlgorithmWorkerManager {
+        constructor() {
+            this.worker = null;
+            this.pendingRequests = new Map(); // requestId → { resolve, reject, timeout }
+            this.requestIdCounter = 0;
+            this.isReady = false;
+            this.readyPromise = null;
+            this.readyResolve = null;
+            this.syncTimer = null;
+            this.lastScoreSync = 0;
+        }
+
+        // Initialize worker with article data
+        async init(pagesArrData, initialState) {
+            if (typeof Worker === 'undefined') {
+                console.warn('WebWorkers not supported, using fallback');
+                return false;
+            }
+
+            try {
+                this.worker = new Worker('/algorithm-worker.js');
+            } catch (err) {
+                console.warn('Failed to create worker:', err);
+                return false;
+            }
+            
+            // Create ready promise
+            this.readyPromise = new Promise(resolve => {
+                this.readyResolve = resolve;
+            });
+
+            // Set up message handler
+            this.worker.onmessage = (e) => this._handleMessage(e);
+            this.worker.onerror = (e) => this._handleError(e);
+
+            // Prepare data for transfer (Sets → Arrays)
+            const transferData = {
+                pagesArr: pagesArrData.map(p => ({
+                    id: p.id,
+                    title: p.title,
+                    text: p.text,
+                    thumb: p.thumb,
+                    allCategories: [...p.allCategories]
+                })),
+                categoryScores: initialState.categoryScores,
+                seenPostIds: [...initialState.seenPostIds],
+                categoryLastEngaged: initialState.categoryLastEngaged,
+                hiddenCategories: [...initialState.hiddenCategories],
+                reducedCategories: [...initialState.reducedCategories],
+                boostedCategories: [...initialState.boostedCategories],
+                exploredCategories: [...initialState.exploredCategories],
+                algorithmAggressiveness: initialState.algorithmAggressiveness,
+                exploreMode: initialState.exploreMode
+            };
+
+            // Send init message
+            this.worker.postMessage({ type: 'INIT', payload: transferData });
+
+            // Wait for ready signal with timeout
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Worker init timeout')), 30000);
+            });
+
+            try {
+                await Promise.race([this.readyPromise, timeoutPromise]);
+                this.isReady = true;
+                
+                // Start periodic score sync (every 5 seconds)
+                this._startSyncTimer();
+                
+                return true;
+            } catch (err) {
+                console.warn('Worker init failed:', err);
+                this.terminate();
+                return false;
+            }
+        }
+
+        // Request next post (returns Promise)
+        async getNextPost() {
+            if (!this.isReady) {
+                if (this.readyPromise) {
+                    await this.readyPromise;
+                } else {
+                    throw new Error('Worker not initialized');
+                }
+            }
+
+            const requestId = ++this.requestIdCounter;
+            
+            return new Promise((resolve, reject) => {
+                // Timeout after 5 seconds
+                const timeout = setTimeout(() => {
+                    if (this.pendingRequests.has(requestId)) {
+                        this.pendingRequests.delete(requestId);
+                        reject(new Error('Worker request timeout'));
+                    }
+                }, 5000);
+
+                this.pendingRequests.set(requestId, { resolve, reject, timeout });
+                this.worker.postMessage({ type: 'GET_NEXT_POST', requestId });
+            });
+        }
+
+        // Sync category scores to worker (debounced internally)
+        syncScores(categoryScoresData) {
+            if (!this.worker || !this.isReady) return;
+            
+            // Debounce: only sync if 1 second has passed since last sync
+            const now = Date.now();
+            if (now - this.lastScoreSync < 1000) return;
+            this.lastScoreSync = now;
+            
+            this.worker.postMessage({
+                type: 'UPDATE_SCORES',
+                payload: { categoryScores: categoryScoresData }
+            });
+        }
+
+        // Sync filter changes (immediate)
+        syncFilters(hidden, reduced, boosted) {
+            if (!this.worker || !this.isReady) return;
+            this.worker.postMessage({
+                type: 'UPDATE_FILTERS',
+                payload: {
+                    hidden: [...hidden],
+                    reduced: [...reduced],
+                    boosted: [...boosted]
+                }
+            });
+        }
+
+        // Sync settings changes (immediate)
+        syncSettings(aggValue, exploreModeValue) {
+            if (!this.worker || !this.isReady) return;
+            this.worker.postMessage({
+                type: 'UPDATE_SETTINGS',
+                payload: { 
+                    algorithmAggressiveness: aggValue, 
+                    exploreMode: exploreModeValue 
+                }
+            });
+        }
+
+        // Sync explored categories
+        syncExplored(exploredCats) {
+            if (!this.worker || !this.isReady) return;
+            this.worker.postMessage({
+                type: 'SYNC_EXPLORED',
+                payload: { exploredCategories: [...exploredCats] }
+            });
+        }
+
+        // Reset for feed refresh
+        reset() {
+            if (!this.worker || !this.isReady) return;
+            this.worker.postMessage({ type: 'RESET' });
+        }
+
+        // Request seen IDs for persistence
+        requestSeenIds() {
+            if (!this.worker || !this.isReady) return;
+            this.worker.postMessage({ type: 'GET_SEEN_IDS' });
+        }
+
+        // Private: Handle messages from worker
+        _handleMessage(e) {
+            const { type, requestId, payload } = e.data;
+
+            switch (type) {
+                case 'READY':
+                    if (this.readyResolve) {
+                        this.readyResolve();
+                        this.readyResolve = null;
+                    }
+                    break;
+
+                case 'POST_READY':
+                    const pending = this.pendingRequests.get(requestId);
+                    if (pending) {
+                        clearTimeout(pending.timeout);
+                        this.pendingRequests.delete(requestId);
+                        // Reconstruct Set for allCategories
+                        const post = payload.post;
+                        post.allCategories = new Set(post.allCategories);
+                        pending.resolve(post);
+                    }
+                    break;
+
+                case 'SEEN_SYNC':
+                    // Update main thread seenPostIds for persistence
+                    if (payload.seenPostIds) {
+                        payload.seenPostIds.forEach(id => seenPostIds.add(id));
+                        saveSeenPosts();
+                    }
+                    break;
+
+                case 'ERROR':
+                    console.error('Worker error:', payload.message);
+                    if (requestId) {
+                        const pendingReq = this.pendingRequests.get(requestId);
+                        if (pendingReq) {
+                            clearTimeout(pendingReq.timeout);
+                            this.pendingRequests.delete(requestId);
+                            pendingReq.reject(new Error(payload.message));
+                        }
+                    }
+                    break;
+            }
+        }
+
+        // Private: Handle worker errors
+        _handleError(e) {
+            console.error('Worker error event:', e);
+            // Reject all pending requests
+            for (const [id, { reject, timeout }] of this.pendingRequests) {
+                clearTimeout(timeout);
+                reject(new Error('Worker crashed'));
+            }
+            this.pendingRequests.clear();
+            this.isReady = false;
+        }
+
+        // Private: Periodic score sync
+        _startSyncTimer() {
+            this.syncTimer = setInterval(() => {
+                this.syncScores(categoryScores);
+                this.syncExplored(exploredCategories);
+                this.requestSeenIds();
+            }, 5000); // Every 5 seconds
+        }
+
+        // Cleanup
+        terminate() {
+            if (this.syncTimer) {
+                clearInterval(this.syncTimer);
+                this.syncTimer = null;
+            }
+            if (this.worker) {
+                this.worker.terminate();
+                this.worker = null;
+            }
+            this.isReady = false;
+        }
+    }
+
+    // Global worker instance
+    let algorithmWorker = null;
+    let useWorkerAlgorithm = false;
 
     // ============================================
     // Auth state management
@@ -2112,6 +2371,10 @@
             algorithmAggressiveness = parseInt(e.target.value, 10);
             sliderLabel.querySelector(".algo-slider-value").textContent = `${algorithmAggressiveness}%`;
             savePreferences();
+            // Sync to worker
+            if (algorithmWorker) {
+                algorithmWorker.syncSettings(algorithmAggressiveness, exploreMode);
+            }
         };
 
         const scaleLabels = document.createElement("div");
@@ -2339,6 +2602,12 @@
             }
         });
         savePreferences();
+        
+        // Sync to worker (debounced internally)
+        if (algorithmWorker) {
+            algorithmWorker.syncScores(categoryScores);
+        }
+        
         return amount;
     }
 
@@ -2464,8 +2733,23 @@
     }
 
     // Create and render a post element
-    function createNextPost(specificPost = null) {
-        const nextPost = specificPost || getNextPost();
+    async function createNextPost(specificPost = null) {
+        // Prevent rapid duplicate calls
+        if (postCreationInProgress && !specificPost) {
+            pendingPostCreation = true;
+            return;
+        }
+        
+        postCreationInProgress = true;
+        
+        let nextPost;
+        try {
+            nextPost = specificPost || await getNextPostAsync();
+        } catch (err) {
+            console.error('Failed to get next post:', err);
+            postCreationInProgress = false;
+            return;
+        }
         const postDiv = document.createElement("article");
         const postTitle = document.createElement("h1");
         const postP = document.createElement("p");
@@ -2761,6 +3045,18 @@
         if (viewedHistory.length > 50) viewedHistory.pop(); // Keep last 50
         updateSessionStats();
         updateHistoryUI();
+        
+        // Post creation complete
+        postCreationInProgress = false;
+        
+        // If another request came in while we were working, handle it
+        if (pendingPostCreation) {
+            pendingPostCreation = false;
+            // Check if we still need more posts
+            if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+                createNextPost();
+            }
+        }
     }
 
     // Mark a post as seen (hard block + persist)
@@ -2948,6 +3244,24 @@
         return bestPost;
     }
 
+    // Async wrapper for algorithm (worker or fallback)
+    async function getNextPostAsync() {
+        if (useWorkerAlgorithm && algorithmWorker?.isReady) {
+            try {
+                return await algorithmWorker.getNextPost();
+            } catch (err) {
+                console.warn('Worker failed, falling back to sync:', err);
+                // Fall through to synchronous version
+            }
+        }
+        // Fallback: original synchronous algorithm
+        return getNextPost();
+    }
+
+    // Post creation queue to prevent rapid duplicate calls
+    let postCreationInProgress = false;
+    let pendingPostCreation = false;
+
     // Render loop - creates posts as user scrolls
     function render() {
         if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
@@ -3115,6 +3429,12 @@
         lastTopCategory = null;
         consecutiveSameCategory = 0;
         // Note: exploredCategories persists across refresh (intentional)
+        
+        // Reset worker state
+        if (algorithmWorker) {
+            algorithmWorker.reset();
+        }
+        
         // Scroll to top
         window.scrollTo(0, 0);
         // The render loop is already running via rAF, new posts auto-generate
@@ -3493,6 +3813,10 @@
                     algorithmAggressiveness = presets[(currentIdx + 1) % presets.length];
                     scheduleEngagementUpdate();
                     savePreferences();
+                    // Sync to worker
+                    if (algorithmWorker) {
+                        algorithmWorker.syncSettings(algorithmAggressiveness, exploreMode);
+                    }
                     break;
 
                 case 'h': // Toggle history
@@ -3548,6 +3872,10 @@
             exploreBtn.setAttribute("aria-label", exploreMode ? "Exit explore mode" : "Enter explore mode");
             // Show toast feedback
             showToast(exploreMode ? "🎲 Explore mode ON - random articles!" : "🎯 Explore mode OFF - back to personalized");
+            // Sync to worker
+            if (algorithmWorker) {
+                algorithmWorker.syncSettings(algorithmAggressiveness, exploreMode);
+            }
         };
         initKeyboardShortcuts();
         initHistoryToggle();
@@ -3657,6 +3985,31 @@
         loading.remove();
         document.getElementById('loadingProgress').style.display = 'none';
         document.getElementById('loadingDetails').innerText = `${wikiLen.toLocaleString()} articles ready`;
+        
+        // Initialize WebWorker for algorithm (in background during start screen)
+        algorithmWorker = new AlgorithmWorkerManager();
+        const workerInitState = {
+            categoryScores,
+            seenPostIds,
+            categoryLastEngaged,
+            hiddenCategories,
+            reducedCategories,
+            boostedCategories,
+            exploredCategories,
+            algorithmAggressiveness,
+            exploreMode
+        };
+
+        algorithmWorker.init(pagesArr, workerInitState)
+            .then(success => {
+                useWorkerAlgorithm = success;
+                console.log('Algorithm worker:', success ? 'enabled' : 'fallback mode');
+            })
+            .catch(err => {
+                console.warn('Worker init failed:', err);
+                useWorkerAlgorithm = false;
+            });
+        
         startBtn.removeAttribute("disabled");
         categorySearchInput.removeAttribute("disabled");
         startBtn.innerText = "I'm an adult, continue";
@@ -3752,6 +4105,21 @@
     Object.defineProperty(window, 'exploreMode', {
         get: () => exploreMode,
         set: (v) => { exploreMode = v; }
+    });
+    
+    // Expose worker for testing/debugging
+    Object.defineProperty(window, 'algorithmWorker', {
+        get: () => algorithmWorker
+    });
+    Object.defineProperty(window, 'useWorkerAlgorithm', {
+        get: () => useWorkerAlgorithm
+    });
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (algorithmWorker) {
+            algorithmWorker.terminate();
+        }
     });
 
     window.onload = main;
