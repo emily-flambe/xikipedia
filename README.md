@@ -158,10 +158,11 @@ wget https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.
 node scripts/generate-chunked-data.mjs --dump enwiki-latest-pages-articles.xml.bz2
 ```
 
-3. **Resume if Interrupted**
+3. **Resume if Interrupted** (partial support)
 ```bash
 node scripts/generate-chunked-data.mjs --dump enwiki-latest-pages-articles.xml.bz2 --resume
 ```
+> ⚠️ **Note:** Resume currently restores counters and chunk position but does not restore the accumulated index state (pages, categories). This means `index.json` will only contain articles processed after resumption. For a complete index, run the full generation without interruption or re-process from the beginning.
 
 ### Output Structure
 ```

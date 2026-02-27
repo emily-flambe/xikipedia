@@ -27,7 +27,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { pipeline } from 'stream/promises';
 import { createBrotliCompress, constants as zlibConstants } from 'zlib';
 
 import {
@@ -326,11 +325,15 @@ async function writeIndex(state, compress = true) {
   console.log('\nBuilding category hierarchy...');
   state.buildCategoryHierarchy();
   
+  const chunkCount = state.pages.length === 0
+    ? 0
+    : Math.max(...state.pages.map(p => p[2])) + 1;
+  
   const index = {
     version: VERSION,
     articleCount: state.pages.length,
     chunkSize: CHUNK_SIZE,
-    chunkCount: Math.max(...state.pages.map(p => p[2])) + 1,
+    chunkCount: chunkCount,
     pages: state.pages,
     subCategories: state.subCategories,
     noPageMaps: state.noPageMaps

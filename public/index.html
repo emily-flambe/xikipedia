@@ -3139,6 +3139,7 @@
                     retryBtn.setAttribute("aria-label", "Retry loading article text");
                     retryBtn.onclick = (e) => {
                         e.stopPropagation();
+                        retryBtn.disabled = true;
                         postP.classList.remove("load-error");
                         fetchChunkedText(); // Recursively retry
                     };

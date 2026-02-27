@@ -9,7 +9,6 @@ import { createReadStream } from 'fs';
 import { createBrotliDecompress, createGunzip } from 'zlib';
 import { Transform } from 'stream';
 import { spawn } from 'child_process';
-import { createInterface } from 'readline';
 
 /**
  * Extracts plain text intro from WikiText markup.
