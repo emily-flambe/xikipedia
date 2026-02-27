@@ -1300,6 +1300,39 @@
             border-color: #ff6b6b;
         }
 
+        /* === Skeleton loading animation for post text (chunked format) === */
+        .post p.skeleton {
+            background: linear-gradient(
+                90deg,
+                var(--bg-tertiary) 25%,
+                var(--bg-secondary) 50%,
+                var(--bg-tertiary) 75%
+            );
+            background-size: 200% 100%;
+            animation: skeleton-shimmer 1.5s infinite;
+            border-radius: 4px;
+            min-height: 4em;
+            color: transparent;
+        }
+
+        .post p.skeleton::before {
+            content: "Loading article content...";
+            visibility: hidden;
+        }
+
+        @keyframes skeleton-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Reduced motion preference */
+        @media (prefers-reduced-motion: reduce) {
+            .post p.skeleton {
+                animation: none;
+                background: var(--bg-tertiary);
+            }
+        }
+
         /* === Offline Indicator === */
         #offlineIndicator {
             position: fixed;
@@ -2033,6 +2066,216 @@
     // Global worker instance
     let algorithmWorker = null;
     let useWorkerAlgorithm = false;
+
+    // ============================================
+    // Chunked Data Format Support (Phase 3)
+    // ============================================
+
+    // Detect data format from URL param or localStorage
+    function getDataFormat() {
+        const urlParam = new URLSearchParams(window.location.search).get('format');
+        if (urlParam === 'chunked' || urlParam === 'simple') {
+            return urlParam;
+        }
+        return localStorage.getItem('xiki-data-format') || 'simple';
+    }
+
+    // LRU Cache for chunk data
+    class ChunkCache {
+        constructor(maxChunks = 10) {
+            this.maxChunks = maxChunks;
+            this.cache = new Map(); // chunkId → ChunkData
+            this.accessOrder = [];  // LRU tracking: most recent at end
+        }
+
+        get(chunkId) {
+            const data = this.cache.get(chunkId);
+            if (data) {
+                // Move to end (most recently used)
+                this.accessOrder = this.accessOrder.filter(id => id !== chunkId);
+                this.accessOrder.push(chunkId);
+            }
+            return data;
+        }
+
+        set(chunkId, data) {
+            // Evict if at capacity
+            while (this.cache.size >= this.maxChunks && this.accessOrder.length > 0) {
+                const evictId = this.accessOrder.shift();
+                this.cache.delete(evictId);
+                console.log(`ChunkCache: evicted chunk ${evictId}`);
+            }
+
+            this.cache.set(chunkId, data);
+            this.accessOrder.push(chunkId);
+        }
+
+        has(chunkId) {
+            return this.cache.has(chunkId);
+        }
+
+        getArticleText(pageId, chunkId) {
+            const chunk = this.get(chunkId);
+            return chunk?.articles?.[String(pageId)]?.text;
+        }
+
+        // Memory pressure callback
+        reduceSize(targetChunks = 5) {
+            while (this.cache.size > targetChunks && this.accessOrder.length > 0) {
+                const evictId = this.accessOrder.shift();
+                this.cache.delete(evictId);
+            }
+        }
+
+        // Stats for debugging
+        getStats() {
+            return {
+                chunksLoaded: this.cache.size,
+                maxChunks: this.maxChunks,
+                totalArticlesCached: Array.from(this.cache.values())
+                    .reduce((sum, chunk) => sum + Object.keys(chunk.articles || {}).length, 0)
+            };
+        }
+    }
+
+    // Chunk Fetcher with batching and concurrency limit
+    class ChunkFetcher {
+        constructor(cache, maxConcurrent = 2) {
+            this.cache = cache;
+            this.maxConcurrent = maxConcurrent;
+            this.pending = new Map();    // chunkId → Promise
+            this.queue = [];             // chunkIds waiting to be fetched
+            this.callbacks = new Map();  // chunkId → [callbacks]
+            this.batchTimeout = null;
+            this.activeFetches = 0;
+        }
+
+        // Get chunk URL from chunk ID
+        getChunkUrl(chunkId) {
+            return `/articles/chunk-${String(chunkId).padStart(6, '0')}.json`;
+        }
+
+        // Request an article's text (batches requests within 100ms window)
+        async getArticleText(pageId, chunkId) {
+            // Check cache first
+            const cached = this.cache.getArticleText(pageId, chunkId);
+            if (cached !== undefined) {
+                return cached;
+            }
+
+            // Check if this chunk is already being fetched
+            if (this.pending.has(chunkId)) {
+                // Wait for it and then get the text
+                await this.pending.get(chunkId);
+                return this.cache.getArticleText(pageId, chunkId);
+            }
+
+            // Queue chunk for fetching with callback
+            return new Promise((resolve, reject) => {
+                if (!this.callbacks.has(chunkId)) {
+                    this.callbacks.set(chunkId, []);
+                    this.queue.push(chunkId);
+                }
+                this.callbacks.get(chunkId).push({ pageId, resolve, reject });
+
+                // Start batch timeout if not already running
+                if (!this.batchTimeout) {
+                    this.batchTimeout = setTimeout(() => {
+                        this.batchTimeout = null;
+                        this.processQueue();
+                    }, 100);
+                }
+
+                // If queue is large enough, process immediately
+                if (this.queue.length >= 3) {
+                    clearTimeout(this.batchTimeout);
+                    this.batchTimeout = null;
+                    this.processQueue();
+                }
+            });
+        }
+
+        // Process queued chunk requests
+        async processQueue() {
+            while (this.queue.length > 0 && this.activeFetches < this.maxConcurrent) {
+                const chunkId = this.queue.shift();
+                if (this.cache.has(chunkId) || this.pending.has(chunkId)) {
+                    // Already cached or being fetched, resolve callbacks
+                    this.resolveCallbacks(chunkId);
+                    continue;
+                }
+
+                this.activeFetches++;
+                const fetchPromise = this.fetchChunk(chunkId);
+                this.pending.set(chunkId, fetchPromise);
+
+                fetchPromise
+                    .then(() => {
+                        this.resolveCallbacks(chunkId);
+                    })
+                    .catch(err => {
+                        this.rejectCallbacks(chunkId, err);
+                    })
+                    .finally(() => {
+                        this.pending.delete(chunkId);
+                        this.activeFetches--;
+                        // Continue processing queue
+                        this.processQueue();
+                    });
+            }
+        }
+
+        // Fetch a single chunk
+        async fetchChunk(chunkId) {
+            const url = this.getChunkUrl(chunkId);
+            const resp = await fetch(url, { cache: 'force-cache' });
+            if (!resp.ok) {
+                throw new Error(`Failed to fetch chunk ${chunkId}: ${resp.status}`);
+            }
+            const data = await resp.json();
+            this.cache.set(chunkId, data);
+            return data;
+        }
+
+        // Resolve all pending callbacks for a chunk
+        resolveCallbacks(chunkId) {
+            const callbacks = this.callbacks.get(chunkId);
+            if (!callbacks) return;
+            this.callbacks.delete(chunkId);
+
+            for (const { pageId, resolve } of callbacks) {
+                const text = this.cache.getArticleText(pageId, chunkId);
+                resolve(text);
+            }
+        }
+
+        // Reject all pending callbacks for a chunk
+        rejectCallbacks(chunkId, err) {
+            const callbacks = this.callbacks.get(chunkId);
+            if (!callbacks) return;
+            this.callbacks.delete(chunkId);
+
+            for (const { reject } of callbacks) {
+                reject(err);
+            }
+        }
+
+        // Prefetch a chunk (low priority)
+        prefetch(chunkId) {
+            if (this.cache.has(chunkId) || this.pending.has(chunkId)) return;
+            if (this.queue.includes(chunkId)) return;
+            this.queue.push(chunkId);
+            // Don't start immediately - let it batch with other requests
+        }
+    }
+
+    // Global instances for chunked format
+    let chunkCache = null;
+    let chunkFetcher = null;
+    let isChunkedFormat = false;
+
+    // Chunk size constant (matches index.json)
+    const CHUNK_SIZE = 10000;
 
     // ============================================
     // Auth state management
@@ -2820,7 +3063,37 @@
         };
 
         postTitle.innerText = nextPost.title;
-        postP.innerText = nextPost.text;
+        
+        // Handle text loading (supports both simple and chunked formats)
+        if (nextPost.text) {
+            // Text already loaded (simple format or cached chunk)
+            postP.innerText = nextPost.text;
+        } else if (isChunkedFormat && nextPost.chunkId !== undefined && chunkFetcher) {
+            // Chunked format: show skeleton and fetch on demand
+            postP.classList.add("skeleton");
+            postP.setAttribute("aria-busy", "true");
+            postP.innerText = ""; // Skeleton CSS handles appearance
+            
+            // Fetch text asynchronously
+            chunkFetcher.getArticleText(nextPost.id, nextPost.chunkId)
+                .then(text => {
+                    postP.classList.remove("skeleton");
+                    postP.removeAttribute("aria-busy");
+                    postP.innerText = text || "[Article text unavailable]";
+                    // Cache the text on the article object for future reference
+                    nextPost.text = text;
+                })
+                .catch(err => {
+                    console.warn('Failed to load article text:', err);
+                    postP.classList.remove("skeleton");
+                    postP.removeAttribute("aria-busy");
+                    postP.innerText = "[Failed to load article text]";
+                });
+        } else {
+            // Fallback
+            postP.innerText = nextPost.text || "";
+        }
+        
         postYes.innerText = "Like";
         postYes.dataset.testid = "like-button";
         postYes.setAttribute("aria-label", `Like this article: ${nextPost.title}`);
@@ -3928,58 +4201,125 @@
         }
 
         defaultCategories.forEach(e => addPickableCategory(e));
-        startBtn.innerText = "Xikipedia is loading... (downloading ~40MB of data)";
-
-        const smoldata = await getFileWithProgress("smoldata.json");
-
-        const subCategories = smoldata.subCategories;
-        noPageMaps = smoldata.noPageMaps;
-        delete smoldata.subCategories;
-        delete smoldata.noPageMaps;
-
-        let i = 0;
-        const wikiLen = smoldata.pages.length;
-        const loading = document.querySelector("#loading");
-        let lastFrame = Date.now();
-
+        
+        // Detect data format (simple vs chunked)
+        const dataFormat = getDataFormat();
+        isChunkedFormat = dataFormat === 'chunked';
+        console.log('Data format:', dataFormat);
+        
         const loadingDetails = document.getElementById('loadingDetails');
         const loadingProgressBar = document.getElementById('loadingProgressBar');
-
-        let filteredCount = 0;
-
-        while (smoldata.pages.length) {
-            const e = smoldata.pages.pop();
-
-            // Skip articles with very short text (less than 100 chars)
-            if (e[2] && e[2].length < 100) {
-                filteredCount++;
+        const loading = document.querySelector("#loading");
+        
+        let subCategories;
+        let wikiLen;
+        
+        if (isChunkedFormat) {
+            // ============================================
+            // Chunked format: load index.json
+            // ============================================
+            startBtn.innerText = "Xikipedia is loading... (downloading index)";
+            
+            const indexData = await getFileWithProgress("index.json");
+            
+            subCategories = indexData.subCategories;
+            noPageMaps = indexData.noPageMaps || {};
+            wikiLen = indexData.pages.length;
+            
+            // Initialize chunk cache and fetcher
+            chunkCache = new ChunkCache(10);
+            chunkFetcher = new ChunkFetcher(chunkCache, 2);
+            
+            let i = 0;
+            let lastFrame = Date.now();
+            
+            // Process pages - format: [title, pageId, chunkId, thumbHash, categories]
+            while (indexData.pages.length) {
+                const e = indexData.pages.pop();
+                
+                const tempPage = {
+                    title: e[0],
+                    id: e[1],
+                    chunkId: e[2],
+                    thumbHash: e[3],
+                    categories: e[4] || [],
+                    text: null,  // Will be loaded on-demand from chunks
+                    // Reconstruct thumb URL from hash if present
+                    thumb: e[3] ? null : null  // thumbHash is just for future use, not a full filename
+                };
+                
+                if (i % 1000 === 0 && Date.now() - lastFrame > 20) {
+                    const percent = (i / wikiLen * 100).toFixed(0);
+                    startBtn.innerText = `Processing articles... ${percent}%`;
+                    loadingProgressBar.style.width = percent + '%';
+                    loadingDetails.innerText = `${i.toLocaleString()} of ${wikiLen.toLocaleString()} articles`;
+                    await new Promise(r => requestAnimationFrame(r));
+                    lastFrame = Date.now();
+                }
                 i++;
-                continue;
+                
+                tempPage.allCategories = new Set(recursiveCategories(subCategories, [...tempPage.categories], 0));
+                tempPage.allCategories.add(`p:${tempPage.id}`);
+                pagesArr.push(tempPage);
             }
+            
+            console.log('Chunked format initialized:', {
+                articles: pagesArr.length,
+                chunkCount: Math.ceil(pagesArr.length / CHUNK_SIZE)
+            });
+            
+        } else {
+            // ============================================
+            // Simple format: load smoldata.json (existing behavior)
+            // ============================================
+            startBtn.innerText = "Xikipedia is loading... (downloading ~40MB of data)";
 
-            const tempPage = {
-                title: e[0],
-                id: e[1],
-                text: e[2],
-                thumb: e[3],
-                categories: e[4],
-                links: e[5]
-            };
+            const smoldata = await getFileWithProgress("smoldata.json");
 
-            if (i % 1000 === 0 && Date.now() - lastFrame > 20) {
-                const percent = (i / wikiLen * 100).toFixed(0);
-                startBtn.innerText = `Processing articles... ${percent}%`;
-                loadingProgressBar.style.width = percent + '%';
-                loadingDetails.innerText = `${i.toLocaleString()} of ${wikiLen.toLocaleString()} articles`;
-                await new Promise(r => requestAnimationFrame(r));
-                lastFrame = Date.now();
+            subCategories = smoldata.subCategories;
+            noPageMaps = smoldata.noPageMaps;
+            delete smoldata.subCategories;
+            delete smoldata.noPageMaps;
+            wikiLen = smoldata.pages.length;
+
+            let i = 0;
+            let lastFrame = Date.now();
+            let filteredCount = 0;
+
+            while (smoldata.pages.length) {
+                const e = smoldata.pages.pop();
+
+                // Skip articles with very short text (less than 100 chars)
+                if (e[2] && e[2].length < 100) {
+                    filteredCount++;
+                    i++;
+                    continue;
+                }
+
+                const tempPage = {
+                    title: e[0],
+                    id: e[1],
+                    text: e[2],
+                    thumb: e[3],
+                    categories: e[4],
+                    links: e[5]
+                };
+
+                if (i % 1000 === 0 && Date.now() - lastFrame > 20) {
+                    const percent = (i / wikiLen * 100).toFixed(0);
+                    startBtn.innerText = `Processing articles... ${percent}%`;
+                    loadingProgressBar.style.width = percent + '%';
+                    loadingDetails.innerText = `${i.toLocaleString()} of ${wikiLen.toLocaleString()} articles`;
+                    await new Promise(r => requestAnimationFrame(r));
+                    lastFrame = Date.now();
+                }
+                i++;
+
+                tempPage.allCategories = new Set(recursiveCategories(subCategories, [...tempPage.categories], 0));
+                tempPage.allCategories.add(`p:${tempPage.id}`);
+                tempPage.allCategories.add(...tempPage.links.map(e => `p:${e}`));
+                pagesArr.push(tempPage);
             }
-            i++;
-
-            tempPage.allCategories = new Set(recursiveCategories(subCategories, [...tempPage.categories], 0));
-            tempPage.allCategories.add(`p:${tempPage.id}`);
-            tempPage.allCategories.add(...tempPage.links.map(e => `p:${e}`));
-            pagesArr.push(tempPage);
         }
 
         loading.remove();
@@ -4085,6 +4425,11 @@
     window.hiddenCategories = hiddenCategories;
     window.pagesArr = pagesArr;
     window.seenPostIds = seenPostIds;
+    // Expose chunked format state
+    Object.defineProperty(window, 'isChunkedFormat', { get: () => isChunkedFormat });
+    Object.defineProperty(window, 'chunkCache', { get: () => chunkCache });
+    Object.defineProperty(window, 'chunkFetcher', { get: () => chunkFetcher });
+    window.getDataFormat = getDataFormat;
     // Expose algorithmAggressiveness as getter/setter for testing
     Object.defineProperty(window, 'algorithmAggressiveness', {
         get: () => algorithmAggressiveness,
