@@ -133,6 +133,85 @@ r2_wikipedia_data         Upload to Cloudflare R2 (~215MB)
 ### Setup
 See [dagster_definitions/SETUP.md](./dagster_definitions/SETUP.md) for installation and configuration.
 
+## Full Wikipedia Data Generation
+
+For full English Wikipedia support (~6.8M articles), we use a chunked data format:
+
+### Quick Start (Test Mode)
+```bash
+# Generate test data (100 articles)
+npm run generate-test-data
+
+# Or with custom limit
+node scripts/generate-chunked-data.mjs --test --test-limit 10000
+```
+
+### Full Generation Process
+
+1. **Download Wikipedia Dump** (~21GB compressed)
+```bash
+wget https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
+```
+
+2. **Generate Chunked Data** (takes 4-8 hours)
+```bash
+node scripts/generate-chunked-data.mjs --dump enwiki-latest-pages-articles.xml.bz2
+```
+
+3. **Resume if Interrupted** (partial support)
+```bash
+node scripts/generate-chunked-data.mjs --dump enwiki-latest-pages-articles.xml.bz2 --resume
+```
+> ⚠️ **Note:** Resume currently restores counters and chunk position but does not restore the accumulated index state (pages, categories). This means `index.json` will only contain articles processed after resumption. For a complete index, run the full generation without interruption or re-process from the beginning.
+
+### Output Structure
+```
+public/full-wiki/
+├── index.json       # Article index (~80-100MB compressed)
+├── checkpoint.json  # Resume state
+└── articles/
+    ├── chunk-000000.json.br  # Articles with pageId 0-9999
+    ├── chunk-000001.json.br  # Articles with pageId 10000-19999
+    └── ...                   # ~680 chunk files total
+```
+
+### Data Schema
+
+**index.json** - Lightweight index for fast searching:
+```javascript
+{
+  version: "2.0.0",
+  articleCount: 6800000,
+  chunkSize: 10000,
+  chunkCount: 680,
+  pages: [
+    // Tuple format: [title, pageId, chunkId, thumbHash, categories]
+    ["Article Title", 12345, 1, "abc12345", ["science", "physics"]],
+    ...
+  ],
+  subCategories: { "science": ["physics", "chemistry"], ... },
+  noPageMaps: { "12345": "article title", ... }
+}
+```
+
+**chunk-NNNNNN.json** - Article content:
+```javascript
+{
+  chunkId: 1,
+  articleCount: 10000,
+  articles: {
+    "12345": { text: "Article intro text...", thumb: "Image.jpg" },
+    ...
+  }
+}
+```
+
+### Requirements
+- Node.js 18+ 
+- `bunzip2` for decompression (pre-installed on Linux/Mac)
+- ~50GB free disk space
+- ~4-8 hours processing time
+
 ## License
 
 This recreation follows the original project's licensing. Wikipedia content is CC BY-SA.

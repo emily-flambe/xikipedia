@@ -240,6 +240,7 @@ function serializePost(post) {
         title: post.title,
         text: post.text,
         thumb: post.thumb,
+        chunkId: post.chunkId,  // Include chunkId for chunked format
         allCategories: [...post.allCategories],
         recommendedBecause: post.recommendedBecause,
         score: post.score

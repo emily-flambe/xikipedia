@@ -1,12 +1,86 @@
 import { test, expect, Page } from '@playwright/test';
 
 /**
- * Helper: loads the app, waits for data, clicks start, waits for first post.
+ * Mock data to avoid 40MB download in CI.
+ * Format: { pages: [[title, id, text, thumb, categories, links], ...], subCategories: {}, noPageMaps: {} }
+ */
+function generateMockData() {
+  const pages = [];
+  const categories = ['science', 'nature', 'animals', 'technology', 'music', 'art', 'history', 'sports'];
+  for (let i = 0; i < 200; i++) {
+    const cat1 = categories[i % categories.length];
+    const cat2 = categories[(i + 3) % categories.length];
+    const hasThumb = i % 3 === 0;
+    pages.push([
+      `Test Article ${i}`,
+      i + 100,
+      `This is the text content of article number ${i}. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough to be included in the results.`,
+      hasThumb ? `test_image_${i}.jpg` : null,
+      [cat1, cat2],
+      [((i + 1) % 200) + 100, ((i + 2) % 200) + 100]
+    ]);
+  }
+  return {
+    pages,
+    subCategories: {
+      science: ['physics', 'chemistry', 'biology'],
+      nature: ['animals', 'plants'],
+      animals: ['mammals', 'birds'],
+    },
+    noPageMaps: {}
+  };
+}
+
+const MOCK_DATA = generateMockData();
+const MOCK_JSON = JSON.stringify(MOCK_DATA);
+
+/**
+ * Intercepts the smoldata.json request and serves mock data.
+ */
+async function setupMockRoute(page: Page) {
+  // Unregister service worker IMMEDIATELY to prevent cache-first from bypassing our mock
+  await page.evaluate(async () => {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+    }
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(name => caches.delete(name)));
+    }
+  }).catch(() => {}); // Ignore errors on fresh pages
+
+  // Also set up for future navigations
+  await page.addInitScript(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => registration.unregister());
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.forEach(name => caches.delete(name));
+      });
+    }
+  });
+
+  await page.route('**/smoldata.json', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: MOCK_JSON,
+    });
+  });
+}
+
+/**
+ * Helper: loads the app with mock data, waits for load, clicks start, waits for first post.
  */
 async function startFeed(page: Page) {
+  await setupMockRoute(page);
   await page.goto('/');
   const startBtn = page.locator('[data-testid="start-button"]');
-  await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+  await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
   await startBtn.click();
   await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
   await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
@@ -47,14 +121,13 @@ test.describe('Xikipedia', () => {
   });
 
   test('enables start button after data loads', async ({ page }) => {
-    test.setTimeout(180000); // 3 minutes for data to load
-    
+    await setupMockRoute(page);
     await page.goto('/');
     
     const startBtn = page.locator('[data-testid="start-button"]');
     
     // Wait for button to become enabled (data loaded)
-    await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await expect(startBtn).toContainText(/continue/i);
   });
 
@@ -74,14 +147,13 @@ test.describe('Xikipedia', () => {
   });
 
   test('starts the feed when clicking continue', async ({ page }) => {
-    test.setTimeout(180000); // 3 minutes for data to load
-    
+    await setupMockRoute(page);
     await page.goto('/');
     
     const startBtn = page.locator('[data-testid="start-button"]');
     
     // Wait for button to become enabled
-    await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     
     // Click continue
     await startBtn.click();
@@ -95,12 +167,11 @@ test.describe('Xikipedia', () => {
   });
 
   test('can like a post', async ({ page }) => {
-    test.setTimeout(180000);
-    
+    await setupMockRoute(page);
     await page.goto('/');
     
     const startBtn = page.locator('[data-testid="start-button"]');
-    await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
     
     // Wait for posts
@@ -115,14 +186,13 @@ test.describe('Xikipedia', () => {
   });
 
   test('shows stats sidebar on desktop', async ({ page }) => {
-    test.setTimeout(180000);
-    
     // Set desktop viewport
     await page.setViewportSize({ width: 1200, height: 800 });
+    await setupMockRoute(page);
     await page.goto('/');
     
     const startBtn = page.locator('[data-testid="start-button"]');
-    await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
     
     // Toggle button should be visible
@@ -140,12 +210,11 @@ test.describe('Xikipedia', () => {
   });
 
   test('infinite scroll loads more posts', async ({ page }) => {
-    test.setTimeout(180000);
-    
+    await setupMockRoute(page);
     await page.goto('/');
     
     const startBtn = page.locator('[data-testid="start-button"]');
-    await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
     
     // Wait for initial posts
@@ -164,8 +233,7 @@ test.describe('Xikipedia', () => {
   });
 
   test('category search is enabled after load', async ({ page }) => {
-    test.setTimeout(180000);
-    
+    await setupMockRoute(page);
     await page.goto('/');
     
     const searchInput = page.locator('[data-testid="category-search-input"]');
@@ -175,7 +243,7 @@ test.describe('Xikipedia', () => {
     
     // Wait for data to load
     const startBtn = page.locator('[data-testid="start-button"]');
-    await expect(startBtn).not.toBeDisabled({ timeout: 150000 });
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     
     // Now search should be enabled
     await expect(searchInput).not.toBeDisabled();

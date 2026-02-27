@@ -27,6 +27,33 @@ function uniqueUser(): string {
 
 async function mockSmoldata(page: Page) {
   const mockDataJson = JSON.stringify(MOCK_SMOLDATA);
+
+  // Unregister service worker IMMEDIATELY to prevent cache-first from bypassing our mock
+  await page.evaluate(async () => {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+    }
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(name => caches.delete(name)));
+    }
+  }).catch(() => {}); // Ignore errors on fresh pages
+
+  // Also set up for future navigations
+  await page.addInitScript(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => registration.unregister());
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.forEach(name => caches.delete(name));
+      });
+    }
+  });
+
   await page.route('**/smoldata.json', (route) =>
     route.fulfill({
       status: 200,

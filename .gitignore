@@ -23,6 +23,9 @@ Thumbs.db
 # Large data files (compressed versions)
 *.br
 
+# Generated chunked data (for full Wikipedia)
+public/full-wiki/
+
 # Test output
 playwright-report/
 test-results/
