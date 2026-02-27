@@ -1036,7 +1036,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   /**
    * Generate mock index data for chunked format.
    * Index contains articles without text, only with chunkId.
-   * Format: { format: "chunked", pages: [[title, id, null, thumb, categories, links, chunkId], ...] }
+   * Production format: [title, pageId, chunkId, thumbHash, categories]
    */
   function generateChunkedIndexData() {
     const pages = [];
@@ -1046,14 +1046,13 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
       const cat2 = categories[(i + 3) % categories.length];
       const hasThumb = i % 3 === 0;
       const chunkId = Math.floor(i / 10); // 10 articles per chunk
+      // Format: [title, pageId, chunkId, thumbHash, categories]
       pages.push([
         `Chunked Article ${i}`,
-        i + 1000, // Different IDs from simple format
-        null, // No text in index
-        hasThumb ? `test_image_${i}.jpg` : null,
-        [cat1, cat2],
-        [((i + 1) % 200) + 1000, ((i + 2) % 200) + 1000],
-        chunkId
+        i + 1000, // pageId - different IDs from simple format
+        chunkId,  // chunkId at position [2]
+        hasThumb ? `test_image_${i}.jpg` : null,  // thumbHash
+        [cat1, cat2]  // categories
       ]);
     }
     return {
@@ -1088,10 +1087,11 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
 
   /**
    * Setup routes for chunked format testing.
+   * Note: Chunked format loads index.json (not smoldata.json)
    */
-  async function setupChunkedRoutes(page: Page, options: { failChunk?: number } = {}) {
+  async function setupChunkedRoutes(page: Page, options: { failChunk?: number; delayChunkMs?: number } = {}) {
     // Route index.json for chunked format
-    await page.route('**/smoldata.json', async (route) => {
+    await page.route('**/index.json', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1101,6 +1101,11 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
 
     // Route chunk files
     await page.route('**/articles/chunk-*.json', async (route) => {
+      // Optional delay for testing skeleton state
+      if (options.delayChunkMs) {
+        await new Promise(resolve => setTimeout(resolve, options.delayChunkMs));
+      }
+      
       const url = route.request().url();
       const match = url.match(/chunk-(\d+)\.json/);
       if (match) {
@@ -1128,15 +1133,12 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
 
   /**
    * Start feed with chunked format mock data.
+   * Uses ?format=chunked URL parameter to trigger chunked format loading.
    */
   async function startFeedWithChunkedMock(page: Page, options: { failChunk?: number } = {}) {
     await setupChunkedRoutes(page, options);
-    await page.goto('/');
-
-    // Override DATA_SIZE
-    await page.evaluate((size) => {
-      (window as any).DATA_SIZE = size;
-    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+    // Must use ?format=chunked to trigger chunked format mode
+    await page.goto('/?format=chunked');
 
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
@@ -1147,7 +1149,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
 
   test('chunked format shows skeleton while loading text', async ({ page }) => {
     // Set up route that delays chunk response
-    await page.route('**/smoldata.json', async (route) => {
+    await page.route('**/index.json', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1178,11 +1180,8 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
       }
     });
 
-    await page.goto('/');
-
-    await page.evaluate((size) => {
-      (window as any).DATA_SIZE = size;
-    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+    // Must use ?format=chunked to trigger chunked format mode
+    await page.goto('/?format=chunked');
 
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
@@ -1225,7 +1224,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     // Create a route that fails once, then succeeds
     let failCount = 0;
     
-    await page.route('**/smoldata.json', async (route) => {
+    await page.route('**/index.json', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1259,11 +1258,8 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
       }
     });
 
-    await page.goto('/');
-
-    await page.evaluate((size) => {
-      (window as any).DATA_SIZE = size;
-    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+    // Must use ?format=chunked to trigger chunked format mode
+    await page.goto('/?format=chunked');
 
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
@@ -1291,7 +1287,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     // Create a route that fails once, then succeeds
     let failCount = 0;
     
-    await page.route('**/smoldata.json', async (route) => {
+    await page.route('**/index.json', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1325,11 +1321,8 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
       }
     });
 
-    await page.goto('/');
-
-    await page.evaluate((size) => {
-      (window as any).DATA_SIZE = size;
-    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+    // Must use ?format=chunked to trigger chunked format mode
+    await page.goto('/?format=chunked');
 
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
@@ -1358,12 +1351,14 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   test('chunked format correctly identifies format via isChunkedFormat flag', async ({ page }) => {
     await startFeedWithChunkedMock(page);
 
+    // isChunkedFormat is exposed to window, check it
     const isChunked = await page.evaluate(() => {
       return (window as any).isChunkedFormat;
     });
     
-    // Note: isChunkedFormat is a local variable, not exposed to window
-    // But we can check if chunkCache and chunkFetcher are initialized
+    expect(isChunked).toBe(true);
+    
+    // Also verify chunkCache and chunkFetcher are initialized
     const hasChunkInfra = await page.evaluate(() => {
       return !!(window as any).chunkCache && !!(window as any).chunkFetcher;
     });
@@ -1375,7 +1370,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     // Track chunk fetches
     let chunkFetchCount = 0;
     
-    await page.route('**/smoldata.json', async (route) => {
+    await page.route('**/index.json', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1398,11 +1393,8 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
       }
     });
 
-    await page.goto('/');
-
-    await page.evaluate((size) => {
-      (window as any).DATA_SIZE = size;
-    }, CHUNKED_INDEX_JSON.length).catch(() => {});
+    // Must use ?format=chunked to trigger chunked format mode
+    await page.goto('/?format=chunked');
 
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
