@@ -457,7 +457,7 @@ These are ideas for extending beyond the original:
 ### Technical
 - [x] Service worker for offline support (PR #43, #44, #45)
 - [ ] Incremental dataset updates
-- [ ] WebWorker for algorithm processing
+- [x] WebWorker for algorithm processing (PR #48)
 
 ---
 
