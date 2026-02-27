@@ -9,7 +9,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  workers: isCI ? 4 : undefined,
+  workers: isCI ? 1 : undefined, // Reduced from 4 to avoid R2 rate limiting
   reporter: 'html',
   timeout: 60000, // 1 minute default, tests can override if needed
   
