@@ -534,6 +534,47 @@ async function handleDeleteAccount(
   return jsonResponse({ success: true });
 }
 
+// ─── R2 File Serving Helper ──────────────────────────────────────────
+
+async function serveR2File(
+  env: Env,
+  key: string,
+  request: Request,
+  options: { cacheControl: string; contentType: string }
+): Promise<Response> {
+  const object = await env.DATA_BUCKET.get(key);
+
+  if (!object) {
+    return new Response('File not found', { status: 404 });
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', options.contentType);
+  headers.set('Cache-Control', options.cacheControl);
+  headers.set('Access-Control-Allow-Origin', '*');
+
+  // Handle range requests for streaming
+  const range = request.headers.get('range');
+  if (range) {
+    const size = object.size;
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
+
+    headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+    headers.set('Content-Length', String(end - start + 1));
+    headers.set('Accept-Ranges', 'bytes');
+
+    return new Response(object.body, {
+      status: 206,
+      headers,
+    });
+  }
+
+  headers.set('Content-Length', String(object.size));
+  return new Response(object.body, { headers });
+}
+
 // ─── Main Worker ─────────────────────────────────────────────────────
 
 export default {
@@ -581,41 +622,35 @@ export default {
       }
     }
 
+    // Handle index.json request - serve from R2
+    if (url.pathname === '/index.json') {
+      return serveR2File(env, 'index.json', request, {
+        cacheControl: 'public, max-age=86400', // 1 day - may update with new articles
+        contentType: 'application/json',
+      });
+    }
+
+    // Handle article chunk requests - /articles/chunk-NNNNNN.json
+    const chunkMatch = url.pathname.match(/^\/articles\/chunk-(\d{6})\.json$/);
+    if (chunkMatch) {
+      const chunkId = parseInt(chunkMatch[1], 10);
+      // Validate chunk ID is in valid range (0-999, allowing room for growth)
+      if (chunkId < 0 || chunkId > 999) {
+        return new Response('Invalid chunk ID', { status: 400 });
+      }
+      const chunkKey = `articles/chunk-${chunkMatch[1]}.json`;
+      return serveR2File(env, chunkKey, request, {
+        cacheControl: 'public, max-age=604800, immutable', // 1 week, content rarely changes
+        contentType: 'application/json',
+      });
+    }
+
     // Handle smoldata.json request - serve from R2
     if (url.pathname === '/smoldata.json') {
-      const object = await env.DATA_BUCKET.get('smoldata.json');
-
-      if (!object) {
-        return new Response('Data file not found', { status: 404 });
-      }
-
-      const headers = new Headers();
-      headers.set('Content-Type', 'application/json');
-      headers.set('Cache-Control', 'public, max-age=604800'); // Cache for 1 week
-      headers.set('Access-Control-Allow-Origin', '*');
-
-      // Handle range requests for streaming
-      const range = request.headers.get('range');
-      if (range) {
-        const size = object.size;
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
-
-        headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
-        headers.set('Content-Length', String(end - start + 1));
-        headers.set('Accept-Ranges', 'bytes');
-
-        // Slice the body for range request
-        const body = object.body;
-        return new Response(body, {
-          status: 206,
-          headers,
-        });
-      }
-
-      headers.set('Content-Length', String(object.size));
-      return new Response(object.body, { headers });
+      return serveR2File(env, 'smoldata.json', request, {
+        cacheControl: 'public, max-age=604800', // 1 week
+        contentType: 'application/json',
+      });
     }
 
     // All other requests are handled by Cloudflare's asset serving
