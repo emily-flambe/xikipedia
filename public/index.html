@@ -1298,6 +1298,74 @@
             color: #ff6b6b;
             border-color: #ff6b6b;
         }
+
+        /* === Offline Indicator === */
+        #offlineIndicator {
+            position: fixed;
+            top: calc(16px + env(safe-area-inset-top, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            background: #f59e0b;
+            color: #000;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        #offlineIndicator.visible {
+            display: flex;
+        }
+        #offlineIndicator::before {
+            content: '📡';
+        }
+
+        /* === Update Toast === */
+        #updateToast {
+            position: fixed;
+            bottom: calc(200px + env(safe-area-inset-bottom, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent-color, #2cafff);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 280px;
+            text-align: center;
+        }
+        #updateToast.visible {
+            display: flex;
+        }
+        #updateToast button {
+            background: #fff;
+            color: var(--accent-color, #2cafff);
+            border: none;
+            padding: 6px 16px;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #updateToast button:hover {
+            opacity: 0.9;
+        }
+        #updateToast .dismiss {
+            background: transparent;
+            color: rgba(255,255,255,0.8);
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -3686,6 +3754,119 @@
     });
 
     window.onload = main;
+
+    // ============================================
+    // Service Worker Registration & Handlers
+    // ============================================
+
+    // Service Worker registration (can run immediately, no DOM needed)
+    let swRegistration = null;
+    let updateAvailable = false;
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+                swRegistration = registration;
+                console.log('SW registered:', registration.scope);
+                
+                // Check for updates
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && 
+                            navigator.serviceWorker.controller) {
+                            // New version available
+                            showUpdateToast();
+                        }
+                    });
+                });
+            })
+            .catch(err => console.error('SW registration failed:', err));
+        
+        // Listen for messages from SW
+        navigator.serviceWorker.addEventListener('message', event => {
+            if (event.data?.type === 'CONTENT_UPDATED') {
+                // index.html was updated in background
+                if (!updateAvailable) {
+                    showUpdateToast();
+                }
+            }
+            if (event.data?.type === 'SW_ACTIVATED') {
+                console.log('SW activated, version:', event.data.version);
+            }
+        });
+    }
+
+    function showUpdateToast() {
+        updateAvailable = true;
+        const toast = document.getElementById('updateToast');
+        if (toast) {
+            toast.classList.add('visible');
+        }
+    }
+
+    function hideUpdateToast() {
+        const toast = document.getElementById('updateToast');
+        if (toast) {
+            toast.classList.remove('visible');
+        }
+    }
+
+    // Online/offline status tracking and UI setup (needs DOM)
+    document.addEventListener('DOMContentLoaded', () => {
+        const offlineIndicator = document.getElementById('offlineIndicator');
+        const updateBtn = document.getElementById('updateBtn');
+        const updateDismiss = document.getElementById('updateDismiss');
+
+        function updateOnlineStatus() {
+            if (offlineIndicator) {
+                offlineIndicator.classList.toggle('visible', !navigator.onLine);
+            }
+        }
+
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        updateOnlineStatus(); // Initial check
+
+        // Update button handler
+        if (updateBtn) {
+            updateBtn.addEventListener('click', () => {
+                if (swRegistration?.waiting) {
+                    // Tell waiting SW to take over
+                    swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }
+                // Reload to get new version
+                window.location.reload();
+            });
+        }
+
+        // Dismiss button handler
+        if (updateDismiss) {
+            updateDismiss.addEventListener('click', hideUpdateToast);
+        }
+    });
+
+    // Keyboard shortcut: Ctrl+Shift+U to check for updates (dev convenience)
+    document.addEventListener('keydown', e => {
+        if (e.key === 'u' && e.ctrlKey && e.shiftKey) {
+            if (swRegistration) {
+                swRegistration.update().then(() => {
+                    console.log('Checked for SW updates');
+                });
+            }
+        }
+    });
 </script>
+    <!-- Offline indicator -->
+    <div id="offlineIndicator" role="status" aria-live="polite">
+        You're offline
+    </div>
+
+    <!-- Update toast -->
+    <div id="updateToast" role="alert" aria-live="assertive">
+        <span>A new version is available!</span>
+        <button id="updateBtn">Refresh to update</button>
+        <button class="dismiss" id="updateDismiss">Not now</button>
+    </div>
 </body>
 </html>
