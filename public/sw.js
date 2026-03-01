@@ -17,10 +17,13 @@ const PRECACHE_URLS = [
 
 // ============ INSTALL ============
 self.addEventListener('install', (event) => {
+  // Do NOT call self.skipWaiting() here — let the SKIP_WAITING message
+  // (sent by the "Refresh to update" button) control the update lifecycle.
+  // Unconditional skipWaiting causes the updatefound toast to fire on every
+  // periodic SW re-check, even when nothing meaningful changed.
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(cache => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -99,14 +102,19 @@ self.addEventListener('message', (event) => {
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
-  
+
+  // Clone for comparison BEFORE returning the original to the browser.
+  // Once the browser starts consuming cachedResponse's body stream,
+  // it becomes "disturbed" and can no longer be cloned.
+  const cachedClone = cachedResponse ? cachedResponse.clone() : null;
+
   const fetchPromise = fetch(request).then(async (response) => {
     if (response.ok) {
       // Only notify if content actually changed
-      let contentChanged = !cachedResponse;
-      if (cachedResponse) {
+      let contentChanged = !cachedClone;
+      if (cachedClone) {
         const [oldBody, newBody] = await Promise.all([
-          cachedResponse.clone().text(),
+          cachedClone.text(),
           response.clone().text()
         ]);
         contentChanged = oldBody !== newBody;

@@ -68,45 +68,81 @@ test.describe('Service Worker', () => {
   test('update toast appears when new version available', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
-    // Simulate SW message for update
+
+    // Clear any prior dismissal so the toast can show
+    await page.evaluate(() => localStorage.removeItem('xiki-update-dismissed'));
+
+    // Simulate SW message — the CONTENT_UPDATED handler clears the dismiss
+    // flag and calls showUpdateToast(), which adds the 'visible' class
     await page.evaluate(() => {
       const event = new MessageEvent('message', {
         data: { type: 'CONTENT_UPDATED', url: '/index.html' }
       });
       navigator.serviceWorker.dispatchEvent(event);
     });
-    
-    // This triggers via the window message handler
-    await page.evaluate(() => {
-      // Manually show for test since we can't easily mock SW
-      document.getElementById('updateToast')?.classList.add('visible');
-    });
-    
+
     const toast = page.locator('#updateToast');
     await expect(toast).toBeVisible();
     await expect(toast).toContainText('A new version is available');
   });
 
-  test('update toast dismiss button works', async ({ page }) => {
+  test('update toast dismiss button works and persists in localStorage', async ({ page }) => {
     await page.goto('/');
-    
+
     // Dismiss the start screen so it doesn't block the toast
     await page.evaluate(() => {
       document.getElementById('startScreen')?.hidePopover();
     });
-    
-    // Show toast
+
+    // Clear any prior dismissal, then show toast via real code path
     await page.evaluate(() => {
-      document.getElementById('updateToast')?.classList.add('visible');
+      localStorage.removeItem('xiki-update-dismissed');
+      const event = new MessageEvent('message', {
+        data: { type: 'CONTENT_UPDATED', url: '/index.html' }
+      });
+      navigator.serviceWorker.dispatchEvent(event);
     });
-    
+
     const toast = page.locator('#updateToast');
     await expect(toast).toBeVisible();
-    
+
     // Dismiss
     await page.locator('#updateDismiss').click();
     await expect(toast).not.toBeVisible();
+
+    // Dismissal should be persisted in localStorage (survives new tabs/sessions)
+    const dismissed = await page.evaluate(() => localStorage.getItem('xiki-update-dismissed'));
+    expect(dismissed).toBe('true');
+  });
+
+  test('dismissed toast does not reappear until next genuine update', async ({ page }) => {
+    await page.goto('/');
+
+    await page.evaluate(() => {
+      document.getElementById('startScreen')?.hidePopover();
+    });
+
+    // Simulate: user already dismissed a previous update
+    await page.evaluate(() => localStorage.setItem('xiki-update-dismissed', 'true'));
+
+    // Fire CONTENT_UPDATED — this clears the flag (genuine new content) and shows toast
+    await page.evaluate(() => {
+      const event = new MessageEvent('message', {
+        data: { type: 'CONTENT_UPDATED', url: '/index.html' }
+      });
+      navigator.serviceWorker.dispatchEvent(event);
+    });
+
+    const toast = page.locator('#updateToast');
+    await expect(toast).toBeVisible();
+
+    // Dismiss again
+    await page.locator('#updateDismiss').click();
+    await expect(toast).not.toBeVisible();
+
+    // Now a non-update message should NOT re-show the toast (flag is set)
+    const stillDismissed = await page.evaluate(() => localStorage.getItem('xiki-update-dismissed'));
+    expect(stillDismissed).toBe('true');
   });
 
   test('update refresh button reloads page', async ({ page }) => {
