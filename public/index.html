@@ -4499,45 +4499,35 @@
         };
     }
 
-    // Expose state for testing
-    window.categoryScores = categoryScores;
-    window.hiddenCategories = hiddenCategories;
-    window.pagesArr = pagesArr;
-    window.seenPostIds = seenPostIds;
-    // Expose chunked format state
-    Object.defineProperty(window, 'isChunkedFormat', { get: () => isChunkedFormat });
-    Object.defineProperty(window, 'chunkCache', { get: () => chunkCache });
-    Object.defineProperty(window, 'chunkFetcher', { get: () => chunkFetcher });
-    window.getDataFormat = getDataFormat;
-    // Expose algorithmAggressiveness as getter/setter for testing
-    Object.defineProperty(window, 'algorithmAggressiveness', {
-        get: () => algorithmAggressiveness,
-        set: (v) => { algorithmAggressiveness = v; }
-    });
-    // Clear seen posts (for testing or fresh start)
-    window.clearSeenPosts = () => {
-        seenPostIds.clear();
-        localStorage.removeItem('xiki_seen_posts');
-        pagesArr.forEach(p => p.seen = 0);
-    };
-    // Expose postsWithoutLike as a getter for testing
-    Object.defineProperty(window, 'postsWithoutLike', { get: () => postsWithoutLike });
-    // Expose refreshFeed for testing
-    window.refreshFeed = refreshFeed;
-    window.viewedHistory = viewedHistory;
-    // Expose exploreMode for testing
-    Object.defineProperty(window, 'exploreMode', {
-        get: () => exploreMode,
-        set: (v) => { exploreMode = v; }
-    });
-    
-    // Expose worker for testing/debugging
-    Object.defineProperty(window, 'algorithmWorker', {
-        get: () => algorithmWorker
-    });
-    Object.defineProperty(window, 'useWorkerAlgorithm', {
-        get: () => useWorkerAlgorithm
-    });
+    // Expose namespaced test API (dev only — production hostname is never localhost)
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        window.__xikiTest = {
+            get categoryScores() { return categoryScores; },
+            get hiddenCategories() { return hiddenCategories; },
+            get pagesArr() { return pagesArr; },
+            get seenPostIds() { return seenPostIds; },
+            get isChunkedFormat() { return isChunkedFormat; },
+            get chunkCache() { return chunkCache; },
+            get chunkFetcher() { return chunkFetcher; },
+            getDataFormat,
+            get algorithmAggressiveness() { return algorithmAggressiveness; },
+            set algorithmAggressiveness(v) { algorithmAggressiveness = v; },
+            clearSeenPosts() {
+                seenPostIds.clear();
+                localStorage.removeItem('xiki_seen_posts');
+                pagesArr.forEach(p => p.seen = 0);
+            },
+            get postsWithoutLike() { return postsWithoutLike; },
+            refreshFeed,
+            get viewedHistory() { return viewedHistory; },
+            get exploreMode() { return exploreMode; },
+            set exploreMode(v) { exploreMode = v; },
+            get algorithmWorker() { return algorithmWorker; },
+            get useWorkerAlgorithm() { return useWorkerAlgorithm; },
+            convertCat,
+            updateEngagement,
+        };
+    }
     
     // Cleanup on page unload
     window.addEventListener('beforeunload', () => {

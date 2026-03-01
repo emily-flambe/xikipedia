@@ -103,10 +103,10 @@ npm test
 
 ### Local Development
 
-Note: Local development requires the R2 bucket with the data file. For most changes, test against the production URL:
+Tests always run against `localhost:8788` (wrangler dev). The test API (`window.__xikiTest`) is only created when `hostname === 'localhost'`, so tests cannot run against production.
 
 ```bash
-PLAYWRIGHT_BASE_URL=https://xikipedia.emily-cogsdill.workers.dev npm test
+npm test
 ```
 
 ## Data Updates

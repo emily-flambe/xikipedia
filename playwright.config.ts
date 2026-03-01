@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// In CI, test against production; locally, use dev server
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8788';
+// Tests always run against local wrangler dev server (localhost:8788).
+// window.__xikiTest is only created when hostname === 'localhost'.
+const baseURL = 'http://localhost:8788';
 const isCI = !!process.env.CI;
 
 export default defineConfig({
@@ -26,13 +27,10 @@ export default defineConfig({
     },
   ],
 
-  // Only start local server when not testing against production
-  ...(baseURL.includes('localhost') ? {
-    webServer: {
-      command: 'npx wrangler dev --port 8788',
-      url: 'http://localhost:8788',
-      reuseExistingServer: !isCI,
-      timeout: 120000,
-    },
-  } : {}),
+  webServer: {
+    command: 'npx wrangler dev --port 8788',
+    port: 8788,
+    reuseExistingServer: !isCI,
+    timeout: 120000,
+  },
 });
