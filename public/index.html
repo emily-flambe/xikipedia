@@ -2024,6 +2024,25 @@
             this.worker.postMessage({ type: 'GET_SEEN_IDS' });
         }
 
+        // Promise-based seen IDs request (for testing)
+        getSeenIdsAsync() {
+            return new Promise((resolve, reject) => {
+                if (!this.worker || !this.isReady) {
+                    reject(new Error('Worker not ready'));
+                    return;
+                }
+                this._seenSyncResolve = resolve;
+                this.worker.postMessage({ type: 'GET_SEEN_IDS' });
+                // Timeout after 5 seconds
+                setTimeout(() => {
+                    if (this._seenSyncResolve) {
+                        this._seenSyncResolve = null;
+                        reject(new Error('Seen sync timeout'));
+                    }
+                }, 5000);
+            });
+        }
+
         // Private: Handle messages from worker
         _handleMessage(e) {
             const { type, requestId, payload } = e.data;
@@ -2059,6 +2078,11 @@
                     if (payload.seenPostIds) {
                         payload.seenPostIds.forEach(id => seenPostIds.add(id));
                         saveSeenPosts();
+                    }
+                    // Resolve promise if waiting (for testing)
+                    if (this._seenSyncResolve) {
+                        this._seenSyncResolve(payload.seenPostIds || []);
+                        this._seenSyncResolve = null;
                     }
                     break;
 
