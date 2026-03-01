@@ -333,16 +333,22 @@ test.describe('Feature 2: Feed refresh', () => {
     await startFeedWithMock(page);
 
     // Scroll to generate posts (sets seen counts on articles)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(500);
     }
 
-    // Check that some articles have been seen
+    // Wait for seen counters to be set (algorithm worker may update async)
+    await expect(async () => {
+      const seen = await page.evaluate(() => {
+        return (window as any).pagesArr.filter((p: any) => p.seen > 0).length;
+      });
+      expect(seen).toBeGreaterThan(0);
+    }).toPass({ timeout: 5000 });
+
     const seenBefore = await page.evaluate(() => {
       return (window as any).pagesArr.filter((p: any) => p.seen > 0).length;
     });
-    expect(seenBefore).toBeGreaterThan(0);
 
     // Refresh
     await page.locator('#refreshBtn').click();
