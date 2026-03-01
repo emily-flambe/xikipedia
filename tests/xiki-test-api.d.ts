@@ -42,7 +42,7 @@ interface XikiTestAPI {
 
 declare global {
   interface Window {
-    __xikiTest: XikiTestAPI;
+    __xikiTest?: XikiTestAPI;
   }
 }
 

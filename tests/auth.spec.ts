@@ -133,6 +133,15 @@ async function injectAuth(
 async function gotoReady(page: Page) {
   await mockSmoldata(page);
   await page.goto('/');
+
+  const hasTestApi = await page.evaluate(() => typeof window.__xikiTest !== 'undefined');
+  if (!hasTestApi) {
+    throw new Error(
+      'window.__xikiTest is undefined. The test API is only created on localhost. ' +
+      'Ensure wrangler dev is running and tests target http://localhost:8788.'
+    );
+  }
+
   const startBtn = page.locator('[data-testid="start-button"]');
   await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
 }
@@ -569,17 +578,16 @@ test.describe('Preference persistence', () => {
 
     // Verify preferences were loaded into JS by checking the stats sidebar
     // or by reading the JS variable. Use evaluate to check.
-    const scores = await page.evaluate(() => window.__xikiTest.categoryScores);
+    const scores = await page.evaluate(() => window.__xikiTest!.categoryScores);
     // The saved scores should be merged in. Note: the app merges over defaults.
     // "given names" starts at -1000, but our saved value is also -1000, so check science.
     // Note: viewing posts applies -5 decay per post to all categories, so we check
     // a range rather than exact values. With up to ~10 posts viewed: -50 max decay.
-    if (scores) {
-      expect(scores['science']).toBeGreaterThanOrEqual(450); // saved 500, -50 max decay
-      expect(scores['science']).toBeLessThanOrEqual(500);
-      expect(scores['nature']).toBeGreaterThanOrEqual(250); // saved 300, -50 max decay
-      expect(scores['nature']).toBeLessThanOrEqual(300);
-    }
+    expect(scores).toBeTruthy();
+    expect(scores['science']).toBeGreaterThanOrEqual(450); // saved 500, -50 max decay
+    expect(scores['science']).toBeLessThanOrEqual(500);
+    expect(scores['nature']).toBeGreaterThanOrEqual(250); // saved 300, -50 max decay
+    expect(scores['nature']).toBeLessThanOrEqual(300);
   });
 
   // TODO: Fix SW cache interference with page reloads
