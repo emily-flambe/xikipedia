@@ -3022,9 +3022,19 @@
             pendingPostCreation = true;
             return;
         }
-        
+
+        // If re-showing a specific post, check if it's already in the feed
+        if (specificPost) {
+            const existing = document.querySelector(`.post[data-id="${CSS.escape(String(specificPost.id))}"]`);
+            if (existing) {
+                existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                existing.focus();
+                return;
+            }
+        }
+
         postCreationInProgress = true;
-        
+
         let nextPost;
         try {
             nextPost = specificPost || await getNextPostAsync();
@@ -3381,8 +3391,10 @@
 
         // Update session stats
         articlesViewed++;
-        viewedHistory.unshift({ title: nextPost.title, id: nextPost.id, thumb: nextPost.thumb });
-        if (viewedHistory.length > 50) viewedHistory.pop(); // Keep last 50
+        if (!viewedHistory.some(h => h.id === nextPost.id)) {
+            viewedHistory.unshift({ title: nextPost.title, id: nextPost.id, thumb: nextPost.thumb });
+            if (viewedHistory.length > 50) viewedHistory.pop(); // Keep last 50
+        }
         updateSessionStats();
         updateHistoryUI();
         

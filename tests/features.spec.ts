@@ -333,16 +333,22 @@ test.describe('Feature 2: Feed refresh', () => {
     await startFeedWithMock(page);
 
     // Scroll to generate posts (sets seen counts on articles)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(500);
     }
 
-    // Check that some articles have been seen
+    // Wait for seen counters to be set (algorithm worker may update async)
+    await expect(async () => {
+      const seen = await page.evaluate(() => {
+        return (window as any).pagesArr.filter((p: any) => p.seen > 0).length;
+      });
+      expect(seen).toBeGreaterThan(0);
+    }).toPass({ timeout: 5000 });
+
     const seenBefore = await page.evaluate(() => {
       return (window as any).pagesArr.filter((p: any) => p.seen > 0).length;
     });
-    expect(seenBefore).toBeGreaterThan(0);
 
     // Refresh
     await page.locator('#refreshBtn').click();
@@ -1371,5 +1377,131 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     expect(infraStatus.hasFetcher).toBe(true);
     expect(infraStatus.cacheHasGetStats).toBe(true);
     expect(infraStatus.fetcherHasGetArticleText).toBe(true);
+  });
+});
+
+// =============================================
+// EMI-29: History panel click does not duplicate posts
+// =============================================
+test.describe('EMI-29: History panel duplicate prevention', () => {
+  test('clicking a history item already in the feed scrolls to it instead of duplicating', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+    expect(postId).toBeTruthy();
+
+    // Open history panel
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    // Click the history item matching the first post
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+    await historyItem.click();
+
+    // Should NOT create a duplicate
+    const postsWithId = page.locator(`[data-testid="post"][data-id="${postId}"]`);
+    await expect(postsWithId).toHaveCount(1);
+
+    // Verify the existing post received focus
+    const postElement = page.locator(`[data-testid="post"][data-id="${postId}"]`);
+    await expect(postElement).toBeFocused();
+  });
+
+  test('clicking a history item not in the feed creates it', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+
+    // Remove post from DOM to simulate it being gone
+    await page.evaluate((id) => {
+      const post = document.querySelector(`.post[data-id="${id}"]`);
+      if (post) post.remove();
+    }, postId);
+
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(0);
+
+    // Open history panel and click the removed article
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+    await historyItem.click();
+
+    // Post should be re-created
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(1);
+  });
+
+  test('rapid history clicks on the same item do not create duplicates', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+
+    // Remove the post so the history click will try to re-create it
+    await page.evaluate((id) => {
+      const post = document.querySelector(`.post[data-id="${id}"]`);
+      if (post) post.remove();
+    }, postId);
+
+    // Open history panel and rapid-click the same item multiple times
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+
+    // Fire multiple clicks synchronously (bypassing panel hide)
+    await page.evaluate((id) => {
+      const item = document.querySelector(`.history-item[data-id="${id}"]`) as HTMLElement;
+      if (item) {
+        item.click();
+        item.click();
+        item.click();
+      }
+    }, postId);
+
+    // Wait for post to appear, then assert no duplicates
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(1, { timeout: 5000 });
+  });
+
+  test('viewedHistory does not accumulate duplicate entries on re-creation', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+
+    // Remove the post from DOM to simulate it being gone
+    await page.evaluate((id) => {
+      const post = document.querySelector(`.post[data-id="${id}"]`);
+      if (post) post.remove();
+    }, postId);
+
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(0);
+
+    // Open history panel and click the history item to re-create
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+    await historyItem.click();
+
+    // Verify the post was re-created
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(1);
+
+    // Check viewedHistory for duplicate IDs
+    const historyIds: string[] = await page.evaluate(() => {
+      return ((window as any).viewedHistory as Array<{ id: number }>).map(h => String(h.id));
+    });
+    const uniqueIds = new Set(historyIds);
+    expect(uniqueIds.size).toBe(historyIds.length);
   });
 });
