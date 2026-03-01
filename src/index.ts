@@ -108,6 +108,24 @@ function generateSalt(): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(16));
 }
 
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    crypto.getRandomValues(new Uint8Array(32)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const encoder = new TextEncoder();
+  const hmac1 = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(a)));
+  const hmac2 = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(b)));
+  let match = hmac1.length === hmac2.length;
+  for (let i = 0; i < hmac1.length; i++) {
+    match = match && hmac1[i] === hmac2[i];
+  }
+  return match;
+}
+
 // ─── JWT Helpers ─────────────────────────────────────────────────────
 
 async function getSigningKey(secret: string): Promise<CryptoKey> {
@@ -367,21 +385,7 @@ async function handleLogin(
   const salt = new Uint8Array(hexToArrayBuffer(user.salt));
   const computedHash = await hashPassword(body.password, salt);
 
-  // Timing-safe comparison via HMAC: compute HMAC of both hashes and compare
-  const compKey = await crypto.subtle.importKey(
-    'raw',
-    crypto.getRandomValues(new Uint8Array(32)),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const hmac1 = new Uint8Array(await crypto.subtle.sign('HMAC', compKey, new TextEncoder().encode(computedHash)));
-  const hmac2 = new Uint8Array(await crypto.subtle.sign('HMAC', compKey, new TextEncoder().encode(user.password_hash)));
-  let match = hmac1.length === hmac2.length;
-  for (let i = 0; i < hmac1.length; i++) {
-    match = match && hmac1[i] === hmac2[i];
-  }
-  if (!match) {
+  if (!(await timingSafeEqual(computedHash, user.password_hash))) {
     return errorResponse('Invalid username or password', 401);
   }
 
@@ -521,7 +525,7 @@ async function handleDeleteAccount(
   const salt = new Uint8Array(hexToArrayBuffer(user.salt));
   const computedHash = await hashPassword(body.password, salt);
 
-  if (computedHash !== user.password_hash) {
+  if (!(await timingSafeEqual(computedHash, user.password_hash))) {
     return errorResponse('Incorrect password', 403);
   }
 
