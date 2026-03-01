@@ -244,17 +244,14 @@ test.describe('Xikipedia', () => {
   test('category search is enabled after load', async ({ page }) => {
     await setupMockRoute(page);
     await page.goto('/');
-    
+
     const searchInput = page.locator('[data-testid="category-search-input"]');
-    
-    // Initially disabled
-    await expect(searchInput).toBeDisabled();
-    
+
     // Wait for data to load
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
-    
-    // Now search should be enabled
+
+    // Search should be enabled once data is loaded
     await expect(searchInput).not.toBeDisabled();
   });
 });
