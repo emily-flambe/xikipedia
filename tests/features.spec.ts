@@ -340,7 +340,7 @@ test.describe('Feature 2: Feed refresh', () => {
     // Wait for seen counters to be set (algorithm worker may update async)
     await expect(async () => {
       const seen = await page.evaluate(() => {
-        return (window as any).pagesArr.filter((p: any) => p.seen > 0).length;
+        return window.__xikiTest!.pagesArr.filter((p: any) => p.seen > 0).length;
       });
       expect(seen).toBeGreaterThan(0);
     }).toPass({ timeout: 5000 });
@@ -1506,7 +1506,7 @@ test.describe('EMI-29: History panel duplicate prevention', () => {
 
     // Check viewedHistory for duplicate IDs
     const historyIds: string[] = await page.evaluate(() => {
-      return ((window as any).viewedHistory as Array<{ id: number }>).map(h => String(h.id));
+      return (window.__xikiTest!.viewedHistory as Array<{ id: number }>).map(h => String(h.id));
     });
     const uniqueIds = new Set(historyIds);
     expect(uniqueIds.size).toBe(historyIds.length);
