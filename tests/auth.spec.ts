@@ -569,7 +569,7 @@ test.describe('Preference persistence', () => {
 
     // Verify preferences were loaded into JS by checking the stats sidebar
     // or by reading the JS variable. Use evaluate to check.
-    const scores = await page.evaluate(() => (window as any).categoryScores);
+    const scores = await page.evaluate(() => window.__xikiTest.categoryScores);
     // The saved scores should be merged in. Note: the app merges over defaults.
     // "given names" starts at -1000, but our saved value is also -1000, so check science.
     // Note: viewing posts applies -5 decay per post to all categories, so we check

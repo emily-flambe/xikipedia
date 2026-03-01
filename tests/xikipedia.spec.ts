@@ -421,13 +421,13 @@ test.describe('Feature 2: Feed refresh', () => {
     await page.waitForTimeout(300);
 
     // Check postsWithoutLike > 0
-    const beforeRefresh = await page.evaluate(() => (window as any).postsWithoutLike);
+    const beforeRefresh = await page.evaluate(() => window.__xikiTest.postsWithoutLike);
     expect(beforeRefresh).toBeGreaterThan(0);
 
     // Call refreshFeed directly and check immediately (before render loop adds new posts)
     const afterRefresh = await page.evaluate(() => {
-      (window as any).refreshFeed();
-      return (window as any).postsWithoutLike;
+      window.__xikiTest.refreshFeed();
+      return window.__xikiTest.postsWithoutLike;
     });
 
     // postsWithoutLike should be reset to 0 immediately after refresh

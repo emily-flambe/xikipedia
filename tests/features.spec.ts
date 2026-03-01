@@ -37,7 +37,6 @@ const MOCK_JSON = JSON.stringify(MOCK_DATA);
 
 /**
  * Intercepts the smoldata.json request and serves mock data.
- * Also sets DATA_SIZE to match mock data size so the progress bar works.
  */
 async function setupMockRoute(page: Page) {
   // Unregister service worker IMMEDIATELY to prevent cache-first from bypassing our mock
@@ -81,14 +80,6 @@ async function setupMockRoute(page: Page) {
 async function startFeedWithMock(page: Page) {
   await setupMockRoute(page);
   await page.goto('/');
-
-  // Override DATA_SIZE to match mock data so download doesn't fail
-  await page.evaluate((size) => {
-    (window as any).DATA_SIZE = size;
-  }, MOCK_JSON.length).catch(() => {
-    // DATA_SIZE is a const, so assignment fails silently in strict mode.
-    // The download will work regardless since we intercept the response.
-  });
 
   const startBtn = page.locator('[data-testid="start-button"]');
   await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
@@ -178,7 +169,7 @@ test.describe('Feature 1: More/Less feedback buttons', () => {
     await startFeedWithMock(page);
 
     // Get a reference to a specific category from the first post
-    const scienceScoreBefore = await page.evaluate(() => (window as any).categoryScores['science'] ?? 0);
+    const scienceScoreBefore = await page.evaluate(() => window.__xikiTest.categoryScores['science'] ?? 0);
 
     // The first post should have 'science' as a category (article 0 has science)
     const firstPost = page.locator('[data-testid="post"]').first();
@@ -187,7 +178,7 @@ test.describe('Feature 1: More/Less feedback buttons', () => {
 
     // Check that category scores changed
     const totalScoreChange = await page.evaluate(() => {
-      const scores = (window as any).categoryScores;
+      const scores = window.__xikiTest.categoryScores;
       // Sum all positive scores (excluding defaults)
       return Object.values(scores).reduce((sum: number, v: any) => sum + (v > 0 ? v : 0), 0);
     });
@@ -204,7 +195,7 @@ test.describe('Feature 1: More/Less feedback buttons', () => {
 
     // Some category scores should have gone negative beyond the initial -5
     const anyNegative = await page.evaluate(() => {
-      const scores = (window as any).categoryScores;
+      const scores = window.__xikiTest.categoryScores;
       return Object.values(scores).some((v: any) =>
         v < -100 && v !== -1000 // Exclude default -1000 for given names/surnames
       );
@@ -306,7 +297,7 @@ test.describe('Feature 2: Feed refresh', () => {
 
     // Get scores before refresh
     const scoresBefore = await page.evaluate(() => {
-      return JSON.parse(JSON.stringify((window as any).categoryScores));
+      return JSON.parse(JSON.stringify(window.__xikiTest.categoryScores));
     });
 
     // Refresh
@@ -315,7 +306,7 @@ test.describe('Feature 2: Feed refresh', () => {
 
     // Get scores after refresh
     const scoresAfter = await page.evaluate(() => {
-      return JSON.parse(JSON.stringify((window as any).categoryScores));
+      return JSON.parse(JSON.stringify(window.__xikiTest.categoryScores));
     });
 
     // Core scores should be preserved (ignoring new -5 per new post)
@@ -347,7 +338,7 @@ test.describe('Feature 2: Feed refresh', () => {
     }).toPass({ timeout: 5000 });
 
     const seenBefore = await page.evaluate(() => {
-      return (window as any).pagesArr.filter((p: any) => p.seen > 0).length;
+      return window.__xikiTest.pagesArr.filter((p: any) => p.seen > 0).length;
     });
 
     // Refresh
@@ -356,7 +347,7 @@ test.describe('Feature 2: Feed refresh', () => {
 
     // Seen counters should be reset
     const seenAfter = await page.evaluate(() => {
-      return (window as any).pagesArr.filter((p: any) => p.seen > 0).length;
+      return window.__xikiTest.pagesArr.filter((p: any) => p.seen > 0).length;
     });
     // After refresh, seen should be 0 (then new posts increment them)
     // But the render loop immediately creates new posts, so some will have seen=1
@@ -373,7 +364,7 @@ test.describe('Feature 2: Feed refresh', () => {
       await page.waitForTimeout(300);
     }
 
-    const countBefore = await page.evaluate(() => (window as any).postsWithoutLike);
+    const countBefore = await page.evaluate(() => window.__xikiTest.postsWithoutLike);
     expect(countBefore).toBeGreaterThan(0);
 
     // Refresh
@@ -381,7 +372,7 @@ test.describe('Feature 2: Feed refresh', () => {
     await page.waitForTimeout(500);
 
     // Counter should reset to 0 (or small from new auto-generated posts)
-    const countAfter = await page.evaluate(() => (window as any).postsWithoutLike);
+    const countAfter = await page.evaluate(() => window.__xikiTest.postsWithoutLike);
     expect(countAfter).toBeLessThan(countBefore);
   });
 
@@ -394,13 +385,13 @@ test.describe('Feature 2: Feed refresh', () => {
       await page.waitForTimeout(200);
     }
 
-    const counterBeforeRefresh = await page.evaluate(() => (window as any).postsWithoutLike);
+    const counterBeforeRefresh = await page.evaluate(() => window.__xikiTest.postsWithoutLike);
 
     // Refresh resets the counter
     await page.locator('#refreshBtn').click();
     await page.waitForTimeout(500);
 
-    const counterAfterRefresh = await page.evaluate(() => (window as any).postsWithoutLike);
+    const counterAfterRefresh = await page.evaluate(() => window.__xikiTest.postsWithoutLike);
     // Counter should be much smaller after refresh
     expect(counterAfterRefresh).toBeLessThan(counterBeforeRefresh);
 
@@ -460,9 +451,9 @@ test.describe('Feature 3: Sidebar category controls', () => {
 
     // Get the actual category key for verification via JS globals
     const catKey = await page.evaluate((name) => {
-      const scores = (window as any).categoryScores;
+      const scores = window.__xikiTest.categoryScores;
       for (const [k, v] of Object.entries(scores)) {
-        if (k === name || (window as any).convertCat(k) === name) return k;
+        if (k === name || window.__xikiTest.convertCat(k) === name) return k;
       }
       return null;
     }, catName);
@@ -472,7 +463,7 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await page.waitForTimeout(100);
 
     // Verify via JS global (sidebar re-sorts, so DOM order changes)
-    const scoreAfter = await page.evaluate((key) => (window as any).categoryScores[key], catKey);
+    const scoreAfter = await page.evaluate((key) => window.__xikiTest.categoryScores[key], catKey);
     expect(scoreAfter).toBe(numBefore + 200);
   });
 
@@ -500,9 +491,9 @@ test.describe('Feature 3: Sidebar category controls', () => {
 
     // Get the actual category key for verification via JS globals
     const catKey = await page.evaluate((name) => {
-      const scores = (window as any).categoryScores;
+      const scores = window.__xikiTest.categoryScores;
       for (const [k, v] of Object.entries(scores)) {
-        if (k === name || (window as any).convertCat(k) === name) return k;
+        if (k === name || window.__xikiTest.convertCat(k) === name) return k;
       }
       return null;
     }, catName);
@@ -513,7 +504,7 @@ test.describe('Feature 3: Sidebar category controls', () => {
 
     // Verify via JS global (sidebar re-sorts, so DOM order changes)
     // Use toBeLessThanOrEqual because background view events may add additional -5 decay
-    const scoreAfter = await page.evaluate((key) => (window as any).categoryScores[key], catKey);
+    const scoreAfter = await page.evaluate((key) => window.__xikiTest.categoryScores[key], catKey);
     expect(scoreAfter).toBeLessThanOrEqual(numBefore - 200);
   });
 
@@ -534,14 +525,14 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await expect(firstRow).toBeVisible({ timeout: 5000 });
 
     // Get hidden count before
-    const hiddenBefore = await page.evaluate(() => (window as any).hiddenCategories.size);
+    const hiddenBefore = await page.evaluate(() => window.__xikiTest.hiddenCategories.size);
     expect(hiddenBefore).toBe(0);
 
     // Click hide
     await firstRow.locator('.cat-ctrl').nth(2).click();
     await page.waitForTimeout(100);
 
-    const hiddenAfter = await page.evaluate(() => (window as any).hiddenCategories.size);
+    const hiddenAfter = await page.evaluate(() => window.__xikiTest.hiddenCategories.size);
     expect(hiddenAfter).toBe(1);
   });
 
@@ -858,7 +849,7 @@ test.describe('Cross-feature edge cases', () => {
     await stats.locator('.cat-row').first().locator('.cat-ctrl').nth(2).click();
     await page.waitForTimeout(100);
 
-    const hiddenBefore = await page.evaluate(() => (window as any).hiddenCategories.size);
+    const hiddenBefore = await page.evaluate(() => window.__xikiTest.hiddenCategories.size);
     expect(hiddenBefore).toBe(1);
 
     // Close sidebar by clicking backdrop (it intercepts clicks when open)
@@ -869,7 +860,7 @@ test.describe('Cross-feature edge cases', () => {
     await page.locator('#refreshBtn').click();
     await page.waitForTimeout(500);
 
-    const hiddenAfter = await page.evaluate(() => (window as any).hiddenCategories.size);
+    const hiddenAfter = await page.evaluate(() => window.__xikiTest.hiddenCategories.size);
     expect(hiddenAfter).toBe(1);
   });
 
@@ -895,7 +886,7 @@ test.describe('Cross-feature edge cases', () => {
     // Hidden section should appear inside the drawer
     await expect(stats.locator('.hidden-section')).toBeVisible();
 
-    const hiddenCount = await page.evaluate(() => (window as any).hiddenCategories.size);
+    const hiddenCount = await page.evaluate(() => window.__xikiTest.hiddenCategories.size);
     expect(hiddenCount).toBe(1);
   });
 
@@ -912,9 +903,9 @@ test.describe('Cross-feature edge cases', () => {
 
     // Get a category name and hide it
     const catNameToHide = await page.evaluate(() => {
-      const cats = (window as any).hiddenCategories;
+      const cats = window.__xikiTest.hiddenCategories;
       // Get the first visible category key from scores
-      const scores = (window as any).categoryScores;
+      const scores = window.__xikiTest.categoryScores;
       for (const k of Object.keys(scores)) {
         if (scores[k] > 0 && k !== 'given names' && k !== 'surnames') return k;
       }
@@ -924,14 +915,14 @@ test.describe('Cross-feature edge cases', () => {
     if (catNameToHide) {
       // Hide this category via JS
       await page.evaluate((cat) => {
-        (window as any).hiddenCategories.add(cat);
-        (window as any).updateEngagement();
+        window.__xikiTest.hiddenCategories.add(cat);
+        window.__xikiTest.updateEngagement();
       }, catNameToHide);
       await page.waitForTimeout(100);
 
       // Get the score before "More like this"
       const scoreBefore = await page.evaluate(
-        (cat) => (window as any).categoryScores[cat],
+        (cat) => window.__xikiTest.categoryScores[cat],
         catNameToHide
       );
 
@@ -941,7 +932,7 @@ test.describe('Cross-feature edge cases', () => {
 
       // The hidden category should NOT have been boosted by More (skipHidden=true)
       const scoreAfter = await page.evaluate(
-        (cat) => (window as any).categoryScores[cat],
+        (cat) => window.__xikiTest.categoryScores[cat],
         catNameToHide
       );
 
@@ -963,10 +954,10 @@ test.describe('Cross-feature edge cases', () => {
 
     // Hide a category and get its score
     const result = await page.evaluate(() => {
-      const scores = (window as any).categoryScores;
+      const scores = window.__xikiTest.categoryScores;
       for (const k of Object.keys(scores)) {
         if (scores[k] > 0 && k !== 'given names' && k !== 'surnames') {
-          (window as any).hiddenCategories.add(k);
+          window.__xikiTest.hiddenCategories.add(k);
           return { cat: k, score: scores[k] };
         }
       }
@@ -974,7 +965,7 @@ test.describe('Cross-feature edge cases', () => {
     });
 
     if (result) {
-      await page.evaluate(() => (window as any).updateEngagement());
+      await page.evaluate(() => window.__xikiTest.updateEngagement());
       await page.waitForTimeout(100);
 
       // Click Less on first post
@@ -984,7 +975,7 @@ test.describe('Cross-feature edge cases', () => {
       // The hidden category SHOULD be affected by Less (skipHidden=false)
       // But only if the first post has this category in its allCategories
       const scoreAfter = await page.evaluate(
-        (cat) => (window as any).categoryScores[cat],
+        (cat) => window.__xikiTest.categoryScores[cat],
         result.cat
       );
 
@@ -1002,9 +993,9 @@ test.describe('Cross-feature edge cases', () => {
 
     // Verify getNextPost scoring via JS evaluation
     const result = await page.evaluate(() => {
-      const pagesArr = (window as any).pagesArr;
-      const hiddenCategories = (window as any).hiddenCategories;
-      const categoryScores = (window as any).categoryScores;
+      const pagesArr = window.__xikiTest.pagesArr;
+      const hiddenCategories = window.__xikiTest.hiddenCategories;
+      const categoryScores = window.__xikiTest.categoryScores;
 
       // Pick a post and hide ALL of its categories
       const testPost = pagesArr[0];
@@ -1345,14 +1336,14 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
 
     // isChunkedFormat is exposed to window, check it
     const isChunked = await page.evaluate(() => {
-      return (window as any).isChunkedFormat;
+      return window.__xikiTest.isChunkedFormat;
     });
     
     expect(isChunked).toBe(true);
     
     // Also verify chunkCache and chunkFetcher are initialized
     const hasChunkInfra = await page.evaluate(() => {
-      return !!(window as any).chunkCache && !!(window as any).chunkFetcher;
+      return !!window.__xikiTest.chunkCache && !!window.__xikiTest.chunkFetcher;
     });
     
     expect(hasChunkInfra).toBe(true);
@@ -1363,8 +1354,8 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
 
     // Verify chunk infrastructure is set up
     const infraStatus = await page.evaluate(() => {
-      const cache = (window as any).chunkCache;
-      const fetcher = (window as any).chunkFetcher;
+      const cache = window.__xikiTest.chunkCache;
+      const fetcher = window.__xikiTest.chunkFetcher;
       return {
         hasCache: !!cache,
         hasFetcher: !!fetcher,

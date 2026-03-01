@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// In CI, test against production; locally, use dev server
+// Tests run against local wrangler dev server (localhost:8788)
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8788';
 const isCI = !!process.env.CI;
 
@@ -26,7 +26,7 @@ export default defineConfig({
     },
   ],
 
-  // Only start local server when not testing against production
+  // Start local wrangler dev server for tests
   ...(baseURL.includes('localhost') ? {
     webServer: {
       command: 'npx wrangler dev --port 8788',
