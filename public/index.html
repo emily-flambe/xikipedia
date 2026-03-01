@@ -4596,9 +4596,10 @@
                 registration.addEventListener('updatefound', () => {
                     const newWorker = registration.installing;
                     newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && 
+                        if (newWorker.state === 'installed' &&
                             navigator.serviceWorker.controller) {
-                            // New version available
+                            // Genuinely new SW installed — clear any prior dismissal
+                            localStorage.removeItem('xiki-update-dismissed');
                             showUpdateToast();
                         }
                     });
@@ -4609,7 +4610,8 @@
         // Listen for messages from SW
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data?.type === 'CONTENT_UPDATED') {
-                // index.html was updated in background
+                // Genuinely new content fetched — clear any prior dismissal
+                localStorage.removeItem('xiki-update-dismissed');
                 if (!updateAvailable) {
                     showUpdateToast();
                 }
@@ -4621,8 +4623,8 @@
     }
 
     function showUpdateToast() {
-        // Don't show if user already dismissed in this session
-        if (sessionStorage.getItem('xiki-update-dismissed')) {
+        // Don't show if user already dismissed this update
+        if (localStorage.getItem('xiki-update-dismissed')) {
             return;
         }
         updateAvailable = true;
@@ -4637,8 +4639,8 @@
         if (toast) {
             toast.classList.remove('visible');
         }
-        // Remember that user dismissed the toast this session
-        sessionStorage.setItem('xiki-update-dismissed', 'true');
+        // Persist dismissal across sessions — cleared when a genuine update arrives
+        try { localStorage.setItem('xiki-update-dismissed', 'true'); } catch (e) { /* quota */ }
         updateAvailable = false;
     }
 
