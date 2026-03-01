@@ -575,6 +575,28 @@ async function serveR2File(
   return new Response(object.body, { headers });
 }
 
+// ─── Environment Validation ──────────────────────────────────────────
+
+function validateApiEnv(env: Env): string | null {
+  if (!env.JWT_SECRET) {
+    return 'JWT_SECRET is not configured';
+  }
+  if (env.JWT_SECRET.length < 32) {
+    return 'JWT_SECRET must be at least 32 characters';
+  }
+  if (!env.DB) {
+    return 'D1 database binding (DB) is not configured';
+  }
+  return null;
+}
+
+function validateR2Env(env: Env): string | null {
+  if (!env.DATA_BUCKET) {
+    return 'R2 bucket binding (DATA_BUCKET) is not configured';
+  }
+  return null;
+}
+
 // ─── Main Worker ─────────────────────────────────────────────────────
 
 export default {
@@ -592,6 +614,13 @@ export default {
 
     // API Routes
     if (url.pathname.startsWith('/api/')) {
+      // Validate JWT_SECRET and DB before processing API requests
+      const apiEnvError = validateApiEnv(env);
+      if (apiEnvError) {
+        console.error(`Environment validation failed: ${apiEnvError}`);
+        return new Response('Server misconfigured', { status: 500 });
+      }
+
       await ensureTables(env.DB);
 
       try {
@@ -620,6 +649,13 @@ export default {
         console.error('API error:', e instanceof Error ? e.message : String(e));
         return errorResponse('Internal server error', 500);
       }
+    }
+
+    // Validate R2 binding before serving data files
+    const r2EnvError = validateR2Env(env);
+    if (r2EnvError) {
+      console.error(`Environment validation failed: ${r2EnvError}`);
+      return new Response('Server misconfigured', { status: 500 });
     }
 
     // Handle index.json request - serve from R2
