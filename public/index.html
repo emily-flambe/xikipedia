@@ -3690,19 +3690,26 @@
             }
 
             let responseSize = 0;
-            const totalSize = parseInt(resp.headers.get('Content-Length'), 10) || DATA_SIZE;
-            const bytes = new Uint8Array(totalSize);
+            const contentLength = parseInt(resp.headers.get('Content-Length'), 10);
+            const totalSize = contentLength > 0 ? contentLength : DATA_SIZE;
+            let bytes = new Uint8Array(totalSize);
             const startTime = Date.now();
             let speedSamples = [];
             let lastSampleTime = startTime;
             let lastSampleSize = 0;
 
             for await (const chunk of streamToAsyncIterable(resp.body)) {
+                // Grow buffer if response exceeds expected size
+                if (responseSize + chunk.length > bytes.length) {
+                    const newBytes = new Uint8Array(Math.max(bytes.length * 2, responseSize + chunk.length));
+                    newBytes.set(bytes);
+                    bytes = newBytes;
+                }
                 bytes.set(chunk, responseSize);
                 responseSize += chunk.length;
 
                 const now = Date.now();
-                const percent = Math.floor(responseSize / totalSize * 100);
+                const percent = Math.min(100, Math.floor(responseSize / totalSize * 100));
 
                 // Calculate speed every 500ms
                 if (now - lastSampleTime >= 500) {
