@@ -1373,3 +1373,94 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     expect(infraStatus.fetcherHasGetArticleText).toBe(true);
   });
 });
+
+// =============================================
+// EMI-29: History panel click does not duplicate posts
+// =============================================
+test.describe('EMI-29: History panel duplicate prevention', () => {
+  test('clicking a history item already in the feed scrolls to it instead of duplicating', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+    expect(postId).toBeTruthy();
+
+    // Open history panel
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    // Click the history item matching the first post
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+    await historyItem.click();
+
+    // Should NOT create a duplicate
+    const postsWithId = page.locator(`[data-testid="post"][data-id="${postId}"]`);
+    await expect(postsWithId).toHaveCount(1);
+  });
+
+  test('clicking a history item not in the feed creates it', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+
+    // Remove post from DOM to simulate it being gone
+    await page.evaluate((id) => {
+      const post = document.querySelector(`.post[data-id="${id}"]`);
+      if (post) post.remove();
+    }, postId);
+
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(0);
+
+    // Open history panel and click the removed article
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+    await historyItem.click();
+
+    // Post should be re-created
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(1);
+  });
+
+  test('rapid history clicks on the same item do not create duplicates', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+
+    // Remove the post so the history click will try to re-create it
+    await page.evaluate((id) => {
+      const post = document.querySelector(`.post[data-id="${id}"]`);
+      if (post) post.remove();
+    }, postId);
+
+    // Open history panel and rapid-click the same item multiple times
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+
+    // Fire multiple clicks synchronously (bypassing panel hide)
+    await page.evaluate((id) => {
+      const item = document.querySelector(`.history-item[data-id="${id}"]`) as HTMLElement;
+      if (item) {
+        item.click();
+        item.click();
+        item.click();
+      }
+    }, postId);
+
+    await page.waitForTimeout(300);
+
+    // Should still have exactly one post with this ID
+    const postsWithId = page.locator(`[data-testid="post"][data-id="${postId}"]`);
+    await expect(postsWithId).toHaveCount(1);
+  });
+});
