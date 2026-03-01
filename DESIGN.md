@@ -458,6 +458,85 @@ These are ideas for extending beyond the original:
 - [x] Service worker for offline support (PR #43, #44, #45)
 - [ ] Incremental dataset updates
 - [x] WebWorker for algorithm processing (PR #48)
+- [x] Chunked data format for full Wikipedia (PR #50, #51, #52, #61)
+
+---
+
+## Chunked Wikipedia Architecture
+
+Full English Wikipedia support (~6.8M articles) uses a chunked data format that enables:
+- **Lazy loading**: Only load article text when needed
+- **Memory efficiency**: Don't hold all text in RAM
+- **Prefetching**: Predictive chunk loading based on algorithm
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Cloudflare Edge                          │
+├─────────────────────────────────────────────────────────────┤
+│  Workers (src/index.ts)     │  R2 Bucket                   │
+│  - /articles/index.json     │  - index.json (~200MB)       │
+│  - /articles/chunk-*.json   │  - chunk-*.json.br (~680)    │
+│  - Range request support    │  - Article text by chunkId   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Browser                                  │
+├─────────────────────────────────────────────────────────────┤
+│  Index Loader               │  Chunk Fetcher               │
+│  - Stream index.json        │  - LRU cache (10 chunks)     │
+│  - Build pagesArr[]         │  - Batch requests            │
+│  - Categories only, no text │  - Concurrent limit (2)      │
+├─────────────────────────────────────────────────────────────┤
+│  Algorithm Worker           │  Post Renderer               │
+│  - Score without text       │  - Skeleton loading          │
+│  - Prefetch queue (3 deep)  │  - Error + retry buttons     │
+│  - upcomingChunks hints     │  - On-demand text fetch      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Phases
+
+| Phase | PR | Description |
+|-------|-----|-------------|
+| 1. Data Generation | - | Wikipedia dump processing scripts |
+| 2. Worker Routes | #50 | R2 binding, range requests, Brotli support |
+| 3. Client Loader | #51 | ChunkCache, ChunkFetcher, streaming index |
+| 4. Post Rendering | #52 | Skeleton states, error handling, retry UI |
+| 5. WebWorker Updates | #61 | Prefetch hints, memory optimization |
+
+### Data Format
+
+**index.json** - Lightweight metadata (~200MB for 6.8M articles):
+```json
+{
+  "format": "chunked",
+  "chunkSize": 10000,
+  "chunkCount": 680,
+  "articles": [
+    // Tuple: [title, pageId, chunkId, thumbHash, categories]
+    ["Albert Einstein", 123, 0, "abc123", ["physicists", "scientists"]]
+  ]
+}
+```
+
+**chunk-NNNNNN.json** - Article text by chunkId:
+```json
+{
+  "chunkId": 0,
+  "articles": {
+    "123": { "text": "Albert Einstein was a physicist..." }
+  }
+}
+```
+
+### Key Classes
+
+- **ChunkCache**: LRU cache holding up to 10 chunks in memory
+- **ChunkFetcher**: Batches requests, limits concurrency, handles retries
+- **AlgorithmWorker**: Scores posts without text, provides prefetch hints
 
 ---
 
