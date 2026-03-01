@@ -1799,7 +1799,7 @@
     let exploreMode = false;
     let algorithmAggressiveness = 50; // 0-100: 0=random, 50=balanced, 100=strict scoring
     const seenPostIds = new Set(); // Hard block: never show same post twice
-    const DATA_SIZE = 225690064;
+    const DATA_SIZE = 228005406;
 
     // === Randomness features ===
     let postsSinceRandom = 0;           // Serendipity: counter for random injection
@@ -3690,18 +3690,26 @@
             }
 
             let responseSize = 0;
-            const bytes = new Uint8Array(DATA_SIZE);
+            const contentLength = parseInt(resp.headers.get('Content-Length'), 10);
+            const totalSize = contentLength > 0 ? contentLength : DATA_SIZE;
+            let bytes = new Uint8Array(totalSize);
             const startTime = Date.now();
             let speedSamples = [];
             let lastSampleTime = startTime;
             let lastSampleSize = 0;
 
             for await (const chunk of streamToAsyncIterable(resp.body)) {
+                // Grow buffer if response exceeds expected size
+                if (responseSize + chunk.length > bytes.length) {
+                    const newBytes = new Uint8Array(Math.max(bytes.length * 2, responseSize + chunk.length));
+                    newBytes.set(bytes);
+                    bytes = newBytes;
+                }
                 bytes.set(chunk, responseSize);
                 responseSize += chunk.length;
 
                 const now = Date.now();
-                const percent = Math.floor(responseSize / DATA_SIZE * 100);
+                const percent = Math.min(100, Math.floor(responseSize / totalSize * 100));
 
                 // Calculate speed every 500ms
                 if (now - lastSampleTime >= 500) {
@@ -3722,11 +3730,11 @@
 
                 if (speedSamples.length > 0) {
                     const avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
-                    const remaining = DATA_SIZE - responseSize;
+                    const remaining = totalSize - responseSize;
                     const eta = remaining / avgSpeed;
-                    loadingDetails.innerText = `${formatBytes(responseSize)} of ${formatBytes(DATA_SIZE)} · ${formatBytes(avgSpeed)}/s · ~${formatTime(eta)} remaining`;
+                    loadingDetails.innerText = `${formatBytes(responseSize)} of ${formatBytes(totalSize)} · ${formatBytes(avgSpeed)}/s · ~${formatTime(eta)} remaining`;
                 } else {
-                    loadingDetails.innerText = `${formatBytes(responseSize)} of ${formatBytes(DATA_SIZE)}`;
+                    loadingDetails.innerText = `${formatBytes(responseSize)} of ${formatBytes(totalSize)}`;
                 }
             }
 
