@@ -247,6 +247,17 @@ function serializePost(post) {
     };
 }
 
+// === PREFETCH HINTS: Get unique chunkIds from prefetch queue ===
+function getUpcomingChunkIds() {
+    const chunkIds = new Set();
+    for (const post of prefetchQueue) {
+        if (post.chunkId !== undefined && post.chunkId !== null) {
+            chunkIds.add(post.chunkId);
+        }
+    }
+    return [...chunkIds];
+}
+
 // === PREFETCH: Fill queue with upcoming posts ===
 function fillPrefetchQueue() {
     while (prefetchQueue.length < PREFETCH_SIZE) {
@@ -300,24 +311,40 @@ self.onmessage = function(e) {
                     post = serializePost(getNextPost());
                 }
                 
+                // Refill queue first so we can report upcoming chunks
+                fillPrefetchQueue();
+                
                 self.postMessage({
                     type: 'POST_READY',
                     requestId,
                     payload: {
                         post,
-                        prefetchAvailable: prefetchQueue.length
+                        prefetchAvailable: prefetchQueue.length,
+                        upcomingChunks: getUpcomingChunkIds()  // Hint for chunk prefetching
                     }
                 });
-
-                // Refill queue in background
-                fillPrefetchQueue();
                 break;
 
             case 'PREFETCH':
                 fillPrefetchQueue();
                 self.postMessage({
                     type: 'PREFETCH_READY',
-                    payload: { count: prefetchQueue.length }
+                    payload: { 
+                        count: prefetchQueue.length,
+                        upcomingChunks: getUpcomingChunkIds()  // Include chunk hints
+                    }
+                });
+                break;
+
+            case 'GET_UPCOMING_CHUNKS':
+                // Explicit request for chunk IDs in prefetch queue
+                self.postMessage({
+                    type: 'UPCOMING_CHUNKS',
+                    requestId,
+                    payload: { 
+                        chunkIds: getUpcomingChunkIds(),
+                        queueSize: prefetchQueue.length
+                    }
                 });
                 break;
 

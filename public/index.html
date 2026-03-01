@@ -1892,11 +1892,13 @@
             this.worker.onerror = (e) => this._handleError(e);
 
             // Prepare data for transfer (Sets → Arrays)
+            // Note: For chunked format, skip text since it's fetched on-demand
+            // This significantly reduces memory usage for full Wikipedia
             const transferData = {
                 pagesArr: pagesArrData.map(p => ({
                     id: p.id,
                     title: p.title,
-                    text: p.text,
+                    text: isChunkedFormat ? undefined : p.text,  // Skip text for chunked
                     thumb: p.thumb,
                     chunkId: p.chunkId,  // Include chunkId for chunked format
                     allCategories: [...p.allCategories]
@@ -2043,6 +2045,12 @@
                         const post = payload.post;
                         post.allCategories = new Set(post.allCategories);
                         pending.resolve(post);
+                    }
+                    // Prefetch upcoming chunks (if chunked format is active)
+                    if (isChunkedFormat && chunkFetcher && payload.upcomingChunks) {
+                        for (const chunkId of payload.upcomingChunks) {
+                            chunkFetcher.prefetch(chunkId);
+                        }
                     }
                     break;
 
