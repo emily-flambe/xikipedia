@@ -44,12 +44,13 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       
-      - name: Run Playwright tests against production
+      - name: Configure test environment
+        run: echo 'JWT_SECRET=ci-test-jwt-secret-at-least-32-characters-long' > .dev.vars
+
+      - name: Run Playwright tests
         run: npx playwright test
         env:
           CI: true
-          # Tests run against the deployed workers.dev URL
-          PLAYWRIGHT_BASE_URL: https://xikipedia.emily-cogsdill.workers.dev
       
       - name: Upload test results
         uses: actions/upload-artifact@v4
