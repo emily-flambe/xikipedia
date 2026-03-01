@@ -1398,6 +1398,10 @@ test.describe('EMI-29: History panel duplicate prevention', () => {
     // Should NOT create a duplicate
     const postsWithId = page.locator(`[data-testid="post"][data-id="${postId}"]`);
     await expect(postsWithId).toHaveCount(1);
+
+    // Verify the existing post received focus
+    const postElement = page.locator(`[data-testid="post"][data-id="${postId}"]`);
+    await expect(postElement).toBeFocused();
   });
 
   test('clicking a history item not in the feed creates it', async ({ page }) => {
@@ -1457,10 +1461,41 @@ test.describe('EMI-29: History panel duplicate prevention', () => {
       }
     }, postId);
 
-    await page.waitForTimeout(300);
+    // Wait for post to appear, then assert no duplicates
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(1, { timeout: 5000 });
+  });
 
-    // Should still have exactly one post with this ID
-    const postsWithId = page.locator(`[data-testid="post"][data-id="${postId}"]`);
-    await expect(postsWithId).toHaveCount(1);
+  test('viewedHistory does not accumulate duplicate entries on re-creation', async ({ page }) => {
+    await startFeedWithMock(page);
+
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible();
+    const postId = await firstPost.getAttribute('data-id');
+
+    // Remove the post from DOM to simulate it being gone
+    await page.evaluate((id) => {
+      const post = document.querySelector(`.post[data-id="${id}"]`);
+      if (post) post.remove();
+    }, postId);
+
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(0);
+
+    // Open history panel and click the history item to re-create
+    await page.locator('#historyToggle').click();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+
+    const historyItem = page.locator(`.history-item[data-id="${postId}"]`);
+    await expect(historyItem).toBeVisible();
+    await historyItem.click();
+
+    // Verify the post was re-created
+    await expect(page.locator(`[data-testid="post"][data-id="${postId}"]`)).toHaveCount(1);
+
+    // Check viewedHistory for duplicate IDs
+    const historyIds: string[] = await page.evaluate(() => {
+      return ((window as any).viewedHistory as Array<{ id: number }>).map(h => String(h.id));
+    });
+    const uniqueIds = new Set(historyIds);
+    expect(uniqueIds.size).toBe(historyIds.length);
   });
 });

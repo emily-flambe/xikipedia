@@ -3025,7 +3025,7 @@
 
         // If re-showing a specific post, check if it's already in the feed
         if (specificPost) {
-            const existing = document.querySelector(`.post[data-id="${specificPost.id}"]`);
+            const existing = document.querySelector(`.post[data-id="${CSS.escape(String(specificPost.id))}"]`);
             if (existing) {
                 existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 existing.focus();
@@ -3391,7 +3391,7 @@
 
         // Update session stats
         articlesViewed++;
-        if (!viewedHistory.some(h => h.id == nextPost.id)) {
+        if (!viewedHistory.some(h => h.id === nextPost.id)) {
             viewedHistory.unshift({ title: nextPost.title, id: nextPost.id, thumb: nextPost.thumb });
             if (viewedHistory.length > 50) viewedHistory.pop(); // Keep last 50
         }
