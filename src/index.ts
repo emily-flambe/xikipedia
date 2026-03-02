@@ -366,7 +366,8 @@ async function handleLogin(
     return errorResponse(request, 'Invalid JSON body', 400);
   }
 
-  if (typeof body.username !== 'string' || typeof body.password !== 'string') {
+  if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
+      !body.username || !body.password) {
     return errorResponse(request, 'Username and password are required', 400);
   }
 
