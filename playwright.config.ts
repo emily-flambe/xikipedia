@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Tests always run against local wrangler dev server (localhost:8788).
+// Tests always run against local wrangler dev server (localhost:8799).
 // window.__xikiTest is only created when hostname === 'localhost'.
-const baseURL = 'http://localhost:8788';
+const baseURL = 'http://localhost:8799';
 const isCI = !!process.env.CI;
 
 export default defineConfig({
@@ -28,8 +28,8 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npx wrangler dev --port 8788',
-    port: 8788,
+    command: 'npx wrangler dev --port 8799',
+    port: 8799,
     reuseExistingServer: !isCI,
     timeout: 120000,
   },
