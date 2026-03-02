@@ -246,24 +246,22 @@ function getCorsHeaders(request: Request): Record<string, string> {
   };
 }
 
-let currentRequest: Request | null = null;
-
 function jsonResponse(
+  request: Request,
   data: unknown,
   status = 200,
 ): Response {
-  const cors = currentRequest ? getCorsHeaders(currentRequest) : { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS[0] };
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...cors,
+      ...getCorsHeaders(request),
     },
   });
 }
 
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse({ error: message }, status);
+function errorResponse(request: Request, message: string, status: number): Response {
+  return jsonResponse(request, { error: message }, status);
 }
 
 // ─── Auth Middleware ─────────────────────────────────────────────────
@@ -313,12 +311,12 @@ async function handleRegister(
   try {
     body = await request.json();
   } catch {
-    return errorResponse('Invalid JSON body', 400);
+    return errorResponse(request, 'Invalid JSON body', 400);
   }
 
   const validationError = validateRegistration(body.username, body.password);
   if (validationError) {
-    return errorResponse(validationError, 400);
+    return errorResponse(request, validationError, 400);
   }
 
   const username = body.username as string;
@@ -346,14 +344,14 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
-    return jsonResponse({ token, username }, 201);
+    return jsonResponse(request, { token, username }, 201);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
-      return errorResponse('Username already taken', 409);
+      return errorResponse(request, 'Username already taken', 409);
     }
     console.error('Registration error:', errMsg);
-    return errorResponse('Registration failed', 500);
+    return errorResponse(request, 'Registration failed', 500);
   }
 }
 
@@ -365,11 +363,11 @@ async function handleLogin(
   try {
     body = await request.json();
   } catch {
-    return errorResponse('Invalid JSON body', 400);
+    return errorResponse(request, 'Invalid JSON body', 400);
   }
 
   if (typeof body.username !== 'string' || typeof body.password !== 'string') {
-    return errorResponse('Username and password are required', 400);
+    return errorResponse(request, 'Username and password are required', 400);
   }
 
   const user = await env.DB.prepare(
@@ -379,14 +377,14 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
-    return errorResponse('Invalid username or password', 401);
+    return errorResponse(request, 'Invalid username or password', 401);
   }
 
   const salt = new Uint8Array(hexToArrayBuffer(user.salt));
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
-    return errorResponse('Invalid username or password', 401);
+    return errorResponse(request, 'Invalid username or password', 401);
   }
 
   const token = await createToken(
@@ -398,7 +396,7 @@ async function handleLogin(
     env.JWT_SECRET,
   );
 
-  return jsonResponse({ token, username: user.username });
+  return jsonResponse(request, { token, username: user.username });
 }
 
 // Helper to verify user still exists (for deleted user token attacks)
@@ -413,12 +411,12 @@ async function handleGetPreferences(
 ): Promise<Response> {
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
-    return errorResponse('Unauthorized', 401);
+    return errorResponse(request, 'Unauthorized', 401);
   }
 
   // Verify user still exists (token may be valid but user deleted)
   if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse('User not found', 401);
+    return errorResponse(request, 'User not found', 401);
   }
 
   const prefs = await env.DB.prepare(
@@ -428,16 +426,16 @@ async function handleGetPreferences(
     .first<Pick<PreferencesRow, 'category_scores' | 'hidden_categories'>>();
 
   if (!prefs) {
-    return jsonResponse({ categoryScores: {}, hiddenCategories: [] });
+    return jsonResponse(request, { categoryScores: {}, hiddenCategories: [] });
   }
 
   try {
-    return jsonResponse({
+    return jsonResponse(request, {
       categoryScores: JSON.parse(prefs.category_scores),
       hiddenCategories: JSON.parse(prefs.hidden_categories),
     });
   } catch {
-    return jsonResponse({ categoryScores: {}, hiddenCategories: [] });
+    return jsonResponse(request, { categoryScores: {}, hiddenCategories: [] });
   }
 }
 
@@ -447,26 +445,26 @@ async function handlePutPreferences(
 ): Promise<Response> {
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
-    return errorResponse('Unauthorized', 401);
+    return errorResponse(request, 'Unauthorized', 401);
   }
 
   // Verify user still exists (token may be valid but user deleted)
   if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse('User not found', 401);
+    return errorResponse(request, 'User not found', 401);
   }
 
   let body: { categoryScores?: unknown; hiddenCategories?: unknown };
   try {
     body = await request.json();
   } catch {
-    return errorResponse('Invalid JSON body', 400);
+    return errorResponse(request, 'Invalid JSON body', 400);
   }
 
   if (body.categoryScores && (typeof body.categoryScores !== 'object' || Array.isArray(body.categoryScores))) {
-    return errorResponse('categoryScores must be an object', 400);
+    return errorResponse(request, 'categoryScores must be an object', 400);
   }
   if (body.hiddenCategories && !Array.isArray(body.hiddenCategories)) {
-    return errorResponse('hiddenCategories must be an array', 400);
+    return errorResponse(request, 'hiddenCategories must be an array', 400);
   }
 
   const categoryScores = JSON.stringify(body.categoryScores ?? {});
@@ -474,7 +472,7 @@ async function handlePutPreferences(
 
   // Guard against excessively large payloads (1MB limit)
   if (categoryScores.length + hiddenCategories.length > 1_000_000) {
-    return errorResponse('Preferences payload too large', 413);
+    return errorResponse(request, 'Preferences payload too large', 413);
   }
 
   await env.DB.prepare(
@@ -488,7 +486,7 @@ async function handlePutPreferences(
     .bind(payload.sub, categoryScores, hiddenCategories)
     .run();
 
-  return jsonResponse({ success: true });
+  return jsonResponse(request, { success: true });
 }
 
 async function handleDeleteAccount(
@@ -497,18 +495,18 @@ async function handleDeleteAccount(
 ): Promise<Response> {
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
-    return errorResponse('Unauthorized', 401);
+    return errorResponse(request, 'Unauthorized', 401);
   }
 
   let body: { password?: string };
   try {
     body = await request.json();
   } catch {
-    return errorResponse('Invalid JSON body', 400);
+    return errorResponse(request, 'Invalid JSON body', 400);
   }
 
   if (typeof body.password !== 'string' || !body.password) {
-    return errorResponse('Password is required to delete account', 400);
+    return errorResponse(request, 'Password is required to delete account', 400);
   }
 
   // Verify password before deletion
@@ -519,14 +517,14 @@ async function handleDeleteAccount(
     .first<Pick<UserRow, 'password_hash' | 'salt'>>();
 
   if (!user) {
-    return errorResponse('User not found', 404);
+    return errorResponse(request, 'User not found', 404);
   }
 
   const salt = new Uint8Array(hexToArrayBuffer(user.salt));
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
-    return errorResponse('Incorrect password', 403);
+    return errorResponse(request, 'Incorrect password', 403);
   }
 
   // Delete preferences first (foreign key), then user
@@ -535,7 +533,7 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
-  return jsonResponse({ success: true });
+  return jsonResponse(request, { success: true });
 }
 
 // ─── R2 File Serving Helper ──────────────────────────────────────────
@@ -605,7 +603,6 @@ function validateR2Env(env: Env): string | null {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    currentRequest = request;
     const url = new URL(request.url);
 
     // Handle CORS preflight for API routes
@@ -648,10 +645,10 @@ export default {
           return await handleDeleteAccount(request, env);
         }
 
-        return errorResponse('Not found', 404);
+        return errorResponse(request, 'Not found', 404);
       } catch (e: unknown) {
         console.error('API error:', e instanceof Error ? e.message : String(e));
-        return errorResponse('Internal server error', 500);
+        return errorResponse(request, 'Internal server error', 500);
       }
     }
 
