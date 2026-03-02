@@ -2928,15 +2928,31 @@
         const list = document.getElementById('historyList');
         if (!list) return;
         
-        list.innerHTML = viewedHistory.map(item => `
-            <div class="history-item" data-id="${item.id}" tabindex="0">
-                ${item.thumb 
-                    ? `<img src="${item.thumb}" alt="" loading="lazy">` 
-                    : `<div class="no-thumb">📄</div>`}
-                <span class="history-item-title">${item.title}</span>
-            </div>
-        `).join('');
-        
+        list.innerHTML = '';
+        viewedHistory.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'history-item';
+            div.dataset.id = item.id;
+            div.tabIndex = 0;
+            if (item.thumb) {
+                const img = document.createElement('img');
+                img.src = item.thumb;
+                img.alt = '';
+                img.loading = 'lazy';
+                div.appendChild(img);
+            } else {
+                const noThumb = document.createElement('div');
+                noThumb.className = 'no-thumb';
+                noThumb.textContent = '📄';
+                div.appendChild(noThumb);
+            }
+            const span = document.createElement('span');
+            span.className = 'history-item-title';
+            span.textContent = item.title;
+            div.appendChild(span);
+            list.appendChild(div);
+        });
+
         // Add click handlers to scroll to article
         list.querySelectorAll('.history-item').forEach(el => {
             el.onclick = () => {
