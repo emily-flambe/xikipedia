@@ -1801,26 +1801,17 @@
     const seenPostIds = new Set(); // Hard block: never show same post twice
     const DATA_SIZE = 228005406;
 
-    // === Randomness features ===
-    let postsSinceRandom = 0;           // Serendipity: counter for random injection
-    let lastTopCategory = null;         // Variety: track dominant category
-    let consecutiveSameCategory = 0;    // Variety: count streak in same category
     const exploredCategories = new Set(); // Roulette: categories we've engaged with
 
     // === Time-based decay ===
     const categoryLastEngaged = {};     // Track when each category was last positively engaged
     const sessionStartTime = Date.now();
     
-    // Calculate decay factor based on age (0.5 per hour, minimum 0.1)
-    function getDecayFactor(category) {
-        const lastEngaged = categoryLastEngaged[category];
-        if (!lastEngaged) return 0.5; // Never engaged = 50% weight
-        const ageMs = Date.now() - lastEngaged;
-        const ageHours = ageMs / (1000 * 60 * 60);
-        // Decay: starts at 1.0, halves every 2 hours, floor at 0.1
-        // Faster decay: halves every hour (was every 2 hours)
-        return Math.max(0.1, Math.pow(0.5, ageHours));
-    }
+    // === Shared algorithm module ===
+    // Imported as an ES module; used by the main-thread fallback when the
+    // algorithm worker is unavailable.
+    const _algorithmModulePromise = import('/algorithm.mjs');
+    let fallbackAlgorithm = null;
 
     // Load persisted seen posts from localStorage
     function loadSeenPosts() {
@@ -1876,7 +1867,7 @@
             }
 
             try {
-                this.worker = new Worker('/algorithm-worker.js');
+                this.worker = new Worker('/algorithm-worker.js', { type: 'module' });
             } catch (err) {
                 console.warn('Failed to create worker:', err);
                 return false;
@@ -3443,203 +3434,20 @@
         }
     }
 
-    // Mark a post as seen (hard block + persist)
-    function markPostSeen(post) {
-        seenPostIds.add(post.id);
-        post.seen = (post.seen ?? 0) + 1;
-        saveSeenPosts();
-    }
-
-    // Get a purely random unseen post (helper) - with hard blocking
-    function getRandomPost() {
-        for (let i = 0; i < 1000; i++) {
-            const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-            if (!seenPostIds.has(randomPost.id)) {
-                markPostSeen(randomPost);
-                randomPost.recommendedBecause = ['🎲 Serendipity'];
-                return randomPost;
-            }
-        }
-        // Fallback: if we've seen everything
-        console.warn('Exhausted unique posts, allowing repeat');
-        const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-        markPostSeen(randomPost);
-        randomPost.recommendedBecause = ['🎲 Serendipity'];
-        return randomPost;
-    }
-
-    // Get next post using the scoring algorithm
-    function getNextPost() {
-        // Explore mode OR aggressiveness 0: return purely random post
-        if (exploreMode || algorithmAggressiveness === 0) {
-            return getRandomPost();
-        }
-
-        // === SERENDIPITY INJECTION ===
-        // Every 5-10 posts, inject a random one to break filter bubbles
-        postsSinceRandom++;
-        const serendipityThreshold = 5 + Math.floor(Math.random() * 6); // 5-10
-        if (postsSinceRandom >= serendipityThreshold) {
-            postsSinceRandom = 0;
-            return getRandomPost();
-        }
-
-        // === VARIETY ENFORCEMENT ===
-        // Penalize if we've had 4+ posts from the same dominant category
-        let varietyPenaltyCategory = null;
-        // Stricter variety: penalize after 2 consecutive posts (was 4)
-        if (consecutiveSameCategory >= 2 && lastTopCategory) {
-            varietyPenaltyCategory = lastTopCategory;
-        }
-
-        // === CATEGORY ROULETTE ===
-        // 10% chance to boost a random unexplored category
-        let rouletteBoostCategory = null;
-        if (Math.random() < 0.1) {
-            // Find categories we haven't engaged with yet
-            const allCats = new Set();
-            pagesArr.slice(0, 1000).forEach(p => p.allCategories?.forEach(c => allCats.add(c)));
-            const unexplored = [...allCats].filter(c => 
-                !exploredCategories.has(c) && 
-                !hiddenCategories.has(c) &&
-                c !== 'given names' && c !== 'surnames'
-            );
-            if (unexplored.length > 0) {
-                rouletteBoostCategory = unexplored[Math.floor(Math.random() * unexplored.length)];
-            }
-        }
-
-        // Scale category influence by aggressiveness (50 = normal, 100 = 2x, 25 = 0.5x)
-        const aggFactor = algorithmAggressiveness / 50;
-
-        const potentialPosts = [...Array(10000)]
-            .map(() => pagesArr[Math.floor(Math.random() * pagesArr.length)])
-            // Hard block: filter out already-seen posts
-            .filter(post => !seenPostIds.has(post.id))
-            .map(post => {
-                // Stronger penalty (10x) as backup for any edge cases
-                const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -500000;
-                let postScore = [...post.allCategories].reduce(
-                    (sum, cat) => {
-                        // Apply time-based decay to category score
-                        const baseScore = (categoryScores[cat] ?? 0) * aggFactor;
-                        let catScore = baseScore * getDecayFactor(cat);
-                        
-                        // === USER CATEGORY FILTERS ===
-                        // Boosted categories get 3x score bonus
-                        if (boostedCategories.has(cat)) {
-                            catScore += 2000;
-                        }
-                        // Reduced categories get 75% penalty
-                        if (reducedCategories.has(cat)) {
-                            catScore -= 1500;
-                        }
-                        
-                        // Variety: penalize overexposed category
-                        if (cat === varietyPenaltyCategory) {
-                            catScore -= 5000;
-                        }
-                        
-                        // Roulette: boost unexplored category
-                        if (cat === rouletteBoostCategory) {
-                            catScore += 3000;
-                        }
-                        
-                        return sum + catScore;
-                    },
-                    initialScore
-                );
-                post.score = postScore;
-                return post;
-            });
-
-        // If all sampled posts were seen, sample more aggressively
-        if (potentialPosts.length === 0) {
-            console.warn('All sampled posts seen, trying harder...');
-            for (let i = 0; i < 10000; i++) {
-                const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-                if (!seenPostIds.has(randomPost.id)) {
-                    markPostSeen(randomPost);
-                    return randomPost;
-                }
-            }
-            // True fallback - everything seen
-            const randomPost = pagesArr[Math.floor(Math.random() * pagesArr.length)];
-            markPostSeen(randomPost);
-            return randomPost;
-        }
-
-        let highestScore = -Infinity;
-        let bestPost = potentialPosts[0];
-
-        if (Math.random() < 0.4) {
-            // Weighted random selection
-            const minScore = Math.min(...potentialPosts.map(e => e.score));
-            const maxScore = potentialPosts.reduce((sum, post) => sum + post.score - minScore, 0);
-            const targetScore = Math.random() * maxScore;
-            let scoreCount = 0;
-
-            while (scoreCount < targetScore && potentialPosts.length) {
-                const potentialPost = potentialPosts.pop();
-                bestPost = potentialPost;
-                scoreCount += potentialPost.score - minScore;
-            }
-        } else if (Math.random() > 0.3) {
-            // Highest score selection
-            potentialPosts.forEach(post => {
-                if (post.score > highestScore) {
-                    bestPost = post;
-                    highestScore = post.score;
-                }
-            });
-        }
-
-        markPostSeen(bestPost);
-
-        // Track top contributing categories for transparency
-        const categoryContributions = [...bestPost.allCategories]
-            .map(cat => ({ cat, score: categoryScores[cat] || 0 }))
-            .filter(c => c.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 3);
-
-        if (categoryContributions.length > 0) {
-            bestPost.recommendedBecause = categoryContributions.map(c => convertCat(c.cat));
-            
-            // Track for variety enforcement
-            const topCat = categoryContributions[0].cat;
-            if (topCat === lastTopCategory) {
-                consecutiveSameCategory++;
-            } else {
-                lastTopCategory = topCat;
-                consecutiveSameCategory = 1;
-            }
-        } else {
-            bestPost.recommendedBecause = null;
-            lastTopCategory = null;
-            consecutiveSameCategory = 0;
-        }
-
-        // Roulette feedback
-        if (rouletteBoostCategory && bestPost.allCategories.has(rouletteBoostCategory)) {
-            bestPost.recommendedBecause = ['🎰 ' + convertCat(rouletteBoostCategory)];
-        }
-
-        return bestPost;
-    }
-
-    // Async wrapper for algorithm (worker or fallback)
+    // Async wrapper for algorithm (worker or module fallback)
     async function getNextPostAsync() {
         if (useWorkerAlgorithm && algorithmWorker?.isReady) {
             try {
                 return await algorithmWorker.getNextPost();
             } catch (err) {
-                console.warn('Worker failed, falling back to sync:', err);
-                // Fall through to synchronous version
+                console.warn('Worker failed, falling back to module:', err);
             }
         }
-        // Fallback: original synchronous algorithm
-        return getNextPost();
+        // Fallback: shared algorithm module (initialized during data load)
+        if (fallbackAlgorithm) {
+            return fallbackAlgorithm.getNextPost();
+        }
+        throw new Error('Algorithm not ready: worker unavailable and fallback not initialized');
     }
 
     // Post creation queue to prevent rapid duplicate calls
@@ -3816,15 +3624,15 @@
         pagesArr.forEach(p => { delete p.seen; delete p.recommendedBecause; });
         // Reset like streak counter
         postsWithoutLike = 0;
-        // Reset randomness counters
-        postsSinceRandom = 0;
-        lastTopCategory = null;
-        consecutiveSameCategory = 0;
         // Note: exploredCategories persists across refresh (intentional)
-        
-        // Reset worker state
+
+        // Reset worker state (handles its own private counter resets)
         if (algorithmWorker) {
             algorithmWorker.reset();
+        }
+        // Reset fallback algorithm private state (serendipity/variety counters)
+        if (fallbackAlgorithm) {
+            fallbackAlgorithm.reset();
         }
         
         // Scroll to top
@@ -4468,6 +4276,29 @@
                 console.warn('Worker init failed:', err);
                 useWorkerAlgorithm = false;
             });
+
+        // Initialize fallback algorithm from shared module (runs in parallel with worker init)
+        _algorithmModulePromise.then(({ createAlgorithm }) => {
+            const algorithmContext = {
+                get pagesArr() { return pagesArr; },
+                get categoryScores() { return categoryScores; },
+                get seenPostIds() { return seenPostIds; },
+                get categoryLastEngaged() { return categoryLastEngaged; },
+                get hiddenCategories() { return hiddenCategories; },
+                get reducedCategories() { return reducedCategories; },
+                get boostedCategories() { return boostedCategories; },
+                get exploredCategories() { return exploredCategories; },
+                get algorithmAggressiveness() { return algorithmAggressiveness; },
+                get exploreMode() { return exploreMode; },
+            };
+            fallbackAlgorithm = createAlgorithm(algorithmContext, {
+                onMarkSeen: saveSeenPosts,
+                noPageMaps,
+            });
+            console.log('Algorithm fallback: ready');
+        }).catch(err => {
+            console.warn('Algorithm module load failed, fallback unavailable:', err);
+        });
         
         startBtn.removeAttribute("disabled");
         categorySearchInput.removeAttribute("disabled");
