@@ -783,6 +783,37 @@ test.describe('Username edge cases', () => {
     });
     expect(resp.status()).toBe(400);
   });
+
+  test('login with empty string password for existing user is rejected', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Register the user first — this ensures the DB lookup succeeds and the
+    // empty password would otherwise reach hashPassword("", salt), triggering
+    // "Imported HMAC key length (0) must be a non-zero value" in Cloudflare's
+    // Web Crypto before the fix.
+    await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/login', {
+      data: { username: user, password: '' },
+    });
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toBe('Username and password are required');
+  });
+
+  test('login with empty string username is rejected', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.post('/api/login', {
+      data: { username: '', password: 'validpass' },
+    });
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toBe('Username and password are required');
+  });
 });
 
 // =============================================================================
