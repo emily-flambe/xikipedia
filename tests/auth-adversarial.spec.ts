@@ -1067,7 +1067,7 @@ test.describe('Delete account idempotency', () => {
       data: JSON.stringify({ password: 'password123' }),
     });
 
-    // Should not crash (500). Could return 200 (no-op) or 404.
+    // Should not crash (500). With rate limiting, returns 429 (per-user deletion limit already consumed).
     expect(del2.status()).not.toBe(500);
   });
 });
