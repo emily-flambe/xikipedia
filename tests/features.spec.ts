@@ -76,20 +76,9 @@ async function setupMockRoute(page: Page) {
 
 /**
  * Full startup: mock data, navigate, wait for load, click start, wait for posts.
+ * Note: setupMockRoute() already handles SW/cache cleanup via addInitScript.
  */
 async function startFeedWithMock(page: Page) {
-  // Unregister SW and clear caches so Playwright's route mock isn't bypassed
-  await page.addInitScript(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(r => r.unregister());
-      });
-    }
-    if ('caches' in window) {
-      caches.keys().then(names => names.forEach(n => caches.delete(n)));
-    }
-  });
-
   await setupMockRoute(page);
   await page.goto('/');
 
