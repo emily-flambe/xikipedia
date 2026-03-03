@@ -251,8 +251,19 @@ test.describe('Service Worker', () => {
 // Integration tests with feed
 test.describe('Service Worker + Feed Integration', () => {
   
-  // TODO: Fix SW test flakiness - may need SW unregistration
-  test.skip('can browse feed offline after initial load', async ({ page, context }) => {
+  test('can browse feed offline after initial load', async ({ page, context }) => {
+    // Unregister SW and clear caches so Playwright's route mock isn't bypassed
+    await page.addInitScript(() => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(names => names.forEach(n => caches.delete(n)));
+      }
+    });
+
     // Use mock data for test speed
     await page.route('**/smoldata.json', async route => {
       const mockData = {
@@ -273,28 +284,27 @@ test.describe('Service Worker + Feed Integration', () => {
         body: JSON.stringify(mockData)
       });
     });
-    
+
     await page.goto('/');
-    
+
     // Start the feed
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
-    
+
     // Wait for posts to render
     await expect(page.locator('[data-testid="post"]').first()).toBeVisible();
-    
+
     // Go offline
     await context.setOffline(true);
-    
-    // Should still be able to scroll and view cached posts
+
+    // Scroll through the already-loaded feed
     await page.evaluate(() => window.scrollTo(0, 1000));
-    await page.waitForTimeout(500);
-    
-    // Feed should still be visible
+
+    // Feed should still be visible (posts are already in DOM)
     await expect(page.locator('[data-testid="post"]').first()).toBeVisible();
-    
-    // Offline indicator should show
+
+    // Offline indicator should show (fired by window 'offline' event)
     await expect(page.locator('#offlineIndicator')).toBeVisible();
   });
 

@@ -621,7 +621,7 @@ test.describe('Feature 3: Sidebar category controls', () => {
     expect(after).toBeGreaterThan(before);
   });
 
-  test.skip('hide button moves category to hidden section', async ({ page }) => {
+  test('hide button moves category to hidden section', async ({ page }) => {
     test.setTimeout(180000);
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeed(page);
@@ -629,13 +629,16 @@ test.describe('Feature 3: Sidebar category controls', () => {
     await page.locator('[data-testid="like-button"]').first().click();
     await page.waitForTimeout(200);
 
+    // Open the sidebar drawer so controls are interactable
+    await page.locator('#statsToggleBtn').click();
+    await page.waitForTimeout(400);
+
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
     await expect(firstRow).toBeVisible({ timeout: 5000 });
 
     const hideBtn = firstRow.locator('.cat-ctrl').nth(2);
     await hideBtn.click();
-    await page.waitForTimeout(100);
 
     const hiddenSection = stats.locator('.hidden-section');
     await expect(hiddenSection).toBeVisible();
