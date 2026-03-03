@@ -12,3 +12,9 @@ CREATE TABLE IF NOT EXISTS preferences (
   hidden_categories TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  id TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 1,
+  window_start INTEGER NOT NULL
+);

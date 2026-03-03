@@ -54,6 +54,11 @@ async function ensureTables(db: D1Database): Promise<void> {
       hidden_categories TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT DEFAULT (datetime('now'))
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
+      id TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 1,
+      window_start INTEGER NOT NULL
+    )`),
   ]);
   tablesInitialized = true;
 }
@@ -264,6 +269,104 @@ function errorResponse(request: Request, message: string, status: number): Respo
   return jsonResponse(request, { error: message }, status);
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────────
+
+const LOGIN_FAIL_LIMIT = 5;
+const LOGIN_FAIL_WINDOW = 15 * 60;
+
+const REGISTER_LIMIT = 3;
+const REGISTER_WINDOW = 60 * 60;
+
+function getClientIp(request: Request): string | null {
+  return request.headers.get('CF-Connecting-IP')
+    || request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim()
+    || null;
+}
+
+async function checkRateLimit(
+  db: D1Database,
+  key: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<{ limited: boolean; retryAfter: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = Math.floor(now / windowSeconds) * windowSeconds;
+
+  const row = await db
+    .prepare('SELECT count, window_start FROM rate_limits WHERE id = ?')
+    .bind(key)
+    .first<{ count: number; window_start: number }>();
+
+  if (!row || row.window_start < windowStart) {
+    return { limited: false, retryAfter: 0 };
+  }
+
+  if (row.count >= limit) {
+    return { limited: true, retryAfter: row.window_start + windowSeconds - now };
+  }
+
+  return { limited: false, retryAfter: 0 };
+}
+
+async function incrementRateLimit(
+  db: D1Database,
+  key: string,
+  windowSeconds: number,
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = Math.floor(now / windowSeconds) * windowSeconds;
+
+  await db
+    .prepare(
+      `INSERT INTO rate_limits (id, count, window_start) VALUES (?, 1, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         count = CASE WHEN window_start = excluded.window_start THEN count + 1 ELSE 1 END,
+         window_start = excluded.window_start`,
+    )
+    .bind(key, windowStart)
+    .run();
+}
+
+async function incrementAndCheckRateLimit(
+  db: D1Database,
+  key: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<{ limited: boolean; retryAfter: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = Math.floor(now / windowSeconds) * windowSeconds;
+
+  const [, selectResult] = await db.batch([
+    db.prepare(
+      `INSERT INTO rate_limits (id, count, window_start) VALUES (?, 1, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         count = CASE WHEN window_start = excluded.window_start THEN count + 1 ELSE 1 END,
+         window_start = excluded.window_start`,
+    ).bind(key, windowStart),
+    db.prepare('SELECT count FROM rate_limits WHERE id = ?').bind(key),
+  ]);
+
+  const row = selectResult.results[0] as { count: number } | undefined;
+  const count = row?.count ?? 1;
+
+  if (count > limit) {
+    return { limited: true, retryAfter: windowStart + windowSeconds - now };
+  }
+
+  return { limited: false, retryAfter: 0 };
+}
+
+function rateLimitResponse(request: Request, retryAfter: number): Response {
+  return new Response(JSON.stringify({ error: 'Too many requests' }), {
+    status: 429,
+    headers: {
+      'Content-Type': 'application/json',
+      'Retry-After': String(Math.ceil(retryAfter)),
+      ...getCorsHeaders(request),
+    },
+  });
+}
+
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
 async function authenticate(
@@ -307,6 +410,14 @@ async function handleRegister(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  if (ip) {
+    const rlResult = await incrementAndCheckRateLimit(env.DB, `rl:register:${ip}`, REGISTER_LIMIT, REGISTER_WINDOW);
+    if (rlResult.limited) {
+      return rateLimitResponse(request, rlResult.retryAfter);
+    }
+  }
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -371,6 +482,15 @@ async function handleLogin(
     return errorResponse(request, 'Username and password are required', 400);
   }
 
+  const ip = getClientIp(request);
+  const loginKey = ip ? `rl:login:${ip}` : null;
+  if (loginKey) {
+    const rlCheck = await checkRateLimit(env.DB, loginKey, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW);
+    if (rlCheck.limited) {
+      return rateLimitResponse(request, rlCheck.retryAfter);
+    }
+  }
+
   const user = await env.DB.prepare(
     'SELECT id, username, password_hash, salt FROM users WHERE username = ?',
   )
@@ -378,6 +498,7 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
+    if (loginKey) await incrementRateLimit(env.DB, loginKey, LOGIN_FAIL_WINDOW);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -385,6 +506,7 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    if (loginKey) await incrementRateLimit(env.DB, loginKey, LOGIN_FAIL_WINDOW);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
