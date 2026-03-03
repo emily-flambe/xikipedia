@@ -252,7 +252,11 @@ test.describe('Service Worker', () => {
 test.describe('Service Worker + Feed Integration', () => {
   
   test('can browse feed offline after initial load', async ({ page, context }) => {
-    // Unregister SW and clear caches so Playwright's route mock isn't bypassed
+    // Unregister SW and clear caches so Playwright's route mock isn't bypassed.
+    // Note: These promises fire-and-forget, but this is intentional. addInitScript runs
+    // synchronously at page load before any fetch begins. By the time smoldata.json is
+    // requested (after DOM parsing and script execution), the SW is already unregistering.
+    // This approach is reliable in CI and avoids complex pre-navigation setups.
     await page.addInitScript(() => {
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(regs => {

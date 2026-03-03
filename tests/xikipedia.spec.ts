@@ -631,6 +631,7 @@ test.describe('Feature 3: Sidebar category controls', () => {
 
     // Open the sidebar drawer so controls are interactable
     await page.locator('#statsToggleBtn').click();
+    // No waitForTimeout needed here - toBeVisible auto-retries until drawer opens
 
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
