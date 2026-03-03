@@ -3287,25 +3287,41 @@
                 const chip = document.createElement("button");
                 chip.classList.add("category-chip");
                 if (currentStatus !== 'normal') chip.classList.add(currentStatus);
-                
+
                 const statusIcons = { blocked: '🚫 ', reduced: '⬇️ ', boosted: '⬆️ ', normal: '' };
                 chip.textContent = statusIcons[currentStatus] + cat;
                 chip.setAttribute("aria-label", `Filter options for ${cat}`);
                 chip.title = "Click for filter options";
-                
+                chip.setAttribute("aria-haspopup", "true");
+                chip.setAttribute("aria-expanded", "false");
+
                 // Create dropdown menu
                 const dropdown = document.createElement("div");
                 dropdown.classList.add("category-dropdown");
-                
+                dropdown.setAttribute("role", "menu");
+
+                // Helpers defined before actions.forEach so btn.onclick can reference closeDropdown
+                const closeDropdown = () => {
+                    dropdown.style.display = 'none';
+                    chip.setAttribute('aria-expanded', 'false');
+                };
+
+                const openDropdown = (focusFirst = false) => {
+                    dropdown.style.display = 'flex';
+                    chip.setAttribute('aria-expanded', 'true');
+                    if (focusFirst) dropdown.querySelector('[role="menuitem"]')?.focus();
+                };
+
                 const actions = [
                     { action: 'boost', label: '⬆️ Boost', desc: 'Show more' },
                     { action: 'reduce', label: '⬇️ Reduce', desc: 'Show less' },
                     { action: 'block', label: '🚫 Block', desc: 'Never show' },
                     { action: 'clear', label: '✓ Clear', desc: 'Remove filter' }
                 ];
-                
+
                 actions.forEach(({ action, label }) => {
                     const btn = document.createElement("button");
+                    btn.setAttribute("role", "menuitem");
                     btn.textContent = label;
                     if (currentStatus === action || (currentStatus === 'normal' && action === 'clear')) {
                         btn.classList.add('active');
@@ -3313,13 +3329,13 @@
                     btn.onclick = (e) => {
                         e.stopPropagation();
                         setCategoryFilter(rawCat, action);
-                        
+
                         // Update chip appearance
                         const newStatus = getCategoryFilterStatus(rawCat);
                         chip.className = 'category-chip';
                         if (newStatus !== 'normal') chip.classList.add(newStatus);
                         chip.textContent = statusIcons[newStatus] + cat;
-                        
+
                         // Update dropdown active states
                         dropdown.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                         if (newStatus === 'normal') {
@@ -3327,17 +3343,66 @@
                         } else {
                             btn.classList.add('active');
                         }
+                        closeDropdown();
+                        chip.focus();
                     };
                     dropdown.appendChild(btn);
                 });
-                
+
                 chip.onclick = (e) => {
                     e.stopPropagation();
-                    // Toggle dropdown visibility on mobile (hover works on desktop)
-                    const isVisible = dropdown.style.display === 'flex';
-                    dropdown.style.display = isVisible ? 'none' : 'flex';
+                    // Use computed style to detect CSS-hover-visible state too
+                    const isVisible = getComputedStyle(dropdown).display !== 'none';
+                    if (isVisible) {
+                        closeDropdown();
+                    } else {
+                        // e.detail === 0 means keyboard-triggered click (Enter/Space)
+                        openDropdown(e.detail === 0);
+                    }
                 };
-                
+
+                chip.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        openDropdown(true);
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        const items = [...dropdown.querySelectorAll('[role="menuitem"]')];
+                        dropdown.style.display = 'flex';
+                        chip.setAttribute('aria-expanded', 'true');
+                        items[items.length - 1]?.focus();
+                    } else if (e.key === 'Escape') {
+                        closeDropdown();
+                    }
+                });
+
+                dropdown.addEventListener('keydown', (e) => {
+                    const items = [...dropdown.querySelectorAll('[role="menuitem"]')];
+                    const currentIdx = items.indexOf(document.activeElement);
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        items[(currentIdx + 1) % items.length]?.focus();
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        items[(currentIdx - 1 + items.length) % items.length]?.focus();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        closeDropdown();
+                        chip.focus();
+                    } else if (e.key === 'Tab') {
+                        closeDropdown();
+                    }
+                });
+
+                // Sync aria-expanded with CSS hover state
+                // Guard against setting true when dropdown is JS-closed (inline display:none)
+                wrapper.addEventListener('mouseenter', () => {
+                    if (dropdown.style.display !== 'none') chip.setAttribute('aria-expanded', 'true');
+                });
+                wrapper.addEventListener('mouseleave', () => {
+                    if (dropdown.style.display !== 'flex') chip.setAttribute('aria-expanded', 'false');
+                });
+
                 wrapper.appendChild(chip);
                 wrapper.appendChild(dropdown);
                 reasonDiv.appendChild(wrapper);
