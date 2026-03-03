@@ -1514,3 +1514,205 @@ test.describe('EMI-29: History panel duplicate prevention', () => {
     expect(uniqueIds.size).toBe(historyIds.length);
   });
 });
+
+// =============================================
+// EMI-42: Category dropdown ARIA attributes
+// =============================================
+test.describe('EMI-42: Category dropdown ARIA attributes', () => {
+  /**
+   * Helper: start the feed and reveal the "Why?" panel on the first post,
+   * then return the first category chip and its dropdown.
+   */
+  async function openWhyPanel(page: Page) {
+    await startFeedWithMock(page);
+
+    // The first post has no recommendedBecause (no engagement history yet).
+    // Engage with it to populate categoryScores so subsequent posts get recommendations.
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await firstPost.locator('.more-btn').click();
+
+    // Scroll to trigger infinite scroll and load next post.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+
+    // Wait for a Why? button (appears on posts after engagement populates scores).
+    const whyBtn = page.locator('.why-btn').first();
+    await expect(whyBtn).toBeVisible({ timeout: 10000 });
+
+    // Click it to reveal the category chips
+    await whyBtn.click();
+
+    const postWithWhy = page.locator('[data-testid="post"]').filter({ has: page.locator('.why-btn') }).first();
+    const firstChip = postWithWhy.locator('.category-chip').first();
+    await expect(firstChip).toBeVisible({ timeout: 3000 });
+
+    return { firstPost: postWithWhy, firstChip };
+  }
+
+  test('chip has aria-haspopup="true" and initial aria-expanded="false"', async ({ page }) => {
+    const { firstChip } = await openWhyPanel(page);
+
+    await expect(firstChip).toHaveAttribute('aria-haspopup', 'true');
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('aria-expanded becomes "true" when dropdown opens via click', async ({ page }) => {
+    const { firstChip } = await openWhyPanel(page);
+
+    // Dropdown must be closed before clicking
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'false');
+
+    await firstChip.click();
+
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('aria-expanded returns to "false" when dropdown closes via second click', async ({ page }) => {
+    const { firstChip } = await openWhyPanel(page);
+
+    // Open
+    await firstChip.click();
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'true');
+
+    // Close by clicking the chip again
+    await firstChip.click();
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('dropdown has role="menu" and action buttons have role="menuitem"', async ({ page }) => {
+    const { firstPost, firstChip } = await openWhyPanel(page);
+
+    // Open the dropdown
+    await firstChip.click();
+
+    const dropdown = firstPost.locator('.category-chip-wrapper').first().locator('.category-dropdown');
+    await expect(dropdown).toHaveAttribute('role', 'menu');
+
+    // All action buttons inside the dropdown should have role="menuitem"
+    const menuItems = dropdown.locator('[role="menuitem"]');
+    const count = await menuItems.count();
+    expect(count).toBeGreaterThanOrEqual(4); // Boost, Reduce, Block, Clear
+
+    // Verify each item individually has role="menuitem"
+    for (let i = 0; i < count; i++) {
+      await expect(menuItems.nth(i)).toHaveAttribute('role', 'menuitem');
+    }
+  });
+
+  test('Escape key closes the dropdown and aria-expanded returns to "false"', async ({ page }) => {
+    const { firstPost, firstChip } = await openWhyPanel(page);
+
+    // Open dropdown
+    await firstChip.click();
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'true');
+
+    // The first menuitem should receive focus when opened by click; send Escape from it
+    const dropdown = firstPost.locator('.category-chip-wrapper').first().locator('.category-dropdown');
+    const firstMenuItem = dropdown.locator('[role="menuitem"]').first();
+
+    // Focus the first menuitem (to simulate keyboard user already tabbed in)
+    await firstMenuItem.focus();
+    await page.keyboard.press('Escape');
+
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'false');
+    // Dropdown should be hidden
+    await expect(dropdown).not.toBeVisible();
+  });
+
+  test('ArrowDown from chip opens dropdown and focuses first menuitem', async ({ page }) => {
+    const { firstPost, firstChip } = await openWhyPanel(page);
+
+    // Ensure dropdown is closed
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'false');
+
+    // Focus the chip and press ArrowDown
+    await firstChip.focus();
+    await page.keyboard.press('ArrowDown');
+
+    // aria-expanded should now be true
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'true');
+
+    // The first menuitem inside the dropdown should be focused
+    const dropdown = firstPost.locator('.category-chip-wrapper').first().locator('.category-dropdown');
+    const firstMenuItem = dropdown.locator('[role="menuitem"]').first();
+    await expect(firstMenuItem).toBeFocused();
+  });
+
+  test('Escape from chip closes dropdown when already open', async ({ page }) => {
+    const { firstChip } = await openWhyPanel(page);
+
+    // Open the dropdown via click
+    await firstChip.click();
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'true');
+
+    // Focus the chip and send Escape
+    await firstChip.focus();
+    await page.keyboard.press('Escape');
+
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('ArrowUp from first menuitem moves focus back to chip', async ({ page }) => {
+    const { firstPost, firstChip } = await openWhyPanel(page);
+
+    // Open with ArrowDown so first item is focused
+    await firstChip.focus();
+    await page.keyboard.press('ArrowDown');
+
+    const dropdown = firstPost.locator('.category-chip-wrapper').first().locator('.category-dropdown');
+    const firstMenuItem = dropdown.locator('[role="menuitem"]').first();
+    await expect(firstMenuItem).toBeFocused();
+
+    // ArrowUp from the first item should return focus to the chip
+    await page.keyboard.press('ArrowUp');
+    await expect(firstChip).toBeFocused();
+  });
+
+  test('all chips in the Why panel have aria-haspopup="true"', async ({ page }) => {
+    const { firstPost } = await openWhyPanel(page);
+
+    const chips = firstPost.locator('.category-chip');
+    const count = await chips.count();
+    expect(count).toBeGreaterThan(0);
+
+    for (let i = 0; i < count; i++) {
+      await expect(chips.nth(i)).toHaveAttribute('aria-haspopup', 'true');
+    }
+  });
+
+  test('dropdown is not visible before the chip is clicked', async ({ page }) => {
+    const { firstPost, firstChip } = await openWhyPanel(page);
+
+    // Chip is visible but dropdown should be hidden initially
+    await expect(firstChip).toBeVisible();
+
+    const dropdown = firstPost.locator('.category-chip-wrapper').first().locator('.category-dropdown');
+    await expect(dropdown).not.toBeVisible();
+  });
+
+  test('mouseenter on wrapper sets aria-expanded to "true"', async ({ page }) => {
+    const { firstPost, firstChip } = await openWhyPanel(page);
+
+    const wrapper = firstPost.locator('.category-chip-wrapper').first();
+
+    // Hover over the wrapper
+    await wrapper.hover();
+
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('mouseleave on wrapper resets aria-expanded to "false" when dropdown is not open via click', async ({ page }) => {
+    const { firstPost, firstChip } = await openWhyPanel(page);
+
+    const wrapper = firstPost.locator('.category-chip-wrapper').first();
+
+    // Hover to trigger mouseenter
+    await wrapper.hover();
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'true');
+
+    // Move mouse away by hovering elsewhere
+    await page.locator('body').hover({ position: { x: 5, y: 5 } });
+
+    await expect(firstChip).toHaveAttribute('aria-expanded', 'false');
+  });
+});
