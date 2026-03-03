@@ -76,6 +76,7 @@ async function setupMockRoute(page: Page) {
 
 /**
  * Full startup: mock data, navigate, wait for load, click start, wait for posts.
+ * Note: setupMockRoute() already handles SW/cache cleanup via addInitScript.
  */
 async function startFeedWithMock(page: Page) {
   await setupMockRoute(page);
@@ -477,8 +478,7 @@ test.describe('Feature 3: Sidebar category controls', () => {
     expect(scoreAfter).toBe(numBefore + 200);
   });
 
-  // TODO: Fix SW cache interference - flaky on CI
-  test.skip('bury button decreases category score by 200', async ({ page }) => {
+  test('bury button decreases category score by 200', async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await startFeedWithMock(page);
 
@@ -488,7 +488,6 @@ test.describe('Feature 3: Sidebar category controls', () => {
 
     // Open the sidebar drawer (required on all screen sizes since PR #16)
     await page.locator('#statsToggleBtn').click();
-    await page.waitForTimeout(400);
 
     const stats = page.locator('[data-testid="stats"]');
     const firstRow = stats.locator('.cat-row').first();
