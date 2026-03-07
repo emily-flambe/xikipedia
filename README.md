@@ -43,6 +43,17 @@ Xikipedia presents Simple Wikipedia articles in an infinite-scroll feed (like Ti
 - 📲 **Pull-to-Refresh** - Mobile-friendly refresh
 - 🌙 **Dark/Light Mode** - Persistent theme
 
+### Account Features
+- 🔐 **Optional Login** - Create an account to sync preferences
+- ☁️ **Cloud Sync** - Preferences persist across devices
+- 👤 **Guest Mode** - Use without an account (local storage only)
+- 🗑️ **Account Deletion** - Full control over your data
+
+### Offline Support
+- 📴 **Service Worker** - Works offline after first load
+- 💾 **Smart Caching** - Data cached for instant access
+- 🔄 **Update Toast** - Notifies when new version available
+
 ### Keyboard Shortcuts
 | Key | Action |
 |-----|--------|
@@ -63,6 +74,7 @@ Xikipedia presents Simple Wikipedia articles in an infinite-scroll feed (like Ti
 |-----------|------------|
 | Hosting | Cloudflare Workers |
 | Data Storage | Cloudflare R2 |
+| Auth Database | Cloudflare D1 (SQLite) |
 | Frontend | Vanilla JavaScript |
 | Styling | CSS (no frameworks) |
 | Testing | Playwright |
