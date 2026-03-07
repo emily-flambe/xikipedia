@@ -320,11 +320,12 @@ test.describe('algorithm.mjs — createAlgorithm', () => {
         allCategories: new Set(['p:999']),
       };
 
+      // Mark p:999 as explored to prevent random roulette boost from adding 🎰 prefix
       const context = {
         pagesArr: [pagePost], categoryScores: { 'p:999': 500 },
         seenPostIds: new Set<number>(), categoryLastEngaged: {} as Record<string, number>,
         hiddenCategories: new Set<string>(), reducedCategories: new Set<string>(),
-        boostedCategories: new Set<string>(), exploredCategories: new Set<string>(),
+        boostedCategories: new Set<string>(), exploredCategories: new Set<string>(['p:999']),
         algorithmAggressiveness: 100, exploreMode: false,
       };
 
