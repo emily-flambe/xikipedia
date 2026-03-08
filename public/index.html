@@ -201,17 +201,64 @@
             background: var(--bg-primary);
             border: none;
             width: 90%;
-            height: 90%;
-            max-width: 600px;
+            max-height: 90vh;
+            max-width: 760px;
             color: var(--text-primary);
-            border-radius: 8px;
-            padding: 32px;
+            border-radius: 12px;
+            padding: 24px 28px;
             box-sizing: border-box;
             overflow-y: auto;
+            gap: 0;
         }
         #startScreen h1,
         #startScreen h2 {
             margin: 0;
+        }
+        .start-header {
+            margin-bottom: 12px;
+        }
+        .start-main-cols {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px 32px;
+            margin: 4px 0 16px;
+        }
+        .start-section-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary, #8899AA);
+            margin: 0 0 8px 0;
+        }
+        .optional-label {
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            opacity: 0.7;
+            font-size: 10px;
+        }
+        .start-divider {
+            display: none; /* hidden on desktop; shown on mobile between columns */
+            border: none;
+            border-top: 1px solid var(--border-color, #38444D);
+            margin: 16px 0;
+        }
+        .start-footer {
+            margin-top: auto;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color, #38444D);
+        }
+        .start-footer > p:first-child {
+            font-size: 13px;
+            opacity: 0.8;
+            margin: 0 0 8px;
+        }
+        .intro-desc {
+            font-size: 14px;
+            line-height: 1.6;
+            margin: 4px 0 0;
+            opacity: 0.9;
         }
         #categoryPickList {
             display: flex;
@@ -1464,19 +1511,28 @@
             /* Start screen: full-viewport on mobile, no border-radius */
             #startScreen {
                 width: 100%;
-                height: 100%;
+                max-height: 100vh;
                 max-width: 100%;
                 border-radius: 0;
-                padding: 20px 16px;
-                padding-top: calc(20px + env(safe-area-inset-top, 0px));
-                padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+                padding: 16px;
+                padding-top: calc(16px + env(safe-area-inset-top, 0px));
+                padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            }
+            .start-main-cols {
+                grid-template-columns: 1fr;
+                gap: 0;
+                margin: 4px 0 12px;
+            }
+            .start-divider {
+                display: block;
+            }
+            .start-section-label {
+                margin-top: 16px;
             }
 
             /* Compact intro paragraph — reduces height above the fold */
             .intro-desc {
                 font-size: 13px;
-                line-height: 1.5;
-                margin: 8px 0;
             }
 
             /* Hide secondary intro paragraph (GitHub source) on small screens */
@@ -1610,71 +1666,77 @@
     <button class="floating-btn" id="refreshBtn" aria-label="Refresh feed" data-tooltip="Refresh (R)" style="display:none"></button>
     <button class="floating-btn" id="exploreBtn" aria-label="Toggle explore mode" data-tooltip="Explore (E)" style="display:none"></button>
     <div id="startScreen" popover="manual">
-        <div>
+        <div class="start-header">
             <h1>Xikipedia</h1>
             <h2 style="font-size: 100%;opacity:0.85;font-style:italic">
                 by <a href="https://lyra.horse">rebane2001</a>
             </h2>
         </div>
         <p class="intro-desc">
-            <strong>Xikipedia</strong> is a pseudo social media feed that algorithmically shows you content from
-            <a href="https://simple.wikipedia.org/">Simple Wikipedia</a> (click any article to read the full version on <a href="https://en.wikipedia.org/">Wikipedia</a>). It is made as a demonstration of how
-            even a basic non-ML algorithm with no data from other users can quickly learn what you engage with
-            to suggest you more similar content. No data is collected or shared here, the algorithm runs locally
-            and the data disappears once you refresh or close the tab.
+            <strong>Xikipedia</strong> is a social media feed powered by <a href="https://simple.wikipedia.org/">Simple Wikipedia</a>. A local algorithm learns what you engage with and suggests similar content — no data is collected or shared.
         </p>
         <p class="intro-source">
             Original source on <a href="https://github.com/rebane2001/xikipedia">GitHub</a>.
             Recreation hosted on Cloudflare Workers.
         </p>
-        <div id="authSection">
-            <div class="auth-tabs">
-                <button class="auth-tab active" data-tab="guest">Guest</button>
-                <button class="auth-tab" data-tab="login">Login</button>
-                <button class="auth-tab" data-tab="register">Register</button>
+        <div class="start-main-cols">
+            <div>
+                <p class="start-section-label">Account</p>
+                <div id="authSection">
+                    <div class="auth-tabs">
+                        <button class="auth-tab active" data-tab="guest">Guest</button>
+                        <button class="auth-tab" data-tab="login">Login</button>
+                        <button class="auth-tab" data-tab="register">Register</button>
+                    </div>
+                    <div class="auth-tab-content active" data-tab-content="guest">
+                        <p class="auth-guest-msg">Browse without an account. Your preferences won't be saved.</p>
+                    </div>
+                    <div class="auth-tab-content" data-tab-content="login">
+                        <input type="text" id="loginUsername" placeholder="Username" autocomplete="username">
+                        <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+                        <button class="auth-submit-btn" id="loginBtn">Log in</button>
+                        <div class="auth-error" id="loginError"></div>
+                    </div>
+                    <div class="auth-tab-content" data-tab-content="register">
+                        <input type="text" id="registerUsername" placeholder="Username" autocomplete="username">
+                        <input type="password" id="registerPassword" placeholder="Password" autocomplete="new-password">
+                        <input type="password" id="registerConfirm" placeholder="Confirm password" autocomplete="new-password">
+                        <button class="auth-submit-btn" id="registerBtn">Create account</button>
+                        <div class="auth-error" id="registerError"></div>
+                    </div>
+                </div>
             </div>
-            <div class="auth-tab-content active" data-tab-content="guest">
-                <p class="auth-guest-msg">Browse without an account. Your preferences won't be saved.</p>
-            </div>
-            <div class="auth-tab-content" data-tab-content="login">
-                <input type="text" id="loginUsername" placeholder="Username" autocomplete="username">
-                <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
-                <button class="auth-submit-btn" id="loginBtn">Log in</button>
-                <div class="auth-error" id="loginError"></div>
-            </div>
-            <div class="auth-tab-content" data-tab-content="register">
-                <input type="text" id="registerUsername" placeholder="Username" autocomplete="username">
-                <input type="password" id="registerPassword" placeholder="Password" autocomplete="new-password">
-                <input type="password" id="registerConfirm" placeholder="Confirm password" autocomplete="new-password">
-                <button class="auth-submit-btn" id="registerBtn">Create account</button>
-                <div class="auth-error" id="registerError"></div>
+            <hr class="start-divider">
+            <div>
+                <p class="start-section-label">Categories <span class="optional-label">(optional)</span></p>
+                <div id="categoryPickerSection">
+                <div id="categoryPickList"></div>
+                <button id="surpriseMe" class="surprise-btn">🎲 Surprise me!</button>
+                <p style="font-weight: 600;margin:0">Or add your own</p>
+                <div id="categorySearch" style="display:flex;flex-direction:column">
+                    <input placeholder="Estonia..." disabled data-testid="category-search-input" aria-label="Search for categories">
+                    <select size="5" data-testid="category-search-select" aria-label="Category search results"></select>
+                </div>
+                </div>
             </div>
         </div>
-        <div id="categoryPickerSection">
-        <p style="font-weight: 600;margin:0">Pick some categories to get started (optional)</p>
-        <div id="categoryPickList"></div>
-        <button id="surpriseMe" class="surprise-btn">🎲 Surprise me!</button>
-        <p style="font-weight: 600;margin:0">Or add your own</p>
-        <div id="categorySearch" style="display:flex;flex-direction:column">
-            <input placeholder="Estonia..." disabled data-testid="category-search-input" aria-label="Search for categories">
-            <select size="5" data-testid="category-search-select" aria-label="Category search results"></select>
+        <div class="start-footer">
+            <p>
+                Since the content and images shown is from random Wikipedia articles, you will likely see
+                NSFW content. Please only continue if you're an adult.
+            </p>
+            <p class="data-freshness">Data last updated: <span id="lastUpdated">February 2026</span></p>
+            <div class="loading-progress" id="loadingProgress" style="display:none">
+                <div class="loading-progress-bar" id="loadingProgressBar"></div>
+            </div>
+            <div class="loading-details" id="loadingDetails"></div>
+            <div class="error-message" id="errorMessage">
+                <strong>Failed to load data</strong>
+                <p id="errorText">Network error occurred.</p>
+                <button class="retry-btn" id="retryBtn">Try again</button>
+            </div>
+            <button id="startBtn" disabled data-testid="start-button" aria-label="Start browsing Xikipedia (adult content warning)">I'm an adult, continue</button>
         </div>
-        </div>
-        <p style="margin-top:auto">
-            Since the content and images shown is from random Wikipedia articles, you will likely see
-            NSFW content. Please only continue if you're an adult.
-        </p>
-        <p class="data-freshness">Data last updated: <span id="lastUpdated">February 2026</span></p>
-        <div class="loading-progress" id="loadingProgress" style="display:none">
-            <div class="loading-progress-bar" id="loadingProgressBar"></div>
-        </div>
-        <div class="loading-details" id="loadingDetails"></div>
-        <div class="error-message" id="errorMessage">
-            <strong>Failed to load data</strong>
-            <p id="errorText">Network error occurred.</p>
-            <button class="retry-btn" id="retryBtn">Try again</button>
-        </div>
-        <button id="startBtn" disabled data-testid="start-button" aria-label="Start browsing Xikipedia (adult content warning)">I'm an adult, continue</button>
     </div>
     <button id="logoutBtn">Log out</button>
     <button id="deleteAccountBtn">Delete account</button>
