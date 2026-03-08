@@ -1130,7 +1130,8 @@
         }
         @media (max-width: 600px) {
             .stats {
-                max-width: 80vw;
+                max-width: 88vw;
+                width: 88vw;
             }
         }
         .stats-backdrop {
@@ -1263,8 +1264,8 @@
         }
         #logoutBtn {
             position: fixed;
-            top: 12px;
-            right: 12px;
+            top: calc(12px + env(safe-area-inset-top, 0px));
+            right: calc(12px + env(safe-area-inset-right, 0px));
             background: transparent;
             border: 1px solid #38444D;
             color: #8899AA;
@@ -1282,8 +1283,8 @@
         }
         #deleteAccountBtn {
             position: fixed;
-            top: 12px;
-            right: 100px;
+            top: calc(12px + env(safe-area-inset-top, 0px));
+            right: calc(100px + env(safe-area-inset-right, 0px));
             background: transparent;
             border: 1px solid #38444D;
             color: #664444;
@@ -1439,6 +1440,151 @@
             color: rgba(255,255,255,0.8);
             font-size: 12px;
         }
+        /* =========================================
+         * Mobile-first improvements (EMI-104)
+         * Targets: ≤600px, ≤360px (SE)
+         * ========================================= */
+
+        /* Touch target: post action buttons (like/share) — increase hit area */
+        .post button:not(.feedback-btn) {
+            padding: 4px;
+        }
+
+        @media (max-width: 600px) {
+            /* Typography: slight scale-down for dense screens */
+            html {
+                font-size: 15px;
+            }
+
+            /* Start screen: full-viewport on mobile, no border-radius */
+            #startScreen {
+                width: 100%;
+                height: 100%;
+                max-width: 100%;
+                border-radius: 0;
+                padding: 20px 16px;
+                padding-top: calc(20px + env(safe-area-inset-top, 0px));
+                padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+            }
+
+            /* Compact intro paragraph — reduces height above the fold */
+            .intro-desc {
+                font-size: 13px;
+                line-height: 1.5;
+                margin: 8px 0;
+            }
+
+            /* Hide secondary intro paragraph (GitHub source) on small screens */
+            .intro-source {
+                display: none;
+            }
+
+            /* Category picker: horizontal scroll row instead of wrapping */
+            #categoryPickList {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 4px;
+                scrollbar-width: none;
+                gap: 8px;
+            }
+            #categoryPickList::-webkit-scrollbar {
+                display: none;
+            }
+            .categoryPicker {
+                flex-shrink: 0;
+                white-space: nowrap;
+                min-height: 44px;
+                padding: 0 14px;
+                align-items: center;
+            }
+
+            /* Auth tabs: ≥44px tap targets (Apple HIG) */
+            .auth-tab {
+                padding: 13px 12px;
+                font-size: 15px;
+            }
+
+            /* Feed posts: comfortable side margins (reduce from 24px to 16px) */
+            .post {
+                padding: 12px 16px;
+            }
+
+            /* Post action buttons: larger hit area on mobile */
+            .post button:not(.feedback-btn) {
+                padding: 10px;
+                margin: -10px;
+                margin-top: 2px;
+            }
+
+            /* Feedback buttons (More / Less): touch-friendly */
+            .post .feedback-btn {
+                padding: 10px 16px;
+                font-size: 14px;
+                min-height: 44px;
+                border-radius: 22px;
+            }
+
+            /* Stats sidebar close button: 44px tap target */
+            .stats-close {
+                width: 44px;
+                height: 44px;
+                font-size: 28px;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                top: 8px;
+                right: 8px;
+            }
+
+            /* Stats toggle button: safe-area + 56px touch target */
+            #statsToggleBtn {
+                left: calc(16px + env(safe-area-inset-left, 0px));
+                bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+                width: 56px;
+                height: 56px;
+            }
+
+            /* Theme toggle: 44px touch target */
+            #themeToggle {
+                width: 44px;
+                height: 44px;
+            }
+
+            /* History panel: full-width within margins */
+            .history-panel {
+                left: calc(8px + env(safe-area-inset-left, 0px));
+                right: 8px;
+                width: auto;
+            }
+        }
+
+        /* Very small screens: iPhone SE (320px) / narrow Android (360px) */
+        @media (max-width: 360px) {
+            #startScreen {
+                padding: 12px;
+                padding-top: calc(12px + env(safe-area-inset-top, 0px));
+                padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+            }
+
+            #startScreen h1 {
+                font-size: 1.4rem;
+            }
+
+            .post {
+                padding: 10px 12px;
+            }
+
+            .auth-tab {
+                font-size: 14px;
+                padding: 12px 8px;
+            }
+
+            .categoryPicker {
+                font-size: 13px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1474,14 +1620,14 @@
                 by <a href="https://lyra.horse">rebane2001</a>
             </h2>
         </div>
-        <p>
-            <strong>Xikipedia</strong> is a pseudo social media feed that algorithmically shows you content from 
-            <a href="https://simple.wikipedia.org/">Simple Wikipedia</a> (click any article to read the full version on <a href="https://en.wikipedia.org/">Wikipedia</a>). It is made as a demonstration of how 
-            even a basic non-ML algorithm with no data from other users can quickly learn what you engage with 
-            to suggest you more similar content. No data is collected or shared here, the algorithm runs locally 
+        <p class="intro-desc">
+            <strong>Xikipedia</strong> is a pseudo social media feed that algorithmically shows you content from
+            <a href="https://simple.wikipedia.org/">Simple Wikipedia</a> (click any article to read the full version on <a href="https://en.wikipedia.org/">Wikipedia</a>). It is made as a demonstration of how
+            even a basic non-ML algorithm with no data from other users can quickly learn what you engage with
+            to suggest you more similar content. No data is collected or shared here, the algorithm runs locally
             and the data disappears once you refresh or close the tab.
         </p>
-        <p>
+        <p class="intro-source">
             Original source on <a href="https://github.com/rebane2001/xikipedia">GitHub</a>.
             Recreation hosted on Cloudflare Workers.
         </p>
