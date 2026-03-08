@@ -1480,20 +1480,11 @@
                 display: none;
             }
 
-            /* Category picker: horizontal scroll row instead of wrapping */
+            /* Category picker: wrap pills on mobile so all are reachable */
             #categoryPickList {
-                flex-wrap: nowrap;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                padding-bottom: 4px;
-                scrollbar-width: none;
                 gap: 8px;
             }
-            #categoryPickList::-webkit-scrollbar {
-                display: none;
-            }
             .categoryPicker {
-                flex-shrink: 0;
                 white-space: nowrap;
                 min-height: 44px;
                 padding: 0 14px;
