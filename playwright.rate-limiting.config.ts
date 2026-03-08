@@ -1,23 +1,21 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Tests run against local wrangler dev server by default (localhost:8788).
-// Override with PLAYWRIGHT_BASE_URL env var for production testing.
-// Note: window.__xikiTest is only created when hostname === 'localhost',
-// so tests using startFeedWithMock() only work on localhost.
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8788';
 const isCI = !!process.env.CI;
 const isLocalhost = baseURL.includes('localhost');
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/rate-limiting.spec.ts'],
-  fullyParallel: true,
+  testMatch: '**/rate-limiting.spec.ts',
+  // Serial execution required: login and register rate limit keys are shared
+  // across all requests in dev (all requests use IP 'unknown').
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: isCI,
-  retries: isCI ? 1 : 0,
-  workers: isCI ? 4 : undefined, // Mock data used for all tests
-  reporter: 'html',
-  timeout: 60000, // 1 minute default, tests can override if needed
-  
+  retries: 0,
+  reporter: 'line',
+  timeout: 60000,
+
   use: {
     baseURL,
     trace: 'on-first-retry',
@@ -31,7 +29,6 @@ export default defineConfig({
     },
   ],
 
-  // Only start local dev server when testing against localhost
   webServer: isLocalhost ? {
     command: 'npx wrangler dev --port 8788',
     port: 8788,

@@ -12,3 +12,11 @@ CREATE TABLE IF NOT EXISTS preferences (
   hidden_categories TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS rate_limit_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limit_key_created ON rate_limit_attempts(key, created_at);

@@ -51,7 +51,15 @@ jobs:
         run: npx playwright test
         env:
           CI: true
-      
+
+      - name: Clear rate limit state for isolated rate-limiting tests
+        run: npx wrangler d1 execute DB --local --command "DELETE FROM rate_limit_attempts;"
+
+      - name: Run rate limiting tests
+        run: npx playwright test --config playwright.rate-limiting.config.ts
+        env:
+          CI: true
+
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()

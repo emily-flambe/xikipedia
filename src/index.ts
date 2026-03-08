@@ -54,6 +54,12 @@ async function ensureTables(db: D1Database): Promise<void> {
       hidden_categories TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT DEFAULT (datetime('now'))
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limit_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_rate_limit_key_created ON rate_limit_attempts(key, created_at)`),
   ]);
   tablesInitialized = true;
 }
@@ -276,6 +282,75 @@ async function authenticate(
   return verifyToken(token, secret);
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────────
+
+function getClientIp(request: Request): string {
+  return (
+    request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For')?.split(',')[0].trim() ||
+    'unknown'
+  );
+}
+
+async function checkRateLimit(
+  db: D1Database,
+  key: string,
+  maxAttempts: number,
+  windowSeconds: number,
+): Promise<{ limited: boolean; retryAfter: number }> {
+  const windowStart = new Date(Date.now() - windowSeconds * 1000)
+    .toISOString()
+    .replace('T', ' ')
+    .slice(0, 19);
+
+  const result = await db
+    .prepare('SELECT COUNT(*) as cnt FROM rate_limit_attempts WHERE key = ? AND created_at > ?')
+    .bind(key, windowStart)
+    .first<{ cnt: number }>();
+
+  const count = result?.cnt ?? 0;
+  if (count >= maxAttempts) {
+    const oldest = await db
+      .prepare(
+        'SELECT created_at FROM rate_limit_attempts WHERE key = ? AND created_at > ? ORDER BY created_at ASC LIMIT 1',
+      )
+      .bind(key, windowStart)
+      .first<{ created_at: string }>();
+
+    let retryAfter = windowSeconds;
+    if (oldest) {
+      const oldestMs = new Date(oldest.created_at.replace(' ', 'T') + 'Z').getTime();
+      retryAfter = Math.max(1, Math.ceil((oldestMs + windowSeconds * 1000 - Date.now()) / 1000));
+    }
+    return { limited: true, retryAfter };
+  }
+
+  return { limited: false, retryAfter: 0 };
+}
+
+async function recordRateLimitAttempt(db: D1Database, key: string): Promise<void> {
+  await db.prepare('INSERT INTO rate_limit_attempts (key) VALUES (?)').bind(key).run();
+  // Probabilistic cleanup (1% chance) to keep table size bounded
+  if (Math.random() < 0.01) {
+    const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000)
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 19);
+    await db.prepare('DELETE FROM rate_limit_attempts WHERE created_at < ?').bind(cutoff).run();
+  }
+}
+
+function rateLimitResponse(request: Request, retryAfter: number): Response {
+  return new Response(JSON.stringify({ error: 'Too many requests' }), {
+    status: 429,
+    headers: {
+      'Content-Type': 'application/json',
+      'Retry-After': String(retryAfter),
+      ...getCorsHeaders(request),
+    },
+  });
+}
+
 // ─── Validation ──────────────────────────────────────────────────────
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
@@ -307,6 +382,13 @@ async function handleRegister(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  const registerKey = `register:${ip}`;
+  const regLimit = await checkRateLimit(env.DB, registerKey, 3, 60 * 60);
+  if (regLimit.limited) {
+    return rateLimitResponse(request, regLimit.retryAfter);
+  }
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -344,6 +426,7 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
+    await recordRateLimitAttempt(env.DB, registerKey);
     return jsonResponse(request, { token, username }, 201);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
@@ -359,6 +442,13 @@ async function handleLogin(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  const loginKey = `login:${ip}`;
+  const loginLimit = await checkRateLimit(env.DB, loginKey, 5, 15 * 60);
+  if (loginLimit.limited) {
+    return rateLimitResponse(request, loginLimit.retryAfter);
+  }
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -378,6 +468,7 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
+    await recordRateLimitAttempt(env.DB, loginKey);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -385,6 +476,7 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    await recordRateLimitAttempt(env.DB, loginKey);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -499,6 +591,12 @@ async function handleDeleteAccount(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
+  const deleteKey = `delete:${payload.sub}`;
+  const deleteLimit = await checkRateLimit(env.DB, deleteKey, 1, 24 * 60 * 60);
+  if (deleteLimit.limited) {
+    return rateLimitResponse(request, deleteLimit.retryAfter);
+  }
+
   let body: { password?: string };
   try {
     body = await request.json();
@@ -534,6 +632,7 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
+  await recordRateLimitAttempt(env.DB, deleteKey);
   return jsonResponse(request, { success: true });
 }
 
