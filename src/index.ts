@@ -54,6 +54,11 @@ async function ensureTables(db: D1Database): Promise<void> {
       hidden_categories TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT DEFAULT (datetime('now'))
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      window_start INTEGER NOT NULL
+    )`),
   ]);
   tablesInitialized = true;
 }
@@ -264,6 +269,89 @@ function errorResponse(request: Request, message: string, status: number): Respo
   return jsonResponse(request, { error: message }, status);
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────────
+
+// Login: 5 failed attempts per IP per 15 minutes
+const LOGIN_FAIL_LIMIT = 5;
+const LOGIN_FAIL_WINDOW = 15 * 60; // seconds
+
+// Registration: 3 successful accounts per IP per hour
+const REGISTER_LIMIT = 3;
+const REGISTER_WINDOW = 60 * 60; // seconds
+
+// Account deletion: 1 per user per day
+const DELETE_LIMIT = 1;
+const DELETE_WINDOW = 24 * 60 * 60; // seconds
+
+/**
+ * Returns the client IP only when Cloudflare sets CF-Connecting-IP (production).
+ * Returns null in local dev (wrangler) where the header is absent, disabling rate limiting
+ * so tests are not affected.
+ */
+function getClientIp(request: Request): string | null {
+  return request.headers.get('CF-Connecting-IP');
+}
+
+interface RateLimitRow {
+  count: number;
+  window_start: number;
+}
+
+async function checkRateLimit(
+  db: D1Database,
+  key: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<{ limited: boolean; retryAfter: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - windowSeconds;
+
+  const row = await db
+    .prepare('SELECT count, window_start FROM rate_limits WHERE key = ?')
+    .bind(key)
+    .first<RateLimitRow>();
+
+  if (!row || row.window_start < windowStart) {
+    return { limited: false, retryAfter: 0 };
+  }
+
+  if (row.count >= limit) {
+    const retryAfter = row.window_start + windowSeconds - now;
+    return { limited: true, retryAfter: Math.max(1, retryAfter) };
+  }
+
+  return { limited: false, retryAfter: 0 };
+}
+
+async function recordRateLimitHit(
+  db: D1Database,
+  key: string,
+  windowSeconds: number,
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - windowSeconds;
+
+  // Atomic upsert: insert or reset/increment based on whether the window has expired
+  await db.prepare(`
+    INSERT INTO rate_limits (key, count, window_start)
+    VALUES (?, 1, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      count = CASE WHEN window_start < ? THEN 1 ELSE count + 1 END,
+      window_start = CASE WHEN window_start < ? THEN ? ELSE window_start END
+  `).bind(key, now, windowStart, windowStart, now).run();
+}
+
+function rateLimitResponse(request: Request, retryAfter: number): Response {
+  return new Response(JSON.stringify({ error: 'Too many requests' }), {
+    status: 429,
+    headers: {
+      'Content-Type': 'application/json',
+      'Retry-After': String(retryAfter),
+      ...getCorsHeaders(request),
+    },
+  });
+}
+
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
 async function authenticate(
@@ -307,6 +395,12 @@ async function handleRegister(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  if (ip) {
+    const rl = await checkRateLimit(env.DB, `register:${ip}`, REGISTER_LIMIT, REGISTER_WINDOW);
+    if (rl.limited) return rateLimitResponse(request, rl.retryAfter);
+  }
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -344,6 +438,10 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
+    if (ip) {
+      await recordRateLimitHit(env.DB, `register:${ip}`, REGISTER_WINDOW);
+    }
+
     return jsonResponse(request, { token, username }, 201);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
@@ -359,6 +457,12 @@ async function handleLogin(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  if (ip) {
+    const rl = await checkRateLimit(env.DB, `login:${ip}`, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW);
+    if (rl.limited) return rateLimitResponse(request, rl.retryAfter);
+  }
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -378,6 +482,7 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
+    if (ip) await recordRateLimitHit(env.DB, `login:${ip}`, LOGIN_FAIL_WINDOW);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -385,6 +490,7 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    if (ip) await recordRateLimitHit(env.DB, `login:${ip}`, LOGIN_FAIL_WINDOW);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -499,6 +605,9 @@ async function handleDeleteAccount(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
+  const rl = await checkRateLimit(env.DB, `delete:${payload.sub}`, DELETE_LIMIT, DELETE_WINDOW);
+  if (rl.limited) return rateLimitResponse(request, rl.retryAfter);
+
   let body: { password?: string };
   try {
     body = await request.json();
@@ -527,6 +636,8 @@ async function handleDeleteAccount(
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
     return errorResponse(request, 'Incorrect password', 403);
   }
+
+  await recordRateLimitHit(env.DB, `delete:${payload.sub}`, DELETE_WINDOW);
 
   // Delete preferences first (foreign key), then user
   await env.DB.batch([

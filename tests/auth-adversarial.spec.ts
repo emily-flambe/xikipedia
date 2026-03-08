@@ -1104,6 +1104,241 @@ test.describe('Delete account idempotency', () => {
 });
 
 // =============================================================================
+// RATE LIMITING
+// In local dev, CF-Connecting-IP is not set by wrangler, so rate limiting is
+// disabled and existing tests are unaffected. Rate limit tests set the header
+// manually to simulate production behavior.
+// =============================================================================
+
+// Generate a unique fake IP for each test to prevent cross-test contamination.
+// Uses random values — the 10.x.x.x space has 16M+ addresses so collision risk is negligible.
+function uniqueRlIp(): string {
+  const b = Math.floor(Math.random() * 256);
+  const c = Math.floor(Math.random() * 256);
+  const d = Math.floor(Math.random() * 256);
+  return `10.${b}.${c}.${d}`;
+}
+
+test.describe('Rate limiting - login', () => {
+  test('5 failed login attempts from same IP triggers 429', async ({ page }) => {
+    const ip = uniqueRlIp();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Exhaust the 5-failure limit
+    for (let i = 0; i < 5; i++) {
+      const resp = await page.request.post('/api/login', {
+        headers: { 'CF-Connecting-IP': ip },
+        data: { username: 'nonexistent', password: 'wrongpass' },
+      });
+      expect(resp.status()).toBe(401);
+    }
+
+    // 6th attempt should be rate limited
+    const resp = await page.request.post('/api/login', {
+      headers: { 'CF-Connecting-IP': ip },
+      data: { username: 'nonexistent', password: 'wrongpass' },
+    });
+    expect(resp.status()).toBe(429);
+    const headers = resp.headers();
+    expect(headers['retry-after']).toBeTruthy();
+    const retryAfter = parseInt(headers['retry-after'], 10);
+    expect(retryAfter).toBeGreaterThan(0);
+    const body = await resp.json();
+    expect(body.error).toBe('Too many requests');
+  });
+
+  test('successful login does not count toward failure limit', async ({ page }) => {
+    const ip = uniqueRlIp();
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    await apiRegister(page, user, 'password123');
+
+    // 4 failed attempts
+    for (let i = 0; i < 4; i++) {
+      await page.request.post('/api/login', {
+        headers: { 'CF-Connecting-IP': ip },
+        data: { username: user, password: 'wrongpass' },
+      });
+    }
+
+    // Successful login should work and not increment the counter
+    const goodResp = await page.request.post('/api/login', {
+      headers: { 'CF-Connecting-IP': ip },
+      data: { username: user, password: 'password123' },
+    });
+    expect(goodResp.status()).toBe(200);
+
+    // One more failed attempt (5th overall, but 4th counting only failures)
+    // should still be allowed since success didn't count
+    const failResp = await page.request.post('/api/login', {
+      headers: { 'CF-Connecting-IP': ip },
+      data: { username: user, password: 'wrongpass' },
+    });
+    expect(failResp.status()).toBe(401);
+  });
+
+  test('different IPs have independent rate limit counters', async ({ page }) => {
+    const ip1 = uniqueRlIp();
+    const ip2 = uniqueRlIp();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Exhaust ip1's limit
+    for (let i = 0; i < 5; i++) {
+      await page.request.post('/api/login', {
+        headers: { 'CF-Connecting-IP': ip1 },
+        data: { username: 'nonexistent', password: 'wrong' },
+      });
+    }
+
+    // ip1 is blocked
+    const blockedResp = await page.request.post('/api/login', {
+      headers: { 'CF-Connecting-IP': ip1 },
+      data: { username: 'nonexistent', password: 'wrong' },
+    });
+    expect(blockedResp.status()).toBe(429);
+
+    // ip2 is still allowed
+    const allowedResp = await page.request.post('/api/login', {
+      headers: { 'CF-Connecting-IP': ip2 },
+      data: { username: 'nonexistent', password: 'wrong' },
+    });
+    expect(allowedResp.status()).toBe(401); // 401 not 429 = not rate limited
+  });
+
+  test('rate limited login returns CORS headers', async ({ page }) => {
+    const ip = uniqueRlIp();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    for (let i = 0; i < 5; i++) {
+      await page.request.post('/api/login', {
+        headers: { 'CF-Connecting-IP': ip },
+        data: { username: 'nonexistent', password: 'wrongpass' },
+      });
+    }
+
+    const resp = await page.request.post('/api/login', {
+      headers: { 'CF-Connecting-IP': ip },
+      data: { username: 'nonexistent', password: 'wrongpass' },
+    });
+    expect(resp.status()).toBe(429);
+    expect(resp.headers()['access-control-allow-origin']).toBeTruthy();
+  });
+});
+
+test.describe('Rate limiting - registration', () => {
+  test('3 successful registrations per IP triggers 429 on 4th', async ({ page }) => {
+    const ip = uniqueRlIp();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    for (let i = 0; i < 3; i++) {
+      const resp = await page.request.post('/api/register', {
+        headers: { 'CF-Connecting-IP': ip },
+        data: { username: uniqueUser(), password: 'password123' },
+      });
+      expect(resp.status()).toBe(201);
+    }
+
+    const resp = await page.request.post('/api/register', {
+      headers: { 'CF-Connecting-IP': ip },
+      data: { username: uniqueUser(), password: 'password123' },
+    });
+    expect(resp.status()).toBe(429);
+    const headers = resp.headers();
+    expect(headers['retry-after']).toBeTruthy();
+    const body = await resp.json();
+    expect(body.error).toBe('Too many requests');
+  });
+
+  test('failed registration (validation error) does not count toward limit', async ({ page }) => {
+    const ip = uniqueRlIp();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // 3 failed attempts (bad username) — should not count
+    for (let i = 0; i < 3; i++) {
+      const resp = await page.request.post('/api/register', {
+        headers: { 'CF-Connecting-IP': ip },
+        data: { username: 'ab', password: 'password123' }, // too short
+      });
+      expect(resp.status()).toBe(400);
+    }
+
+    // 3 successful registrations should still be allowed
+    for (let i = 0; i < 3; i++) {
+      const resp = await page.request.post('/api/register', {
+        headers: { 'CF-Connecting-IP': ip },
+        data: { username: uniqueUser(), password: 'password123' },
+      });
+      expect(resp.status()).toBe(201);
+    }
+
+    // 4th success is blocked
+    const blocked = await page.request.post('/api/register', {
+      headers: { 'CF-Connecting-IP': ip },
+      data: { username: uniqueUser(), password: 'password123' },
+    });
+    expect(blocked.status()).toBe(429);
+  });
+});
+
+test.describe('Rate limiting - account deletion', () => {
+  test('second delete attempt within 24h is rate limited', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // First deletion — should succeed
+    const del1 = await page.request.delete('/api/account', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: JSON.stringify({ password: 'password123' }),
+    });
+    expect(del1.status()).toBe(200);
+
+    // Second attempt with the same token — rate limit recorded before deletion,
+    // token still cryptographically valid, should get 429 not 404
+    const del2 = await page.request.delete('/api/account', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: JSON.stringify({ password: 'password123' }),
+    });
+    expect(del2.status()).toBe(429);
+    expect(del2.headers()['retry-after']).toBeTruthy();
+  });
+
+  test('deletion rate limit is per-user not per-IP', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Create two users
+    const user1 = uniqueUser();
+    const user2 = uniqueUser();
+    const { token: t1 } = await apiRegister(page, user1, 'password123');
+    const { token: t2 } = await apiRegister(page, user2, 'password123');
+
+    // Delete user1 once — success
+    const del1 = await page.request.delete('/api/account', {
+      headers: { Authorization: `Bearer ${t1}`, 'Content-Type': 'application/json' },
+      data: JSON.stringify({ password: 'password123' }),
+    });
+    expect(del1.status()).toBe(200);
+
+    // user1's rate limit slot is now used, but user2 should be unaffected
+    const del2 = await page.request.delete('/api/account', {
+      headers: { Authorization: `Bearer ${t2}`, 'Content-Type': 'application/json' },
+      data: JSON.stringify({ password: 'password123' }),
+    });
+    expect(del2.status()).toBe(200);
+  });
+});
+
+// =============================================================================
 // EXTRA FIELDS IN REQUEST BODY
 // =============================================================================
 
