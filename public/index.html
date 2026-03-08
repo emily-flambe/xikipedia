@@ -3287,39 +3287,43 @@
                 const chip = document.createElement("button");
                 chip.classList.add("category-chip");
                 if (currentStatus !== 'normal') chip.classList.add(currentStatus);
-                
+
                 const statusIcons = { blocked: '🚫 ', reduced: '⬇️ ', boosted: '⬆️ ', normal: '' };
                 chip.textContent = statusIcons[currentStatus] + cat;
                 chip.setAttribute("aria-label", `Filter options for ${cat}`);
+                chip.setAttribute("aria-haspopup", "true");
+                chip.setAttribute("aria-expanded", "false");
                 chip.title = "Click for filter options";
-                
+
                 // Create dropdown menu
                 const dropdown = document.createElement("div");
                 dropdown.classList.add("category-dropdown");
-                
+                dropdown.setAttribute("role", "menu");
+
                 const actions = [
                     { action: 'boost', label: '⬆️ Boost', desc: 'Show more' },
                     { action: 'reduce', label: '⬇️ Reduce', desc: 'Show less' },
                     { action: 'block', label: '🚫 Block', desc: 'Never show' },
                     { action: 'clear', label: '✓ Clear', desc: 'Remove filter' }
                 ];
-                
+
                 actions.forEach(({ action, label }) => {
                     const btn = document.createElement("button");
                     btn.textContent = label;
+                    btn.setAttribute("role", "menuitem");
                     if (currentStatus === action || (currentStatus === 'normal' && action === 'clear')) {
                         btn.classList.add('active');
                     }
                     btn.onclick = (e) => {
                         e.stopPropagation();
                         setCategoryFilter(rawCat, action);
-                        
+
                         // Update chip appearance
                         const newStatus = getCategoryFilterStatus(rawCat);
                         chip.className = 'category-chip';
                         if (newStatus !== 'normal') chip.classList.add(newStatus);
                         chip.textContent = statusIcons[newStatus] + cat;
-                        
+
                         // Update dropdown active states
                         dropdown.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                         if (newStatus === 'normal') {
@@ -3327,16 +3331,59 @@
                         } else {
                             btn.classList.add('active');
                         }
+
+                        // Close dropdown and restore focus
+                        dropdown.style.display = 'none';
+                        chip.setAttribute("aria-expanded", "false");
+                        chip.focus();
                     };
                     dropdown.appendChild(btn);
                 });
-                
+
                 chip.onclick = (e) => {
                     e.stopPropagation();
                     // Toggle dropdown visibility on mobile (hover works on desktop)
                     const isVisible = dropdown.style.display === 'flex';
                     dropdown.style.display = isVisible ? 'none' : 'flex';
+                    chip.setAttribute("aria-expanded", String(!isVisible));
                 };
+
+                // Sync aria-expanded with CSS hover state
+                wrapper.addEventListener("mouseenter", () => chip.setAttribute("aria-expanded", "true"));
+                wrapper.addEventListener("mouseleave", () => {
+                    // Don't collapse if user explicitly opened via click on mobile
+                    if (dropdown.style.display !== 'flex') {
+                        chip.setAttribute("aria-expanded", "false");
+                    }
+                });
+
+                // Keyboard: ArrowDown opens menu and focuses first item
+                chip.addEventListener("keydown", (e) => {
+                    if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        dropdown.style.display = 'flex';
+                        chip.setAttribute("aria-expanded", "true");
+                        dropdown.querySelector("[role='menuitem']")?.focus();
+                    }
+                });
+
+                // Keyboard navigation within dropdown
+                dropdown.addEventListener("keydown", (e) => {
+                    const items = [...dropdown.querySelectorAll("[role='menuitem']")];
+                    const current = items.indexOf(document.activeElement);
+                    if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        items[(current + 1) % items.length]?.focus();
+                    } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        items[(current - 1 + items.length) % items.length]?.focus();
+                    } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        dropdown.style.display = 'none';
+                        chip.setAttribute("aria-expanded", "false");
+                        chip.focus();
+                    }
+                });
                 
                 wrapper.appendChild(chip);
                 wrapper.appendChild(dropdown);
@@ -3347,7 +3394,7 @@
                 e.stopPropagation();
                 const isExpanded = reasonDiv.style.display !== "none";
                 reasonDiv.style.display = isExpanded ? "none" : "flex";
-                whyBtn.setAttribute("aria-expanded", !isExpanded);
+                whyBtn.setAttribute("aria-expanded", String(!isExpanded));
                 whyBtn.innerText = isExpanded ? "Why?" : "×";
             };
             
