@@ -29,10 +29,11 @@ function uniqueUser(): string {
   return `u${timestamp}${random}`; // 9 chars total: "u" + 4 + 4
 }
 
+const _ipWorkerOctet = Math.floor(Math.random() * 256);
 let _ipCounter = 0;
 function uniqueIp(): string {
   _ipCounter++;
-  return `10.${Math.floor(_ipCounter / 65536) % 256}.${Math.floor(_ipCounter / 256) % 256}.${_ipCounter % 256}`;
+  return `10.${_ipWorkerOctet}.${Math.floor(_ipCounter / 256) % 256}.${_ipCounter % 256}`;
 }
 
 /**
