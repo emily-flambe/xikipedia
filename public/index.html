@@ -109,19 +109,16 @@
             word-break: break-word;
         }
         .post button:not(.feedback-btn) {
-            align-self: end;
-            margin-top: 4px;
+            align-self: center;
             padding: 8px;
             background: transparent;
             transition: background 0.2s, transform 0.2s cubic-bezier(.15,.67,0,1);
             border-radius: 64px;
-            font-size: 11px;
             border: 0;
             cursor: pointer;
             display: inline-flex;
-            flex-direction: column;
             align-items: center;
-            gap: 2px;
+            justify-content: center;
             color: var(--text-secondary);
         }
         .post button:not(.feedback-btn):hover:not([data-liked]) {
@@ -156,6 +153,9 @@
             flex-wrap: wrap;
             gap: 8px;
             align-items: center;
+            border-top: 1px solid var(--border-color);
+            padding-top: 10px;
+            margin-top: 4px;
         }
         /* Double-tap like animation */
         @keyframes doubleTapLike {
@@ -3347,7 +3347,6 @@
             postP.innerText = nextPost.text || "";
         }
         
-        postYes.innerText = "Like";
         postYes.dataset.testid = "like-button";
         postYes.setAttribute("aria-label", `Like this article: ${nextPost.title}`);
         postYes.setAttribute("aria-pressed", "false");
@@ -3373,7 +3372,6 @@
 
         postYes.onclick = handleLike;
 
-        shareBtn.innerText = "Share";
         shareBtn.classList.add("share-btn");
         shareBtn.dataset.testid = "share-button";
         shareBtn.setAttribute("aria-label", `Share this article: ${nextPost.title}`);
