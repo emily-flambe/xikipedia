@@ -134,9 +134,19 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 // ─── Rate Limiting ────────────────────────────────────────────────────
 
 function getClientIp(request: Request): string {
-  return request.headers.get('CF-Connecting-IP') ||
-         request.headers.get('X-Forwarded-For')?.split(',')[0].trim() ||
+  // In production, Cloudflare sets both headers and controls X-Forwarded-For
+  // (clients can't spoof it). Prioritizing XFF lets tests isolate rate limits
+  // via spoofed IPs while wrangler dev sets CF-Connecting-IP to 127.0.0.1.
+  return request.headers.get('X-Forwarded-For')?.split(',')[0].trim() ||
+         request.headers.get('CF-Connecting-IP') ||
          'unknown';
+}
+
+/** Returns true if the IP can be meaningfully rate-limited.
+ *  Loopback and unknown IPs are excluded — in production, CF always provides
+ *  a real client IP via CF-Connecting-IP. */
+function isRateLimitableIp(ip: string): boolean {
+  return ip !== 'unknown' && ip !== '127.0.0.1' && ip !== '::1';
 }
 
 async function atomicIncrement(
@@ -376,7 +386,7 @@ async function handleRegister(
   // In production, CF-Connecting-IP is always set. Skip rate limiting for
   // unidentifiable clients (local dev) to avoid false positives.
   const ip = getClientIp(request);
-  if (ip !== 'unknown') {
+  if (isRateLimitableIp(ip)) {
     const rl = await atomicIncrement(env.DB, `register:${ip}`, 3600);
     if (rl.count > 3) {
       return rateLimitResponse(request, rl.windowStart, 3600);
@@ -445,7 +455,7 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
-    if (ip !== 'unknown') {
+    if (isRateLimitableIp(ip)) {
       const rl = await atomicIncrement(env.DB, rateLimitKey, 900);
       if (rl.count > 5) {
         return rateLimitResponse(request, rl.windowStart, 900);
@@ -458,7 +468,7 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
-    if (ip !== 'unknown') {
+    if (isRateLimitableIp(ip)) {
       const rl = await atomicIncrement(env.DB, rateLimitKey, 900);
       if (rl.count > 5) {
         return rateLimitResponse(request, rl.windowStart, 900);
@@ -468,7 +478,7 @@ async function handleLogin(
   }
 
   // Reset failed login counter on successful authentication
-  if (ip !== 'unknown') {
+  if (isRateLimitableIp(ip)) {
     await resetRateLimit(env.DB, rateLimitKey);
   }
 
