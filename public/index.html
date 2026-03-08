@@ -110,15 +110,19 @@
         }
         .post button:not(.feedback-btn) {
             align-self: end;
-            margin: -4px;
             margin-top: 4px;
-            padding: 4px;
+            padding: 8px;
             background: transparent;
             transition: background 0.2s, transform 0.2s cubic-bezier(.15,.67,0,1);
             border-radius: 64px;
-            font-size: 0;
+            font-size: 11px;
             border: 0;
             cursor: pointer;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            color: var(--text-secondary);
         }
         .post button:not(.feedback-btn):hover:not([data-liked]) {
             background: rgba(255,255,255,0.13);
@@ -131,8 +135,8 @@
         .post button:not(.feedback-btn)::after {
             font-size: 16px;
             display: block;
-            width: 24px;
-            height: 24px;
+            width: 28px;
+            height: 28px;
             margin-top: 1px;
             margin-bottom: -1px;
             content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.06,21.01c3.94,0,13.77-11.36,8.56-16.37-4.59-4.41-8.61,1.58-8.61,1.58,0,0-4.02-5.99-8.61-1.58-5.22,5.01,4.61,16.37,8.56,16.37h.11Z" stroke-width="2" fill="none" stroke="%2389A" stroke-linejoin="round"/></svg>');
