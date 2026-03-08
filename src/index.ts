@@ -54,6 +54,11 @@ async function ensureTables(db: D1Database): Promise<void> {
       hidden_categories TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT DEFAULT (datetime('now'))
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 1,
+      window_start INTEGER NOT NULL
+    )`),
   ]);
   tablesInitialized = true;
 }
@@ -276,6 +281,76 @@ async function authenticate(
   return verifyToken(token, secret);
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────────
+
+function getClientIP(request: Request): string {
+  return (
+    request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    'unknown'
+  );
+}
+
+interface RateLimitRow {
+  count: number;
+  window_start: number;
+}
+
+async function checkRateLimit(
+  db: D1Database,
+  key: string,
+  maxAttempts: number,
+  windowSeconds: number,
+): Promise<{ allowed: boolean; retryAfter?: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const row = await db
+    .prepare('SELECT count, window_start FROM rate_limits WHERE key = ?')
+    .bind(key)
+    .first<RateLimitRow>();
+  if (!row || now - row.window_start >= windowSeconds) {
+    return { allowed: true };
+  }
+  if (row.count >= maxAttempts) {
+    return {
+      allowed: false,
+      retryAfter: row.window_start + windowSeconds - now,
+    };
+  }
+  return { allowed: true };
+}
+
+async function incrementRateLimit(
+  db: D1Database,
+  key: string,
+  windowSeconds: number,
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await db
+    .prepare(
+      `INSERT INTO rate_limits (key, count, window_start)
+       VALUES (?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         count = CASE WHEN ? - window_start >= ? THEN 1 ELSE count + 1 END,
+         window_start = CASE WHEN ? - window_start >= ? THEN ? ELSE window_start END`,
+    )
+    .bind(key, now, now, windowSeconds, now, windowSeconds, now)
+    .run();
+}
+
+function rateLimitResponse(request: Request, retryAfter: number): Response {
+  return new Response(
+    JSON.stringify({ error: 'Too many requests. Please try again later.' }),
+    {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Retry-After': String(Math.max(1, retryAfter)),
+        ...getCorsHeaders(request),
+      },
+    },
+  );
+}
+
 // ─── Validation ──────────────────────────────────────────────────────
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
@@ -321,6 +396,14 @@ async function handleRegister(
 
   const username = body.username as string;
   const password = body.password as string;
+
+  const ip = getClientIP(request);
+  const registerRlKey = `register:${ip}`;
+  const registerRl = await checkRateLimit(env.DB, registerRlKey, 3, 60 * 60);
+  if (!registerRl.allowed) {
+    return rateLimitResponse(request, registerRl.retryAfter!);
+  }
+  await incrementRateLimit(env.DB, registerRlKey, 60 * 60);
 
   const salt = generateSalt();
   const passwordHash = await hashPassword(password, salt);
@@ -371,6 +454,13 @@ async function handleLogin(
     return errorResponse(request, 'Username and password are required', 400);
   }
 
+  const ip = getClientIP(request);
+  const loginRlKey = `login:${ip}`;
+  const loginRl = await checkRateLimit(env.DB, loginRlKey, 5, 15 * 60);
+  if (!loginRl.allowed) {
+    return rateLimitResponse(request, loginRl.retryAfter!);
+  }
+
   const user = await env.DB.prepare(
     'SELECT id, username, password_hash, salt FROM users WHERE username = ?',
   )
@@ -378,6 +468,7 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
+    await incrementRateLimit(env.DB, loginRlKey, 15 * 60);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -385,6 +476,7 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    await incrementRateLimit(env.DB, loginRlKey, 15 * 60);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -499,6 +591,12 @@ async function handleDeleteAccount(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
+  const deleteRlKey = `delete:${payload.sub}`;
+  const deleteRl = await checkRateLimit(env.DB, deleteRlKey, 1, 24 * 60 * 60);
+  if (!deleteRl.allowed) {
+    return rateLimitResponse(request, deleteRl.retryAfter!);
+  }
+
   let body: { password?: string };
   try {
     body = await request.json();
@@ -533,6 +631,8 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM preferences WHERE user_id = ?').bind(payload.sub),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
+
+  await incrementRateLimit(env.DB, deleteRlKey, 24 * 60 * 60);
 
   return jsonResponse(request, { success: true });
 }
