@@ -54,11 +54,11 @@ async function ensureTables(db: D1Database): Promise<void> {
       hidden_categories TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT DEFAULT (datetime('now'))
     )`),
-    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limit_events (
-      key TEXT NOT NULL,
-      timestamp INTEGER NOT NULL
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      window_start INTEGER NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0
     )`),
-    db.prepare(`CREATE INDEX IF NOT EXISTS idx_rate_limit_events ON rate_limit_events (key, timestamp)`),
   ]);
   tablesInitialized = true;
 }
@@ -139,45 +139,31 @@ function getClientIp(request: Request): string {
          'unknown';
 }
 
-async function getRateLimitCount(
+async function atomicIncrement(
   db: D1Database,
   key: string,
-  windowSeconds: number,
-): Promise<number> {
-  const windowStart = Math.floor(Date.now() / 1000) - windowSeconds;
+  windowSec: number,
+): Promise<{ count: number; windowStart: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - (now % windowSec);
   const result = await db
-    .prepare('SELECT COUNT(*) as count FROM rate_limit_events WHERE key = ? AND timestamp > ?')
+    .prepare(`
+      INSERT INTO rate_limits (key, window_start, count) VALUES (?1, ?2, 1)
+      ON CONFLICT(key) DO UPDATE SET
+        count = CASE WHEN window_start < ?2 THEN 1 ELSE count + 1 END,
+        window_start = CASE WHEN window_start < ?2 THEN ?2 ELSE window_start END
+      RETURNING count, window_start
+    `)
     .bind(key, windowStart)
-    .first<{ count: number }>();
-  return result?.count ?? 0;
+    .first<{ count: number; window_start: number }>();
+
+  return result
+    ? { count: result.count, windowStart: result.window_start }
+    : { count: 1, windowStart };
 }
 
-async function recordRateLimitEvent(db: D1Database, key: string): Promise<void> {
-  const now = Math.floor(Date.now() / 1000);
-  await db
-    .prepare('INSERT INTO rate_limit_events (key, timestamp) VALUES (?, ?)')
-    .bind(key, now)
-    .run();
-  // Lazy cleanup: delete events older than 2 days
-  await db
-    .prepare('DELETE FROM rate_limit_events WHERE timestamp < ?')
-    .bind(now - 2 * 24 * 60 * 60)
-    .run();
-}
-
-async function getRetryAfter(
-  db: D1Database,
-  key: string,
-  windowSeconds: number,
-): Promise<number> {
-  const now = Math.floor(Date.now() / 1000);
-  const windowStart = now - windowSeconds;
-  const oldest = await db
-    .prepare('SELECT MIN(timestamp) as oldest FROM rate_limit_events WHERE key = ? AND timestamp > ?')
-    .bind(key, windowStart)
-    .first<{ oldest: number | null }>();
-  if (oldest?.oldest == null) return windowSeconds;
-  return Math.max(1, oldest.oldest + windowSeconds - now);
+async function resetRateLimit(db: D1Database, key: string): Promise<void> {
+  await db.prepare('DELETE FROM rate_limits WHERE key = ?').bind(key).run();
 }
 
 // ─── JWT Helpers ─────────────────────────────────────────────────────
@@ -318,7 +304,9 @@ function errorResponse(request: Request, message: string, status: number): Respo
   return jsonResponse(request, { error: message }, status);
 }
 
-function rateLimitResponse(request: Request, retryAfter: number): Response {
+function rateLimitResponse(request: Request, windowStart: number, windowSec: number): Response {
+  const now = Math.floor(Date.now() / 1000);
+  const retryAfter = Math.max(1, windowStart + windowSec - now);
   return new Response(JSON.stringify({ error: 'Too many requests' }), {
     status: 429,
     headers: {
@@ -372,13 +360,6 @@ async function handleRegister(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const ip = getClientIp(request);
-  const registerCount = await getRateLimitCount(env.DB, `register:${ip}`, 60 * 60);
-  if (registerCount >= 3) {
-    const retryAfter = await getRetryAfter(env.DB, `register:${ip}`, 60 * 60);
-    return rateLimitResponse(request, retryAfter);
-  }
-
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -389,6 +370,17 @@ async function handleRegister(
   const validationError = validateRegistration(body.username, body.password);
   if (validationError) {
     return errorResponse(request, validationError, 400);
+  }
+
+  // Rate limit: 3 registrations per IP per hour (only valid requests count)
+  // In production, CF-Connecting-IP is always set. Skip rate limiting for
+  // unidentifiable clients (local dev) to avoid false positives.
+  const ip = getClientIp(request);
+  if (ip !== 'unknown') {
+    const rl = await atomicIncrement(env.DB, `register:${ip}`, 3600);
+    if (rl.count > 3) {
+      return rateLimitResponse(request, rl.windowStart, 3600);
+    }
   }
 
   const username = body.username as string;
@@ -404,8 +396,6 @@ async function handleRegister(
     )
       .bind(username, passwordHash, saltHex)
       .run();
-
-    await recordRateLimitEvent(env.DB, `register:${ip}`);
 
     const userId = result.meta.last_row_id as number;
 
@@ -434,11 +424,7 @@ async function handleLogin(
   env: Env,
 ): Promise<Response> {
   const ip = getClientIp(request);
-  const failCount = await getRateLimitCount(env.DB, `login_fail:${ip}`, 15 * 60);
-  if (failCount >= 5) {
-    const retryAfter = await getRetryAfter(env.DB, `login_fail:${ip}`, 15 * 60);
-    return rateLimitResponse(request, retryAfter);
-  }
+  const rateLimitKey = `login_fail:${ip}`;
 
   let body: { username?: string; password?: string };
   try {
@@ -459,7 +445,12 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
-    await recordRateLimitEvent(env.DB, `login_fail:${ip}`);
+    if (ip !== 'unknown') {
+      const rl = await atomicIncrement(env.DB, rateLimitKey, 900);
+      if (rl.count > 5) {
+        return rateLimitResponse(request, rl.windowStart, 900);
+      }
+    }
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -467,8 +458,18 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
-    await recordRateLimitEvent(env.DB, `login_fail:${ip}`);
+    if (ip !== 'unknown') {
+      const rl = await atomicIncrement(env.DB, rateLimitKey, 900);
+      if (rl.count > 5) {
+        return rateLimitResponse(request, rl.windowStart, 900);
+      }
+    }
     return errorResponse(request, 'Invalid username or password', 401);
+  }
+
+  // Reset failed login counter on successful authentication
+  if (ip !== 'unknown') {
+    await resetRateLimit(env.DB, rateLimitKey);
   }
 
   const token = await createToken(
@@ -582,10 +583,11 @@ async function handleDeleteAccount(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
-  const deleteCount = await getRateLimitCount(env.DB, `delete_account:${payload.sub}`, 24 * 60 * 60);
-  if (deleteCount >= 1) {
-    const retryAfter = await getRetryAfter(env.DB, `delete_account:${payload.sub}`, 24 * 60 * 60);
-    return rateLimitResponse(request, retryAfter);
+  // Rate limit: 5 delete attempts per user per day (prevents password brute-forcing)
+  const deleteKey = `delete:${payload.sub}`;
+  const rl = await atomicIncrement(env.DB, deleteKey, 86400);
+  if (rl.count > 5) {
+    return rateLimitResponse(request, rl.windowStart, 86400);
   }
 
   let body: { password?: string };
@@ -616,8 +618,6 @@ async function handleDeleteAccount(
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
     return errorResponse(request, 'Incorrect password', 403);
   }
-
-  await recordRateLimitEvent(env.DB, `delete_account:${payload.sub}`);
 
   // Delete preferences first (foreign key), then user
   await env.DB.batch([
