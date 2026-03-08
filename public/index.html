@@ -195,6 +195,14 @@
         body ::backdrop {
             background: rgba(0,0,0,0.6);
         }
+        /* Hide UI chrome that bleeds above/below the start screen popover backdrop */
+        body:has(#startScreen:popover-open) #loading,
+        body:has(#startScreen:popover-open) .loading-progress,
+        body:has(#startScreen:popover-open) #themeToggle,
+        body:has(#startScreen:popover-open) .session-stats,
+        body:has(#startScreen:popover-open) #statsToggleBtn {
+            visibility: hidden;
+        }
         #startScreen {
             display: flex;
             flex-direction: column;
