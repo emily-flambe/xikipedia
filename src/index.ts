@@ -54,6 +54,11 @@ async function ensureTables(db: D1Database): Promise<void> {
       hidden_categories TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT DEFAULT (datetime('now'))
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limit_events (
+      key TEXT NOT NULL,
+      timestamp INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_rate_limit_events ON rate_limit_events (key, timestamp)`),
   ]);
   tablesInitialized = true;
 }
@@ -124,6 +129,55 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
     match = match && hmac1[i] === hmac2[i];
   }
   return match;
+}
+
+// ─── Rate Limiting ────────────────────────────────────────────────────
+
+function getClientIp(request: Request): string {
+  return request.headers.get('CF-Connecting-IP') ||
+         request.headers.get('X-Forwarded-For')?.split(',')[0].trim() ||
+         'unknown';
+}
+
+async function getRateLimitCount(
+  db: D1Database,
+  key: string,
+  windowSeconds: number,
+): Promise<number> {
+  const windowStart = Math.floor(Date.now() / 1000) - windowSeconds;
+  const result = await db
+    .prepare('SELECT COUNT(*) as count FROM rate_limit_events WHERE key = ? AND timestamp > ?')
+    .bind(key, windowStart)
+    .first<{ count: number }>();
+  return result?.count ?? 0;
+}
+
+async function recordRateLimitEvent(db: D1Database, key: string): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await db
+    .prepare('INSERT INTO rate_limit_events (key, timestamp) VALUES (?, ?)')
+    .bind(key, now)
+    .run();
+  // Lazy cleanup: delete events older than 2 days
+  await db
+    .prepare('DELETE FROM rate_limit_events WHERE timestamp < ?')
+    .bind(now - 2 * 24 * 60 * 60)
+    .run();
+}
+
+async function getRetryAfter(
+  db: D1Database,
+  key: string,
+  windowSeconds: number,
+): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - windowSeconds;
+  const oldest = await db
+    .prepare('SELECT MIN(timestamp) as oldest FROM rate_limit_events WHERE key = ? AND timestamp > ?')
+    .bind(key, windowStart)
+    .first<{ oldest: number | null }>();
+  if (oldest?.oldest == null) return windowSeconds;
+  return Math.max(1, oldest.oldest + windowSeconds - now);
 }
 
 // ─── JWT Helpers ─────────────────────────────────────────────────────
@@ -264,6 +318,17 @@ function errorResponse(request: Request, message: string, status: number): Respo
   return jsonResponse(request, { error: message }, status);
 }
 
+function rateLimitResponse(request: Request, retryAfter: number): Response {
+  return new Response(JSON.stringify({ error: 'Too many requests' }), {
+    status: 429,
+    headers: {
+      'Content-Type': 'application/json',
+      'Retry-After': String(retryAfter),
+      ...getCorsHeaders(request),
+    },
+  });
+}
+
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
 async function authenticate(
@@ -307,6 +372,13 @@ async function handleRegister(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  const registerCount = await getRateLimitCount(env.DB, `register:${ip}`, 60 * 60);
+  if (registerCount >= 3) {
+    const retryAfter = await getRetryAfter(env.DB, `register:${ip}`, 60 * 60);
+    return rateLimitResponse(request, retryAfter);
+  }
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -332,6 +404,8 @@ async function handleRegister(
     )
       .bind(username, passwordHash, saltHex)
       .run();
+
+    await recordRateLimitEvent(env.DB, `register:${ip}`);
 
     const userId = result.meta.last_row_id as number;
 
@@ -359,6 +433,13 @@ async function handleLogin(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  const failCount = await getRateLimitCount(env.DB, `login_fail:${ip}`, 15 * 60);
+  if (failCount >= 5) {
+    const retryAfter = await getRetryAfter(env.DB, `login_fail:${ip}`, 15 * 60);
+    return rateLimitResponse(request, retryAfter);
+  }
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -378,6 +459,7 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
+    await recordRateLimitEvent(env.DB, `login_fail:${ip}`);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -385,6 +467,7 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    await recordRateLimitEvent(env.DB, `login_fail:${ip}`);
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -499,6 +582,12 @@ async function handleDeleteAccount(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
+  const deleteCount = await getRateLimitCount(env.DB, `delete_account:${payload.sub}`, 24 * 60 * 60);
+  if (deleteCount >= 1) {
+    const retryAfter = await getRetryAfter(env.DB, `delete_account:${payload.sub}`, 24 * 60 * 60);
+    return rateLimitResponse(request, retryAfter);
+  }
+
   let body: { password?: string };
   try {
     body = await request.json();
@@ -527,6 +616,8 @@ async function handleDeleteAccount(
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
     return errorResponse(request, 'Incorrect password', 403);
   }
+
+  await recordRateLimitEvent(env.DB, `delete_account:${payload.sub}`);
 
   // Delete preferences first (foreign key), then user
   await env.DB.batch([

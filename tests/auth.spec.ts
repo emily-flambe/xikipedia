@@ -29,6 +29,12 @@ function uniqueUser(): string {
   return `u${timestamp}${random}`; // 9 chars total: "u" + 4 + 4
 }
 
+let _ipCounter = 0;
+function uniqueIp(): string {
+  _ipCounter++;
+  return `10.${Math.floor(_ipCounter / 65536) % 256}.${Math.floor(_ipCounter / 256) % 256}.${_ipCounter % 256}`;
+}
+
 /**
  * Mock smoldata.json loading. The real app uses getFileWithProgress which
  * pre-allocates a Uint8Array(DATA_SIZE) (225MB) and streams into it, then
@@ -111,6 +117,7 @@ async function apiRegister(
 ): Promise<{ token: string; username: string }> {
   const resp = await page.request.post('/api/register', {
     data: { username, password },
+    headers: { 'x-forwarded-for': uniqueIp() },
   });
   expect(resp.ok()).toBe(true);
   return resp.json();
@@ -821,6 +828,7 @@ test.describe('Account deletion', () => {
     // Verify the account still exists by trying to login via API
     const loginResp = await page.request.post('/api/login', {
       data: { username: user, password },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.ok()).toBe(true);
   });
@@ -864,7 +872,7 @@ test.describe('API edge cases', () => {
     await page.goto('/');
 
     const resp = await page.request.post('/api/register', {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: 'not valid json{{{',
     });
     expect(resp.status()).toBe(400);
@@ -875,7 +883,7 @@ test.describe('API edge cases', () => {
     await page.goto('/');
 
     const resp = await page.request.post('/api/login', {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: 'not valid json{{{',
     });
     expect(resp.status()).toBe(400);
@@ -909,6 +917,7 @@ test.describe('API edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: 'testonly' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -919,6 +928,7 @@ test.describe('API edge cases', () => {
 
     const resp = await page.request.post('/api/login', {
       data: { username: 'testonly' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -965,7 +975,7 @@ test.describe('API edge cases', () => {
 
     // Delete the account
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);
@@ -1014,6 +1024,7 @@ test.describe('API edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: '123456' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
   });
@@ -1025,6 +1036,7 @@ test.describe('API edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: '12345' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
     const body = await resp.json();
@@ -1039,6 +1051,7 @@ test.describe('API edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
   });
@@ -1053,6 +1066,7 @@ test.describe('API edge cases', () => {
     const uniqueLong = ('u' + Date.now().toString(36)).slice(0, 20);
     const resp = await page.request.post('/api/register', {
       data: { username: uniqueLong, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
   });
@@ -1069,7 +1083,7 @@ test.describe('API edge cases', () => {
 
     // Delete
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);
@@ -1077,6 +1091,7 @@ test.describe('API edge cases', () => {
     // Re-register with the same username should succeed
     const reRegResp = await page.request.post('/api/register', {
       data: { username: user, password },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(reRegResp.status()).toBe(201);
   });
