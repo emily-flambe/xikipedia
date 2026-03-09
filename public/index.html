@@ -47,8 +47,10 @@
         .top-bar {
             position: fixed;
             top: 0;
-            left: 0;
-            right: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 602px; /* match .posts (600px + 2px border) */
             height: calc(48px + env(safe-area-inset-top, 0px));
             padding-top: env(safe-area-inset-top, 0px);
             display: flex;
@@ -57,12 +59,9 @@
             padding-left: 16px;
             padding-right: 16px;
             z-index: 100;
-            background: var(--bg-primary);
+            background: var(--bg-secondary);
             border-bottom: 1px solid var(--border-color);
             box-sizing: border-box;
-        }
-        .top-bar-left {
-            flex: 1;
         }
         .top-bar-right {
             display: flex;
@@ -236,7 +235,7 @@
             min-height: 25%;
         }
         body ::backdrop {
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.85);
         }
         #startScreen {
             display: flex;
@@ -1623,7 +1622,6 @@
 </head>
 <body>
     <header id="topBar" class="top-bar">
-        <div class="top-bar-left"></div>
         <div class="top-bar-right">
             <button id="deleteAccountBtn">Delete account</button>
             <button id="logoutBtn">Log out</button>
