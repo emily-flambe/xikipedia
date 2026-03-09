@@ -65,144 +65,20 @@ test.describe('Service Worker', () => {
     await expect(page.locator('#themeToggle')).toBeVisible();
   });
 
-  test('update toast appears when new version available', async ({ page }) => {
+  test('service worker auto-activates via skipWaiting', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Clear any prior dismissal so the toast can show
-    await page.evaluate(() => localStorage.removeItem('xiki-update-dismissed'));
-
-    // Simulate SW message — the CONTENT_UPDATED handler clears the dismiss
-    // flag and calls showUpdateToast(), which adds the 'visible' class
-    await page.evaluate(() => {
-      const event = new MessageEvent('message', {
-        data: { type: 'CONTENT_UPDATED', url: '/index.html' }
-      });
-      navigator.serviceWorker.dispatchEvent(event);
+    // SW should be active (skipWaiting + clients.claim)
+    const swActive = await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      return reg.active !== null;
     });
+    expect(swActive).toBe(true);
 
-    const toast = page.locator('#updateToast');
-    await expect(toast).toBeVisible();
-    await expect(toast).toContainText('A new version is available');
-  });
-
-  test('update toast dismiss button works and persists in localStorage', async ({ page }) => {
-    await page.goto('/');
-
-    // Dismiss the start screen so it doesn't block the toast
-    await page.evaluate(() => {
-      document.getElementById('startScreen')?.hidePopover();
-    });
-
-    // Clear any prior dismissal, then show toast via real code path
-    await page.evaluate(() => {
-      localStorage.removeItem('xiki-update-dismissed');
-      const event = new MessageEvent('message', {
-        data: { type: 'CONTENT_UPDATED', url: '/index.html' }
-      });
-      navigator.serviceWorker.dispatchEvent(event);
-    });
-
-    const toast = page.locator('#updateToast');
-    await expect(toast).toBeVisible();
-
-    // Dismiss
-    await page.locator('#updateDismiss').click();
-    await expect(toast).not.toBeVisible();
-
-    // Dismissal should be persisted in localStorage (survives new tabs/sessions)
-    const dismissed = await page.evaluate(() => localStorage.getItem('xiki-update-dismissed'));
-    expect(dismissed).toBe('true');
-  });
-
-  test('dismissed toast does not reappear until next genuine update', async ({ page }) => {
-    await page.goto('/');
-
-    await page.evaluate(() => {
-      document.getElementById('startScreen')?.hidePopover();
-    });
-
-    // Simulate: user already dismissed a previous update
-    await page.evaluate(() => localStorage.setItem('xiki-update-dismissed', 'true'));
-
-    // Fire CONTENT_UPDATED — this clears the flag (genuine new content) and shows toast
-    await page.evaluate(() => {
-      const event = new MessageEvent('message', {
-        data: { type: 'CONTENT_UPDATED', url: '/index.html' }
-      });
-      navigator.serviceWorker.dispatchEvent(event);
-    });
-
-    const toast = page.locator('#updateToast');
-    await expect(toast).toBeVisible();
-
-    // Dismiss again
-    await page.locator('#updateDismiss').click();
-    await expect(toast).not.toBeVisible();
-
-    // Now a non-update message should NOT re-show the toast (flag is set)
-    const stillDismissed = await page.evaluate(() => localStorage.getItem('xiki-update-dismissed'));
-    expect(stillDismissed).toBe('true');
-  });
-
-  test('update refresh button reloads page', async ({ page }) => {
-    await page.goto('/');
-    
-    // Dismiss the start screen so it doesn't block the toast
-    await page.evaluate(() => {
-      document.getElementById('startScreen')?.hidePopover();
-    });
-    
-    // Show toast
-    await page.evaluate(() => {
-      document.getElementById('updateToast')?.classList.add('visible');
-    });
-    
-    // Track if reload happens
-    const reloadPromise = page.waitForNavigation();
-    await page.locator('#updateBtn').click();
-    await reloadPromise;
-    
-    // Should have reloaded
-    await expect(page.locator('body')).toBeVisible();
-  });
-
-  test('CONTENT_UPDATED not fired on reload when content unchanged (regression: EMI-97)', async ({ page }) => {
-    // Install listener via addInitScript so it is in place from the very start of each
-    // page load — before any service worker messages can arrive.
-    await page.addInitScript(() => {
-      (window as any).__contentUpdatedFired = false;
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
-          if ((e.data as { type?: string })?.type === 'CONTENT_UPDATED') {
-            (window as any).__contentUpdatedFired = true;
-          }
-        });
-      }
-    });
-
-    // First load: let SW register and cache index.html.
-    // CONTENT_UPDATED may fire here (no prior cache → contentChanged = true); that's expected.
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-
-    // Second load: SW serves from cache then background-fetches the same content.
-    // addInitScript re-runs and resets __contentUpdatedFired = false, so we measure
-    // only messages received during this navigation.
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-
-    // networkidle covers page-originated fetches but not SW background fetches.
-    // 2 s is ample for local dev server round-trip + SW comparison + message delivery.
-    await page.waitForTimeout(2000);
-
-    const fired = await page.evaluate(() => (window as any).__contentUpdatedFired);
-    expect(fired).toBe(false);
-
-    // The update toast must NOT reappear when content is unchanged.
-    await expect(page.locator('#updateToast')).not.toBeVisible();
+    // No update toast should exist in the DOM
+    const toastExists = await page.evaluate(() => !!document.getElementById('updateToast'));
+    expect(toastExists).toBe(false);
   });
 
   test('smoldata.json is cached after first load', async ({ page, context }) => {
@@ -366,13 +242,4 @@ test.describe('Service Worker + Feed Integration', () => {
     await expect(indicator).toBeVisible();
   });
 
-  test('update toast has correct aria attributes', async ({ page }) => {
-    await page.goto('/');
-    
-    const toast = page.locator('#updateToast');
-    
-    // Check accessibility attributes
-    await expect(toast).toHaveAttribute('role', 'alert');
-    await expect(toast).toHaveAttribute('aria-live', 'assertive');
-  });
 });
