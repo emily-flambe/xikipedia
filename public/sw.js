@@ -13,6 +13,8 @@ const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/favicon.ico',
+  '/algorithm-worker.js',
+  '/algorithm.mjs',
 ];
 
 // ============ INSTALL ============
