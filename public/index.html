@@ -85,12 +85,16 @@
             right: 0;
         }
         .post {
-            padding: 12px 24px;
-            border-top: 1px solid var(--border-color);
+            padding: 16px 24px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin: 6px 0;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
             cursor: pointer;
+            gap: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
         }
         .post:hover,
         .post:focus {
@@ -154,8 +158,22 @@
             gap: 8px;
             align-items: center;
             border-top: 1px solid var(--border-color);
-            padding-top: 10px;
-            margin-top: 4px;
+            padding-top: 12px;
+            margin-top: 2px;
+        }
+        .post .category-badge {
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 100px;
+            padding: 2px 10px;
+            line-height: 1.6;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+            align-self: flex-start;
         }
         /* Double-tap like animation */
         @keyframes doubleTapLike {
@@ -181,7 +199,7 @@
             border-radius: 16px;
             border: 1px solid var(--border-color);
             display: block;
-            margin: 8px 0;
+            margin: 0;
             max-width: min(512px, 100%);
             max-height: 330px;
             background: #FFF;
@@ -1498,7 +1516,12 @@
 
             /* Feed posts: comfortable side margins (reduce from 24px to 16px) */
             .post {
-                padding: 12px 16px;
+                padding: 14px 16px;
+                border-radius: 0;
+                border-left: none;
+                border-right: none;
+                margin: 0;
+                box-shadow: none;
             }
 
             /* Post action buttons: larger hit area on mobile */
@@ -1564,7 +1587,7 @@
             }
 
             .post {
-                padding: 10px 12px;
+                padding: 12px 12px;
             }
 
             .auth-tab {
@@ -3397,6 +3420,16 @@
         buttonRow.classList.add("button-row");
 
         postDiv.appendChild(postTitle);
+
+        // Category badge
+        if (nextPost.allCategories && nextPost.allCategories.size > 0) {
+            const badge = document.createElement("div");
+            badge.classList.add("category-badge");
+            const primaryCat = nextPost.recommendedBecause?.[0]
+                || convertCat([...nextPost.allCategories][0]);
+            badge.textContent = primaryCat;
+            postDiv.appendChild(badge);
+        }
 
         // "Why this?" button for algorithm transparency
         if (nextPost.recommendedBecause && nextPost.recommendedBecause.length > 0) {
