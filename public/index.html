@@ -3980,6 +3980,7 @@
         const closeBtn = statsEl.querySelector(".stats-close");
 
         function openDrawer() {
+            updateEngagement();
             statsEl.classList.add("open");
             backdrop.classList.add("visible");
         }
