@@ -167,6 +167,44 @@ test.describe('Service Worker', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
+  test('CONTENT_UPDATED not fired on reload when content unchanged (regression: EMI-97)', async ({ page }) => {
+    // Install listener via addInitScript so it is in place from the very start of each
+    // page load — before any service worker messages can arrive.
+    await page.addInitScript(() => {
+      (window as any).__contentUpdatedFired = false;
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
+          if ((e.data as { type?: string })?.type === 'CONTENT_UPDATED') {
+            (window as any).__contentUpdatedFired = true;
+          }
+        });
+      }
+    });
+
+    // First load: let SW register and cache index.html.
+    // CONTENT_UPDATED may fire here (no prior cache → contentChanged = true); that's expected.
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+
+    // Second load: SW serves from cache then background-fetches the same content.
+    // addInitScript re-runs and resets __contentUpdatedFired = false, so we measure
+    // only messages received during this navigation.
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+
+    // networkidle covers page-originated fetches but not SW background fetches.
+    // 2 s is ample for local dev server round-trip + SW comparison + message delivery.
+    await page.waitForTimeout(2000);
+
+    const fired = await page.evaluate(() => (window as any).__contentUpdatedFired);
+    expect(fired).toBe(false);
+
+    // The update toast must NOT reappear when content is unchanged.
+    await expect(page.locator('#updateToast')).not.toBeVisible();
+  });
+
   test('smoldata.json is cached after first load', async ({ page, context }) => {
     // Mock smoldata for faster test
     await page.route('**/smoldata.json', async route => {
