@@ -44,13 +44,38 @@
             display: flex;
             justify-content: center;
         }
+        .top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: calc(48px + env(safe-area-inset-top, 0px));
+            padding-top: env(safe-area-inset-top, 0px);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-left: 16px;
+            padding-right: 16px;
+            z-index: 100;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-color);
+            box-sizing: border-box;
+        }
+        .top-bar-left {
+            flex: 1;
+        }
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
         .posts {
             max-width: 600px;
             width: 100vw;
             border: 1px solid var(--border-color);
             border-top: none;
             height: fit-content;
-            padding-top: calc(16px + env(safe-area-inset-top, 0px));
+            padding-top: calc(56px + env(safe-area-inset-top, 0px));
         }
         @media (max-width: 650px) {
             .posts {
@@ -72,7 +97,7 @@
             height: 100%;
             width: 300px;
             padding: 16px;
-            padding-top: 48px;
+            padding-top: calc(56px + env(safe-area-inset-top, 0px));
             font-family: monospace;
             font-size: 12px;
             background: var(--bg-primary);
@@ -313,6 +338,9 @@
         #loading {
             text-align: center;
             padding: 20px;
+            padding-top: calc(56px + env(safe-area-inset-top, 0px));
+            color: var(--text-secondary);
+            font-size: 14px;
         }
         .loading-details {
             font-size: 14px;
@@ -534,9 +562,6 @@
             border-color: #dc2626;
         }
         #themeToggle {
-            position: fixed;
-            top: calc(16px + env(safe-area-inset-top, 0px));
-            right: calc(16px + env(safe-area-inset-right, 0px));
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
             border-radius: 50%;
@@ -544,7 +569,10 @@
             height: 40px;
             font-size: 20px;
             cursor: pointer;
-            z-index: 100;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .session-stats {
             position: fixed;
@@ -833,7 +861,7 @@
         .pull-to-refresh-indicator {
             text-align: center;
             padding: 12px;
-            padding-top: calc(12px + env(safe-area-inset-top, 0px));
+            padding-top: 12px;
             color: #8899AA;
             font-size: 14px;
             transition: opacity 0.3s;
@@ -1286,18 +1314,14 @@
             cursor: pointer;
         }
         #logoutBtn {
-            position: fixed;
-            top: calc(12px + env(safe-area-inset-top, 0px));
-            right: calc(12px + env(safe-area-inset-right, 0px));
             background: transparent;
-            border: 1px solid #38444D;
-            color: #8899AA;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
             padding: 6px 14px;
             border-radius: 20px;
             font: inherit;
             font-size: 12px;
             cursor: pointer;
-            z-index: 100;
             display: none;
         }
         #logoutBtn:hover {
@@ -1305,18 +1329,14 @@
             border-color: #2cafff;
         }
         #deleteAccountBtn {
-            position: fixed;
-            top: calc(12px + env(safe-area-inset-top, 0px));
-            right: calc(100px + env(safe-area-inset-right, 0px));
             background: transparent;
-            border: 1px solid #38444D;
+            border: 1px solid var(--border-color);
             color: #664444;
             padding: 6px 14px;
             border-radius: 20px;
             font: inherit;
             font-size: 11px;
             cursor: pointer;
-            z-index: 100;
             display: none;
         }
         #deleteAccountBtn:hover {
@@ -1602,7 +1622,14 @@
     </style>
 </head>
 <body>
-    <button id="themeToggle" class="inline-tooltip" aria-label="Toggle dark/light mode" data-tooltip="Theme">&#127769;</button>
+    <header id="topBar" class="top-bar">
+        <div class="top-bar-left"></div>
+        <div class="top-bar-right">
+            <button id="deleteAccountBtn">Delete account</button>
+            <button id="logoutBtn">Log out</button>
+            <button id="themeToggle" class="inline-tooltip" aria-label="Toggle dark/light mode" data-tooltip="Theme">&#127769;</button>
+        </div>
+    </header>
     <p id="loading">Loading...</p>
     <div class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
     <div id="sessionStats" class="session-stats">
@@ -1694,8 +1721,6 @@
         </div>
         <button id="startBtn" disabled data-testid="start-button" aria-label="Start browsing Xikipedia (adult content warning)">I'm an adult, continue</button>
     </div>
-    <button id="logoutBtn">Log out</button>
-    <button id="deleteAccountBtn">Delete account</button>
 <script>
     // ============================================
     // Xikipedia - Wikipedia as a Social Media Feed
