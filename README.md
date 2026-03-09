@@ -2,7 +2,15 @@
 
 A recreation of [xikipedia.org](https://xikipedia.org/) - Wikipedia as a social media feed.
 
-**🌐 Live Demo: [xikipedia.emily-cogsdill.workers.dev](https://xikipedia.emily-cogsdill.workers.dev)**
+**Live at [xiki.emilycogsdill.com](https://xiki.emilycogsdill.com)**
+
+### Mobile
+| Start Screen | Feed |
+|:---:|:---:|
+| <img src="docs/screenshots/mobile-start.png" width="280"> | <img src="docs/screenshots/mobile-feed.png" width="280"> |
+
+### Desktop
+<img src="docs/screenshots/desktop-feed.png" width="720">
 
 ## Attribution
 
@@ -52,7 +60,7 @@ Xikipedia presents Simple Wikipedia articles in an infinite-scroll feed (like Ti
 ### Offline Support
 - 📴 **Service Worker** - Works offline after first load
 - 💾 **Smart Caching** - Data cached for instant access
-- 🔄 **Update Toast** - Notifies when new version available
+- 🔄 **Silent Updates** - Service worker auto-updates on deploy
 
 ### Keyboard Shortcuts
 | Key | Action |
