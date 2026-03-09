@@ -25,6 +25,13 @@ function uniqueUser(): string {
   return `u${timestamp}${random}`; // 9 chars total: "u" + 4 + 4
 }
 
+const _ipWorkerOctet = Math.floor(Math.random() * 256);
+let _ipCounter = 0;
+function uniqueIp(): string {
+  _ipCounter++;
+  return `10.${_ipWorkerOctet}.${Math.floor(_ipCounter / 256) % 256}.${_ipCounter % 256}`;
+}
+
 async function mockSmoldata(page: Page) {
   const mockDataJson = JSON.stringify(MOCK_SMOLDATA);
 
@@ -88,6 +95,7 @@ async function apiRegister(
 ): Promise<{ token: string; username: string }> {
   const resp = await page.request.post('/api/register', {
     data: { username, password },
+    headers: { 'x-forwarded-for': uniqueIp() },
   });
   expect(resp.ok()).toBe(true);
   return resp.json();
@@ -180,12 +188,14 @@ test.describe('Password edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: longPassword },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
 
     // Verify login with same long password works
     const loginResp = await page.request.post('/api/login', {
       data: { username: user, password: longPassword },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.status()).toBe(200);
   });
@@ -198,6 +208,7 @@ test.describe('Password edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: tooLongPassword },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
     const body = await resp.json();
@@ -212,6 +223,7 @@ test.describe('Password edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: spacePassword },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     // Spaces are valid characters in passwords -- should succeed
     expect(resp.status()).toBe(201);
@@ -225,11 +237,13 @@ test.describe('Password edge cases', () => {
 
     const regResp = await page.request.post('/api/register', {
       data: { username: user, password: unicodePassword },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(regResp.status()).toBe(201);
 
     const loginResp = await page.request.post('/api/login', {
       data: { username: user, password: unicodePassword },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.status()).toBe(200);
   });
@@ -242,6 +256,7 @@ test.describe('Password edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: nullPassword },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     // Should either succeed or return a clear error, not 500
     expect([201, 400]).toContain(resp.status());
@@ -254,6 +269,7 @@ test.describe('Password edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: '' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -264,6 +280,7 @@ test.describe('Password edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: '', password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -280,6 +297,7 @@ test.describe('SQL injection resistance', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: "admin' OR '1'='1", password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     // Should be 400 because username regex rejects special chars
     expect(resp.status()).toBe(400);
@@ -292,6 +310,7 @@ test.describe('SQL injection resistance', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: "'; DROP TABLE users; --" },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     // Password can contain any chars, so this should succeed (it's 23 chars)
     expect(resp.status()).toBe(201);
@@ -300,6 +319,7 @@ test.describe('SQL injection resistance', () => {
     const user2 = uniqueUser();
     const resp2 = await page.request.post('/api/register', {
       data: { username: user2, password: 'normal123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp2.status()).toBe(201);
   });
@@ -310,6 +330,7 @@ test.describe('SQL injection resistance', () => {
 
     const resp = await page.request.post('/api/login', {
       data: { username: "'; DROP TABLE users; --", password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     // Should return 401 (not found), not 500
     expect(resp.status()).toBe(401);
@@ -324,6 +345,7 @@ test.describe('SQL injection resistance', () => {
 
     const resp = await page.request.post('/api/login', {
       data: { username: user, password: "' OR '1'='1" },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(401);
   });
@@ -449,6 +471,7 @@ test.describe('Deleted user token reuse', () => {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'x-forwarded-for': uniqueIp(),
       },
       data: JSON.stringify({ password: 'password123' }),
     });
@@ -492,6 +515,7 @@ test.describe('Deleted user token reuse', () => {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'x-forwarded-for': uniqueIp(),
       },
       data: JSON.stringify({ password: 'password123' }),
     });
@@ -684,6 +708,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user.slice(0, 20), password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
   });
@@ -695,6 +720,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
   });
@@ -707,6 +733,7 @@ test.describe('Username edge cases', () => {
     // Register with mixed case
     const regResp = await page.request.post('/api/register', {
       data: { username: baseName, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(regResp.status()).toBe(201);
     const regData = await regResp.json();
@@ -715,6 +742,7 @@ test.describe('Username edge cases', () => {
     // Login with different case should work (COLLATE NOCASE)
     const loginResp = await page.request.post('/api/login', {
       data: { username: baseName.toUpperCase(), password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.status()).toBe(200);
     const loginData = await loginResp.json();
@@ -729,6 +757,7 @@ test.describe('Username edge cases', () => {
     // The frontend trims username, but what about the API directly?
     const resp = await page.request.post('/api/register', {
       data: { username: '  spacey  ', password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     // Spaces don't match [a-zA-Z0-9_], so this should be 400
     expect(resp.status()).toBe(400);
@@ -740,6 +769,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: 12345, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -750,6 +780,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: true, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -760,6 +791,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: uniqueUser(), password: 123456 },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -770,6 +802,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: null, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -780,6 +813,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/login', {
       data: { username: null, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
   });
@@ -797,6 +831,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/login', {
       data: { username: user, password: '' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
     const body = await resp.json();
@@ -809,6 +844,7 @@ test.describe('Username edge cases', () => {
 
     const resp = await page.request.post('/api/login', {
       data: { username: '', password: 'validpass' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
     const body = await resp.json();
@@ -869,12 +905,15 @@ test.describe('Concurrent operations', () => {
     await page.goto('/');
 
     // Fire two registration requests simultaneously
+    const sharedIp = uniqueIp();
     const [resp1, resp2] = await Promise.all([
       page.request.post('/api/register', {
         data: { username: user, password: 'password123' },
+        headers: { 'x-forwarded-for': sharedIp },
       }),
       page.request.post('/api/register', {
         data: { username: user, password: 'password456' },
+        headers: { 'x-forwarded-for': sharedIp },
       }),
     ]);
 
@@ -1024,6 +1063,7 @@ test.describe('Token/response structure', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
     const body = await resp.json();
@@ -1044,6 +1084,7 @@ test.describe('Token/response structure', () => {
 
     const resp = await page.request.post('/api/login', {
       data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(200);
     const body = await resp.json();
@@ -1061,6 +1102,7 @@ test.describe('Token/response structure', () => {
 
     const resp = await page.request.post('/api/register', {
       data: { username: 'ab', password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(400);
     const body = await resp.json();
@@ -1085,7 +1127,7 @@ test.describe('Delete account idempotency', () => {
 
     // First delete
     const del1 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: JSON.stringify({ password: 'password123' }),
     });
     expect(del1.ok()).toBe(true);
@@ -1094,7 +1136,7 @@ test.describe('Delete account idempotency', () => {
     // Token is still cryptographically valid so auth passes,
     // but DELETE FROM users WHERE id = ? will affect 0 rows.
     const del2 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: JSON.stringify({ password: 'password123' }),
     });
 
@@ -1121,6 +1163,7 @@ test.describe('Extra fields in request body', () => {
         isAdmin: true,
         __proto__: { polluted: true },
       },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(201);
     const body = await resp.json();
@@ -1142,6 +1185,7 @@ test.describe('Extra fields in request body', () => {
         password: 'password123',
         extraField: 'should be ignored',
       },
+      headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(200);
   });

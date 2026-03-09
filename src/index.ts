@@ -54,6 +54,11 @@ async function ensureTables(db: D1Database): Promise<void> {
       hidden_categories TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT DEFAULT (datetime('now'))
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      window_start INTEGER NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0
+    )`),
   ]);
   tablesInitialized = true;
 }
@@ -124,6 +129,51 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
     match = match && hmac1[i] === hmac2[i];
   }
   return match;
+}
+
+// ─── Rate Limiting ────────────────────────────────────────────────────
+
+function getClientIp(request: Request): string {
+  // In production, Cloudflare sets both headers and controls X-Forwarded-For
+  // (clients can't spoof it). Prioritizing XFF lets tests isolate rate limits
+  // via spoofed IPs while wrangler dev sets CF-Connecting-IP to 127.0.0.1.
+  return request.headers.get('X-Forwarded-For')?.split(',')[0].trim() ||
+         request.headers.get('CF-Connecting-IP') ||
+         'unknown';
+}
+
+/** Returns true if the IP can be meaningfully rate-limited.
+ *  Loopback and unknown IPs are excluded — in production, CF always provides
+ *  a real client IP via CF-Connecting-IP. */
+function isRateLimitableIp(ip: string): boolean {
+  return ip !== 'unknown' && ip !== '127.0.0.1' && ip !== '::1';
+}
+
+async function atomicIncrement(
+  db: D1Database,
+  key: string,
+  windowSec: number,
+): Promise<{ count: number; windowStart: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - (now % windowSec);
+  const result = await db
+    .prepare(`
+      INSERT INTO rate_limits (key, window_start, count) VALUES (?1, ?2, 1)
+      ON CONFLICT(key) DO UPDATE SET
+        count = CASE WHEN window_start < ?2 THEN 1 ELSE count + 1 END,
+        window_start = CASE WHEN window_start < ?2 THEN ?2 ELSE window_start END
+      RETURNING count, window_start
+    `)
+    .bind(key, windowStart)
+    .first<{ count: number; window_start: number }>();
+
+  return result
+    ? { count: result.count, windowStart: result.window_start }
+    : { count: 1, windowStart };
+}
+
+async function resetRateLimit(db: D1Database, key: string): Promise<void> {
+  await db.prepare('DELETE FROM rate_limits WHERE key = ?').bind(key).run();
 }
 
 // ─── JWT Helpers ─────────────────────────────────────────────────────
@@ -264,6 +314,19 @@ function errorResponse(request: Request, message: string, status: number): Respo
   return jsonResponse(request, { error: message }, status);
 }
 
+function rateLimitResponse(request: Request, windowStart: number, windowSec: number): Response {
+  const now = Math.floor(Date.now() / 1000);
+  const retryAfter = Math.max(1, windowStart + windowSec - now);
+  return new Response(JSON.stringify({ error: 'Too many requests' }), {
+    status: 429,
+    headers: {
+      'Content-Type': 'application/json',
+      'Retry-After': String(retryAfter),
+      ...getCorsHeaders(request),
+    },
+  });
+}
+
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
 async function authenticate(
@@ -319,6 +382,17 @@ async function handleRegister(
     return errorResponse(request, validationError, 400);
   }
 
+  // Rate limit: 3 registrations per IP per hour (only valid requests count)
+  // In production, CF-Connecting-IP is always set. Skip rate limiting for
+  // unidentifiable clients (local dev) to avoid false positives.
+  const ip = getClientIp(request);
+  if (isRateLimitableIp(ip)) {
+    const rl = await atomicIncrement(env.DB, `register:${ip}`, 3600);
+    if (rl.count > 3) {
+      return rateLimitResponse(request, rl.windowStart, 3600);
+    }
+  }
+
   const username = body.username as string;
   const password = body.password as string;
 
@@ -359,6 +433,9 @@ async function handleLogin(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const ip = getClientIp(request);
+  const rateLimitKey = `login_fail:${ip}`;
+
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
@@ -378,6 +455,12 @@ async function handleLogin(
     .first<UserRow>();
 
   if (!user) {
+    if (isRateLimitableIp(ip)) {
+      const rl = await atomicIncrement(env.DB, rateLimitKey, 900);
+      if (rl.count > 5) {
+        return rateLimitResponse(request, rl.windowStart, 900);
+      }
+    }
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -385,7 +468,18 @@ async function handleLogin(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    if (isRateLimitableIp(ip)) {
+      const rl = await atomicIncrement(env.DB, rateLimitKey, 900);
+      if (rl.count > 5) {
+        return rateLimitResponse(request, rl.windowStart, 900);
+      }
+    }
     return errorResponse(request, 'Invalid username or password', 401);
+  }
+
+  // Reset failed login counter on successful authentication
+  if (isRateLimitableIp(ip)) {
+    await resetRateLimit(env.DB, rateLimitKey);
   }
 
   const token = await createToken(
@@ -497,6 +591,13 @@ async function handleDeleteAccount(
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  // Rate limit: 5 delete attempts per user per day (prevents password brute-forcing)
+  const deleteKey = `delete:${payload.sub}`;
+  const rl = await atomicIncrement(env.DB, deleteKey, 86400);
+  if (rl.count > 5) {
+    return rateLimitResponse(request, rl.windowStart, 86400);
   }
 
   let body: { password?: string };
