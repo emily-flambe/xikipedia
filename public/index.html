@@ -753,9 +753,6 @@
                 width: 56px;
                 height: 56px;
             }
-            #refreshBtn {
-                bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
-            }
             #exploreBtn {
                 bottom: calc(86px + env(safe-area-inset-bottom, 0px)) !important;
             }
@@ -809,9 +806,12 @@
         .floating-btn:active {
             transform: scale(0.9);
         }
-        #refreshBtn {
-            right: calc(24px + env(safe-area-inset-right, 0px));
-            bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+        /* Refresh button lives in the top bar — override floating-btn defaults */
+        .top-bar-refresh {
+            position: static !important;
+            width: 36px !important;
+            height: 36px !important;
+            box-shadow: none !important;
         }
         #exploreBtn {
             right: calc(24px + env(safe-area-inset-right, 0px));
@@ -868,6 +868,13 @@
             transition: opacity 0.3s;
             overflow: hidden;
             height: 0;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        @media (min-width: 601px) {
+            .pull-to-refresh-indicator {
+                display: none !important;
+            }
         }
         .pull-to-refresh-indicator.active {
             height: auto;
@@ -1585,6 +1592,7 @@
         <div class="top-bar-right">
             <button id="deleteAccountBtn">Delete account</button>
             <button id="logoutBtn">Log out</button>
+            <button class="floating-btn top-bar-refresh" id="refreshBtn" aria-label="Refresh feed" data-tooltip="Refresh (R)" style="display:none"></button>
             <button id="themeToggle" class="inline-tooltip" aria-label="Toggle dark/light mode" data-tooltip="Theme">&#127769;</button>
         </div>
     </header>
@@ -1610,7 +1618,6 @@
     </aside>
     <div class="stats-backdrop" id="statsBackdrop"></div>
     <button id="statsToggleBtn" class="tooltip-right" aria-label="Open category stats" data-tooltip="Stats (S)"></button>
-    <button class="floating-btn" id="refreshBtn" aria-label="Refresh feed" data-tooltip="Refresh (R)" style="display:none"></button>
     <button class="floating-btn" id="exploreBtn" aria-label="Toggle explore mode" data-tooltip="Explore (E)" style="display:none"></button>
     <div id="startScreen" popover="manual">
         <div>
