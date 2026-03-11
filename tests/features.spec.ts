@@ -1,5 +1,8 @@
 import { test, expect, Page } from '@playwright/test';
 
+/** Check if running against localhost (where __xikiTest is available) */
+const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
+
 /**
  * Mock data for testing the 4 new features.
  * This avoids the 40MB download of smoldata.json.
@@ -79,16 +82,14 @@ async function setupMockRoute(page: Page) {
  * Note: setupMockRoute() already handles SW/cache cleanup via addInitScript.
  */
 async function startFeedWithMock(page: Page) {
+  // Tests in features.spec.ts require __xikiTest API (localhost only)
+  if (!isLocalhost) {
+    test.skip();
+    return;
+  }
+  
   await setupMockRoute(page);
   await page.goto('/');
-
-  const hasTestApi = await page.evaluate(() => typeof window.__xikiTest !== 'undefined');
-  if (!hasTestApi) {
-    throw new Error(
-      'window.__xikiTest is undefined. The test API is only created on localhost. ' +
-      'Ensure wrangler dev is running and tests target http://localhost:8788.'
-    );
-  }
 
   const startBtn = page.locator('[data-testid="start-button"]');
   await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
@@ -1169,17 +1170,15 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
    * Uses ?format=chunked URL parameter to trigger chunked format loading.
    */
   async function startFeedWithChunkedMock(page: Page, options: { failChunk?: number } = {}) {
+    // Chunked format tests require __xikiTest API (localhost only)
+    if (!isLocalhost) {
+      test.skip();
+      return;
+    }
+    
     await setupChunkedRoutes(page, options);
     // Must use ?format=chunked to trigger chunked format mode
     await page.goto('/?format=chunked');
-
-    const hasTestApi = await page.evaluate(() => typeof window.__xikiTest !== 'undefined');
-    if (!hasTestApi) {
-      throw new Error(
-        'window.__xikiTest is undefined. The test API is only created on localhost. ' +
-        'Ensure wrangler dev is running and tests target http://localhost:8788.'
-      );
-    }
 
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });

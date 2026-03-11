@@ -1,5 +1,8 @@
 import { test, expect, Page, BrowserContext } from '@playwright/test';
 
+/** Check if running against localhost (where __xikiTest is available) */
+const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
+
 // ─── Mock data ──────────────────────────────────────────────────────────
 // The real smoldata.json is ~225MB. We provide a minimal mock that satisfies
 // the processing pipeline (pages array, subCategories, noPageMaps).
@@ -141,14 +144,6 @@ async function injectAuth(
 async function gotoReady(page: Page) {
   await mockSmoldata(page);
   await page.goto('/');
-
-  const hasTestApi = await page.evaluate(() => typeof window.__xikiTest !== 'undefined');
-  if (!hasTestApi) {
-    throw new Error(
-      'window.__xikiTest is undefined. The test API is only created on localhost. ' +
-      'Ensure wrangler dev is running and tests target http://localhost:8788.'
-    );
-  }
 
   const startBtn = page.locator('[data-testid="start-button"]');
   await expect(startBtn).not.toBeDisabled({ timeout: 30000 });

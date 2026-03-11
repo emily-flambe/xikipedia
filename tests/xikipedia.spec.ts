@@ -1,5 +1,8 @@
 import { test, expect, Page } from '@playwright/test';
 
+/** Check if running against localhost (where __xikiTest is available) */
+const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
+
 /**
  * Mock data to avoid 40MB download in CI.
  * Format: { pages: [[title, id, text, thumb, categories, links], ...], subCategories: {}, noPageMaps: {} }
@@ -79,14 +82,6 @@ async function setupMockRoute(page: Page) {
 async function startFeed(page: Page) {
   await setupMockRoute(page);
   await page.goto('/');
-
-  const hasTestApi = await page.evaluate(() => typeof window.__xikiTest !== 'undefined');
-  if (!hasTestApi) {
-    throw new Error(
-      'window.__xikiTest is undefined. The test API is only created on localhost. ' +
-      'Ensure wrangler dev is running and tests target http://localhost:8788.'
-    );
-  }
 
   const startBtn = page.locator('[data-testid="start-button"]');
   await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
@@ -417,6 +412,7 @@ test.describe('Feature 2: Feed refresh', () => {
   });
 
   test('refresh resets postsWithoutLike counter', async ({ page }) => {
+    test.skip(!isLocalhost, 'Requires __xikiTest API (localhost only)');
     test.setTimeout(180000);
     await startFeed(page);
 
