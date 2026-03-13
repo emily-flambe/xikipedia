@@ -40,6 +40,24 @@ function uniqueIp(): string {
 }
 
 /**
+ * Intercept all /api/* requests and add X-Forwarded-For header.
+ * This isolates UI-based requests (like form submissions) into their own
+ * rate limit bucket, preventing production rate limits from affecting tests.
+ * Returns the IP used so tests can reference it if needed.
+ */
+async function interceptApiWithUniqueIp(page: Page): Promise<string> {
+  const ip = uniqueIp();
+  await page.route('**/api/**', async (route) => {
+    const headers = {
+      ...route.request().headers(),
+      'x-forwarded-for': ip,
+    };
+    await route.continue({ headers });
+  });
+  return ip;
+}
+
+/**
  * Mock smoldata.json loading. The real app uses getFileWithProgress which
  * pre-allocates a Uint8Array(DATA_SIZE) (225MB) and streams into it, then
  * does: JSON.parse(new TextDecoder().decode(bytes))
@@ -143,6 +161,8 @@ async function injectAuth(
 /** Navigate to the app with smoldata mocked and wait until ready. */
 async function gotoReady(page: Page) {
   await mockSmoldata(page);
+  // Add X-Forwarded-For to all API requests to isolate rate limits per test
+  await interceptApiWithUniqueIp(page);
   await page.goto('/');
 
   const startBtn = page.locator('[data-testid="start-button"]');
@@ -178,7 +198,10 @@ async function fillLoginForm(
 // =========================================================================
 
 test.describe('Registration', () => {
+  // UI registration tests hit rate limits on production (Cloudflare overwrites X-Forwarded-For).
+  // These tests work in local dev where XFF is trusted.
   test('registers with valid credentials and reloads as logged-in', async ({ page }) => {
+    test.skip(!isLocalhost, 'UI registration tests hit production rate limits - run locally');
     await gotoReady(page);
     const user = uniqueUser();
 
@@ -199,6 +222,7 @@ test.describe('Registration', () => {
   });
 
   test('shows 409 error when registering a taken username', async ({ page }) => {
+    test.skip(!isLocalhost, 'UI registration tests hit production rate limits - run locally');
     const user = uniqueUser();
 
     // First, register the user via API so it exists.
@@ -283,6 +307,7 @@ test.describe('Registration', () => {
   });
 
   test('username validation is case-insensitive (cannot register same name different case)', async ({ page }) => {
+    test.skip(!isLocalhost, 'UI registration tests hit production rate limits - run locally');
     const baseName = uniqueUser();
 
     await gotoReady(page);

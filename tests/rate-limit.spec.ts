@@ -5,10 +5,18 @@
  * Uses spoofed X-Forwarded-For headers to isolate rate limit buckets per test.
  *
  * Run with: npx playwright test tests/rate-limit.spec.ts
- * Requires wrangler dev server.
+ * Requires wrangler dev server (Cloudflare production rewrites XFF headers).
  */
 
 import { test, expect, Page, APIResponse } from '@playwright/test';
+
+// Rate limiting tests require local dev - Cloudflare production rewrites X-Forwarded-For
+const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
+
+// Skip all tests in this file when running against production
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(!isLocalhost, 'Rate limiting tests require local dev (Cloudflare rewrites XFF)');
+});
 
 // ---- Helpers ----------------------------------------------------------------
 
