@@ -504,7 +504,9 @@ test.describe('Guest mode', () => {
 // =========================================================================
 
 test.describe('Preference persistence', () => {
-  // TODO: Fix SW cache interference with page reloads
+  // These tests use page.reload() which has SW cache interference in CI (Linux).
+  // Tests pass locally on Windows but fail in GitHub Actions CI environment.
+  // TODO: Fix SW/mock interaction after reload in CI
   test.skip('preferences are auto-saved after liking a post', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
@@ -558,7 +560,7 @@ test.describe('Preference persistence', () => {
     expect(Object.keys(prefs.categoryScores).length).toBeGreaterThan(0);
   });
 
-  // TODO: Fix SW cache interference with page reloads
+  // Skip: SW cache interference + requires __xikiTest API
   test.skip('preferences survive page reload', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
@@ -618,7 +620,7 @@ test.describe('Preference persistence', () => {
     expect(scores['nature']).toBeLessThanOrEqual(300);
   });
 
-  // TODO: Fix SW cache interference with page reloads
+  // Skip: page.reload() has SW cache interference in CI
   test.skip('logged-in user skips category picker and auto-starts feed', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
@@ -654,7 +656,7 @@ test.describe('Preference persistence', () => {
 // =========================================================================
 
 test.describe('Logout', () => {
-  // TODO: Fix SW cache interference with page reloads
+  // Skip: page.reload() has SW cache interference in CI
   test.skip('logout clears auth and returns to start screen with auth form', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
@@ -737,7 +739,7 @@ test.describe('Logout', () => {
 // =========================================================================
 
 test.describe('Account deletion', () => {
-  // TODO: Fix SW cache interference with page reloads
+  // Skip: page.reload() has SW cache interference in CI
   test.skip('deleting account clears auth and prevents re-login', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
@@ -804,7 +806,7 @@ test.describe('Account deletion', () => {
     });
   });
 
-  // TODO: Fix SW cache interference with page reloads
+  // Skip: page.reload() has SW cache interference in CI
   test.skip('cancel on confirm dialog does NOT delete account', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
