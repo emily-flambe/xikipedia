@@ -8,7 +8,8 @@
  * Requires wrangler dev server (Cloudflare production rewrites XFF headers).
  */
 
-import { test, expect, Page, APIResponse } from '@playwright/test';
+import { type Page, type APIResponse } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // Rate limiting tests require local dev - Cloudflare production rewrites X-Forwarded-For
 const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
@@ -45,11 +46,6 @@ function uniqueUser(): string {
 
 async function mockSmoldata(page: Page) {
   const mockDataJson = JSON.stringify(MOCK_SMOLDATA);
-  await page.addInitScript(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
-    }
-  });
   await page.route('**/smoldata.json', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: mockDataJson }),
   );
