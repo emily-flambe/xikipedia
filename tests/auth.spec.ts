@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import type { Page, BrowserContext } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 /** Check if running against localhost (where __xikiTest is available) */
 const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
@@ -137,25 +137,14 @@ async function apiRegister(
   page: Page,
   username: string,
   password: string,
-): Promise<{ token: string; username: string }> {
+): Promise<{ username: string }> {
   const resp = await page.request.post('/api/register', {
     data: { username, password },
     headers: { 'x-forwarded-for': uniqueIp() },
+    credentials: 'include',
   });
   expect(resp.ok()).toBe(true);
   return resp.json();
-}
-
-/** Inject auth credentials into localStorage so the app starts as logged-in. */
-async function injectAuth(
-  context: BrowserContext,
-  baseURL: string,
-  username: string,
-) {
-  await context.addCookies([]); // ensure context is initialised
-  await context.storageState(); // force init
-  // We need to set localStorage on the right origin. Navigate to a blank page first,
-  // then use addInitScript or evaluate. Easier: use page.goto + evaluate.
 }
 
 /** Navigate to the app with smoldata mocked and wait until ready. */
@@ -515,7 +504,7 @@ test.describe('Preference persistence', () => {
     await page.goto('/');
 
     // Register via API, inject auth
-    const { token } = await apiRegister(page, user, password);
+    await apiRegister(page, user, password);
 
     // Set xiki_username in localStorage (cookie is already set by apiRegister)
     await page.evaluate(
@@ -567,15 +556,14 @@ test.describe('Preference persistence', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    // Register and inject auth
-    const { token } = await apiRegister(page, user, password);
+    // Register and inject auth (cookie is set by apiRegister)
+    await apiRegister(page, user, password);
 
     // Manually save some preferences via API
     const savedScores = { science: 500, nature: 300, 'given names': -1000 };
     const savedHidden = ['sports'];
     const putResp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -916,14 +904,13 @@ test.describe('API edge cases', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const { token } = await apiRegister(page, user, 'password123');
+    await apiRegister(page, user, 'password123');
 
     // Use failOnStatusCode: false to get the response even on error status
     const resp = await page.request.fetch('/api/preferences', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       data: '{invalid json{{',
       failOnStatusCode: false,
@@ -966,11 +953,9 @@ test.describe('API edge cases', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const { token } = await apiRegister(page, user, 'password123');
+    await apiRegister(page, user, 'password123');
 
-    const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const resp = await page.request.get('/api/preferences');
     expect(resp.ok()).toBe(true);
     const prefs = await resp.json();
     expect(prefs.categoryScores).toEqual({});
@@ -982,12 +967,11 @@ test.describe('API edge cases', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const { token } = await apiRegister(page, user, 'password123');
+    await apiRegister(page, user, 'password123');
 
     // Save some preferences
     await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       data: { categoryScores: { science: 999 }, hiddenCategories: ['math'] },
@@ -995,18 +979,13 @@ test.describe('API edge cases', () => {
 
     // Delete the account
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);
 
-    // The token is now invalid (user deleted). Trying to get preferences should fail.
-    // Note: the token itself is still cryptographically valid but the user doesn't exist.
-    // The implementation doesn't check if user still exists after JWT verification.
-    // This could be a BUG: JWT is valid but user is deleted, so preferences query returns empty.
-    const prefsResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // After account deletion, the cookie is cleared server-side. Trying to get preferences should fail.
+    const prefsResp = await page.request.get('/api/preferences');
     // If the server returns 200 with empty prefs (user doesn't exist but JWT is valid),
     // that's technically a security concern - we should still document the behavior.
     // The current implementation will return { categoryScores: {}, hiddenCategories: [] }
@@ -1099,11 +1078,11 @@ test.describe('API edge cases', () => {
     await page.goto('/');
 
     // Register
-    const { token } = await apiRegister(page, user, password);
+    await apiRegister(page, user, password);
 
     // Delete
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);

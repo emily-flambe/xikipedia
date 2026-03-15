@@ -453,7 +453,7 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
-    return jsonResponseWithCookie(request, { username, token }, buildCookieHeader(token, request), 201);
+    return jsonResponseWithCookie(request, { username }, buildCookieHeader(token, request), 201);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
@@ -526,7 +526,7 @@ async function handleLogin(
     env.JWT_SECRET,
   );
 
-  return jsonResponseWithCookie(request, { username: user.username, token }, buildCookieHeader(token, request));
+  return jsonResponseWithCookie(request, { username: user.username }, buildCookieHeader(token, request));
 }
 
 // Helper to verify user still exists (for deleted user token attacks)
