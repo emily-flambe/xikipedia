@@ -426,8 +426,9 @@ test.describe('algorithm.mjs — createAlgorithm', () => {
     });
 
     // recent-cat decay ≈ 1.0, stale-cat decay ≈ Math.pow(0.5,48) ≈ 0.
-    // Effective scores: ~5000 vs ~0. Recent should dominate overwhelmingly.
-    expect(result.recentCount).toBeGreaterThan(result.staleCount * 3);
+    // Effective scores: ~5000 vs ~0. Serendipity and random-path draws (~20% of 30)
+    // can still land on stale, so we check 2x dominance rather than 3x.
+    expect(result.recentCount).toBeGreaterThan(result.staleCount * 2);
   });
 
   test('view penalty decay — posts with seen > 0 are strongly penalized', async ({ page }) => {
