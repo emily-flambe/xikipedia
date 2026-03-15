@@ -2495,21 +2495,19 @@
     // ============================================
 
     function isLoggedIn() {
-        return !!localStorage.getItem('xiki_token');
+        return !!localStorage.getItem('xiki_username');
     }
 
     function currentUser() {
         return localStorage.getItem('xiki_username') || null;
     }
 
-    function getAuthHeaders() {
-        const token = localStorage.getItem('xiki_token');
-        if (token) return { 'Authorization': 'Bearer ' + token };
-        return {};
-    }
-
-    function logout() {
-        localStorage.removeItem('xiki_token');
+    async function logout() {
+        try {
+            await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+        } catch (e) {
+            console.error('Logout request failed:', e);
+        }
         localStorage.removeItem('xiki_username');
         window.location.reload();
     }
@@ -2521,10 +2519,8 @@
         try {
             const resp = await fetch('/api/account', {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ password })
             });
             if (!resp.ok) {
@@ -2537,7 +2533,6 @@
             alert('Failed to delete account. Please try again.');
             return;
         }
-        localStorage.removeItem('xiki_token');
         localStorage.removeItem('xiki_username');
         window.location.reload();
     }
@@ -2555,10 +2550,8 @@
             };
             fetch('/api/preferences', {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify(body)
             }).catch(e => console.error('Failed to save preferences:', e));
         }, 5000);
@@ -2665,6 +2658,7 @@
             const resp = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
             const data = await resp.json();
@@ -2674,7 +2668,6 @@
                 btn.textContent = 'Log in';
                 return;
             }
-            localStorage.setItem('xiki_token', data.token);
             localStorage.setItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -2708,6 +2701,7 @@
             const resp = await fetch('/api/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
             const data = await resp.json();
@@ -2717,7 +2711,6 @@
                 btn.textContent = 'Create account';
                 return;
             }
-            localStorage.setItem('xiki_token', data.token);
             localStorage.setItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -4544,7 +4537,7 @@
         if (isLoggedIn()) {
             try {
                 const prefsResp = await fetch('/api/preferences', {
-                    headers: getAuthHeaders()
+                    credentials: 'include'
                 });
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
                 const prefs = await prefsResp.json();
@@ -4571,8 +4564,8 @@
                 return;
             } catch (e) {
                 console.warn('Failed to load preferences, clearing auth:', e);
-                localStorage.removeItem('xiki_token');
                 localStorage.removeItem('xiki_username');
+                fetch('/api/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
                 // Fall through to normal start screen - reload to show guest UI
                 window.location.reload();
                 return;

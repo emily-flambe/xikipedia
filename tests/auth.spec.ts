@@ -150,7 +150,6 @@ async function apiRegister(
 async function injectAuth(
   context: BrowserContext,
   baseURL: string,
-  token: string,
   username: string,
 ) {
   await context.addCookies([]); // ensure context is initialised
@@ -518,13 +517,12 @@ test.describe('Preference persistence', () => {
     // Register via API, inject auth
     const { token } = await apiRegister(page, user, password);
 
-    // Set localStorage and reload as logged-in
+    // Set xiki_username in localStorage (cookie is already set by apiRegister)
     await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
+      (user) => {
         localStorage.setItem('xiki_username', user);
       },
-      { token, user },
+      user,
     );
 
     await page.reload();
@@ -587,13 +585,12 @@ test.describe('Preference persistence', () => {
     });
     expect(putResp.ok()).toBe(true);
 
-    // Now set localStorage and reload
+    // Set xiki_username in localStorage (cookie is already set by apiRegister)
     await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
+      (user) => {
         localStorage.setItem('xiki_username', user);
       },
-      { token, user },
+      user,
     );
 
     await page.reload();
@@ -629,14 +626,14 @@ test.describe('Preference persistence', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const { token } = await apiRegister(page, user, password);
+    await apiRegister(page, user, password);
 
+    // Set xiki_username in localStorage (cookie is already set by apiRegister)
     await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
+      (user) => {
         localStorage.setItem('xiki_username', user);
       },
-      { token, user },
+      user,
     );
 
     await page.reload();
@@ -665,15 +662,14 @@ test.describe('Logout', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const { token } = await apiRegister(page, user, password);
+    await apiRegister(page, user, password);
 
-    // Login by setting localStorage
+    // Set xiki_username in localStorage (cookie is already set by apiRegister)
     await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
+      (user) => {
         localStorage.setItem('xiki_username', user);
       },
-      { token, user },
+      user,
     );
 
     await page.reload();
@@ -696,11 +692,11 @@ test.describe('Logout', () => {
     await expect(page.locator('.auth-tab[data-tab="login"]')).toBeVisible();
     await expect(page.locator('.auth-tab[data-tab="register"]')).toBeVisible();
 
-    // localStorage should be cleared
-    const tokenAfter = await page.evaluate(() =>
-      localStorage.getItem('xiki_token'),
+    // xiki_username should be cleared from localStorage (xiki_token is now httpOnly cookie)
+    const usernameAfter = await page.evaluate(() =>
+      localStorage.getItem('xiki_username'),
     );
-    expect(tokenAfter).toBeNull();
+    expect(usernameAfter).toBeNull();
   });
 
   test('logout button is only visible when logged in', async ({ page }) => {
@@ -748,14 +744,14 @@ test.describe('Account deletion', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const { token } = await apiRegister(page, user, password);
+    await apiRegister(page, user, password);
 
+    // Set xiki_username in localStorage (cookie is already set by apiRegister)
     await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
+      (user) => {
         localStorage.setItem('xiki_username', user);
       },
-      { token, user },
+      user,
     );
 
     await page.reload();
@@ -788,11 +784,11 @@ test.describe('Account deletion', () => {
     // After reload, should be back to guest start screen
     await expect(page.locator('#startScreen')).toBeVisible({ timeout: 30000 });
 
-    // Token should be cleared
-    const tokenAfter = await page.evaluate(() =>
-      localStorage.getItem('xiki_token'),
+    // xiki_username should be cleared from localStorage (xiki_token is now httpOnly cookie)
+    const usernameAfter = await page.evaluate(() =>
+      localStorage.getItem('xiki_username'),
     );
-    expect(tokenAfter).toBeNull();
+    expect(usernameAfter).toBeNull();
 
     // Now try to log in with the deleted credentials - should fail
     const startBtn = page.locator('[data-testid="start-button"]');
@@ -815,14 +811,14 @@ test.describe('Account deletion', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const { token } = await apiRegister(page, user, password);
+    await apiRegister(page, user, password);
 
+    // Set xiki_username in localStorage (cookie is already set by apiRegister)
     await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
+      (user) => {
         localStorage.setItem('xiki_username', user);
       },
-      { token, user },
+      user,
     );
 
     await page.reload();
@@ -843,11 +839,11 @@ test.describe('Account deletion', () => {
     // We should still be on the feed (no reload)
     await expect(page.locator('[data-testid="post"]').first()).toBeVisible();
 
-    // Token should still be present
-    const tokenStill = await page.evaluate(() =>
-      localStorage.getItem('xiki_token'),
+    // xiki_username should still be present (account was not deleted)
+    const usernameStill = await page.evaluate(() =>
+      localStorage.getItem('xiki_username'),
     );
-    expect(tokenStill).not.toBeNull();
+    expect(usernameStill).not.toBeNull();
 
     // Verify the account still exists by trying to login via API
     const loginResp = await page.request.post('/api/login', {
@@ -1134,12 +1130,12 @@ test.describe('Security', () => {
     await page.goto('/');
 
     // Inject a malicious username into localStorage
+    // (xiki_token is now an httpOnly cookie — isLoggedIn() checks xiki_username only)
     await page.evaluate(() => {
-      localStorage.setItem('xiki_token', 'fake_token_value');
       localStorage.setItem('xiki_username', '<script>alert(1)</script>');
     });
 
-    // On reload, the app will try to load preferences which will fail (bad token),
+    // On reload, the app will try to load preferences which will fail (no auth cookie),
     // causing it to clear auth and reload again. So we need to handle this.
     // Actually, looking at the code: if preferences load fails, it clears auth and reloads.
     // So we can't easily test this through normal flow.
@@ -1147,7 +1143,7 @@ test.describe('Security', () => {
     // The code does: currentUser().replace(/</g, '&lt;').replace(/>/g, '&gt;')
     // That's correct for preventing script injection in innerHTML.
     // We can verify this by checking the auth-welcome HTML doesn't contain raw <script>.
-    // But since the fake token causes a preferences load failure -> reload loop,
+    // But since the missing cookie causes a preferences load failure -> reload loop,
     // we need to mock the preferences endpoint too.
     await page.route('**/api/preferences', (route) =>
       route.fulfill({

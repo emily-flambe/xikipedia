@@ -293,6 +293,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
   };
 }
 
@@ -327,16 +328,50 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
   });
 }
 
+// ─── Cookie Helpers ──────────────────────────────────────────────────
+
+function buildCookieHeader(token: string | null, request: Request): string {
+  const isLocalDev = request.headers.get('Origin')?.includes('localhost') ||
+                     request.headers.get('Host')?.includes('localhost') ||
+                     request.headers.get('Host')?.includes('127.0.0.1');
+  if (token === null) {
+    return `xiki_token=; HttpOnly; ${isLocalDev ? '' : 'Secure; '}SameSite=Strict; Path=/; Max-Age=0`;
+  }
+  return `xiki_token=${token}; HttpOnly; ${isLocalDev ? '' : 'Secure; '}SameSite=Strict; Path=/; Max-Age=2592000`;
+}
+
+function jsonResponseWithCookie(
+  request: Request,
+  data: unknown,
+  cookieHeader: string,
+  status = 200,
+): Response {
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    'Set-Cookie': cookieHeader,
+    ...getCorsHeaders(request),
+  });
+  return new Response(JSON.stringify(data), { status, headers });
+}
+
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
 async function authenticate(
   request: Request,
   secret: string,
 ): Promise<TokenPayload | null> {
+  // Primary: read from httpOnly cookie
+  const cookieHeader = request.headers.get('Cookie') || '';
+  const cookieMatch = cookieHeader.match(/(?:^|;\s*)xiki_token=([^;]+)/);
+  if (cookieMatch) {
+    return verifyToken(cookieMatch[1], secret);
+  }
+  // Backward-compat: fall back to Authorization Bearer header
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.substring(7);
-  return verifyToken(token, secret);
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return verifyToken(authHeader.substring(7), secret);
+  }
+  return null;
 }
 
 // ─── Validation ──────────────────────────────────────────────────────
@@ -418,7 +453,7 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
-    return jsonResponse(request, { token, username }, 201);
+    return jsonResponseWithCookie(request, { username, token }, buildCookieHeader(token, request), 201);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
@@ -491,7 +526,7 @@ async function handleLogin(
     env.JWT_SECRET,
   );
 
-  return jsonResponse(request, { token, username: user.username });
+  return jsonResponseWithCookie(request, { username: user.username, token }, buildCookieHeader(token, request));
 }
 
 // Helper to verify user still exists (for deleted user token attacks)
@@ -635,7 +670,22 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
-  return jsonResponse(request, { success: true });
+  return jsonResponseWithCookie(request, { success: true }, buildCookieHeader(null, request));
+}
+
+function handleLogout(request: Request): Response {
+  return jsonResponseWithCookie(request, { success: true }, buildCookieHeader(null, request));
+}
+
+async function handleGetMe(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+  return jsonResponse(request, { username: payload.username });
 }
 
 // ─── R2 File Serving Helper ──────────────────────────────────────────
@@ -745,6 +795,14 @@ export default {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return handleLogout(request);
+        }
+
+        if (url.pathname === '/api/me' && request.method === 'GET') {
+          return await handleGetMe(request, env);
         }
 
         return errorResponse(request, 'Not found', 404);
