@@ -2508,7 +2508,29 @@
         return {};
     }
 
-    function logout() {
+    async function handleApiUnauthorized(resp) {
+        if (resp.status === 401) {
+            localStorage.removeItem('xiki_token');
+            localStorage.removeItem('xiki_username');
+            window.location.reload();
+            return true;
+        }
+        return false;
+    }
+
+    async function logout() {
+        const token = localStorage.getItem('xiki_token');
+        if (token) {
+            try {
+                await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+            } catch (e) {
+                // Ignore network errors — always clear local state
+                console.error('Logout request failed:', e);
+            }
+        }
         localStorage.removeItem('xiki_token');
         localStorage.removeItem('xiki_username');
         window.location.reload();
@@ -2560,7 +2582,7 @@
                     ...getAuthHeaders()
                 },
                 body: JSON.stringify(body)
-            }).catch(e => console.error('Failed to save preferences:', e));
+            }).then(resp => handleApiUnauthorized(resp)).catch(e => console.error('Failed to save preferences:', e));
         }, 5000);
     }
 
@@ -4546,6 +4568,7 @@
                 const prefsResp = await fetch('/api/preferences', {
                     headers: getAuthHeaders()
                 });
+                if (await handleApiUnauthorized(prefsResp)) return;
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
                 const prefs = await prefsResp.json();
 

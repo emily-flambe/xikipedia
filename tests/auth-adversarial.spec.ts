@@ -492,8 +492,6 @@ test.describe('Deleted user token reuse', () => {
 
     // Token is cryptographically valid but user no longer exists - should be rejected
     expect(putResp.status()).toBe(401);
-    const body = await putResp.json();
-    expect(body.error).toBe('User not found');
   });
 
   test('deleted user token is rejected for reading preferences', async ({ page }) => {

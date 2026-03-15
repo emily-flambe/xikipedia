@@ -19,6 +19,7 @@ interface UserRow {
   password_hash: string;
   salt: string;
   created_at: string;
+  token_version: number;
 }
 
 interface PreferencesRow {
@@ -31,6 +32,7 @@ interface PreferencesRow {
 interface TokenPayload {
   sub: number;
   username: string;
+  token_version: number;
   exp: number;
 }
 
@@ -46,7 +48,8 @@ async function ensureTables(db: D1Database): Promise<void> {
       username TEXT UNIQUE NOT NULL COLLATE NOCASE,
       password_hash TEXT NOT NULL,
       salt TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      token_version INTEGER NOT NULL DEFAULT 1
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS preferences (
       user_id INTEGER PRIMARY KEY REFERENCES users(id),
@@ -60,6 +63,11 @@ async function ensureTables(db: D1Database): Promise<void> {
       count INTEGER NOT NULL DEFAULT 0
     )`),
   ]);
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1').run();
+  } catch {
+    // Column already exists — safe to ignore
+  }
   tablesInitialized = true;
 }
 
@@ -332,11 +340,22 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
 async function authenticate(
   request: Request,
   secret: string,
+  db: D1Database,
 ): Promise<TokenPayload | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
-  return verifyToken(token, secret);
+  const payload = await verifyToken(token, secret);
+  if (!payload) return null;
+
+  // Verify token_version matches DB (revocation check)
+  const user = await db.prepare('SELECT token_version FROM users WHERE id = ?')
+    .bind(payload.sub)
+    .first<{ token_version: number }>();
+  if (!user) return null;
+  if (payload.token_version !== user.token_version) return null;
+
+  return payload;
 }
 
 // ─── Validation ──────────────────────────────────────────────────────
@@ -413,6 +432,7 @@ async function handleRegister(
       {
         sub: userId,
         username,
+        token_version: 1,
         exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
       },
       env.JWT_SECRET,
@@ -449,7 +469,7 @@ async function handleLogin(
   }
 
   const user = await env.DB.prepare(
-    'SELECT id, username, password_hash, salt FROM users WHERE username = ?',
+    'SELECT id, username, password_hash, salt, token_version FROM users WHERE username = ?',
   )
     .bind(body.username)
     .first<UserRow>();
@@ -486,6 +506,7 @@ async function handleLogin(
     {
       sub: user.id,
       username: user.username,
+      token_version: user.token_version,
       exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
     },
     env.JWT_SECRET,
@@ -494,24 +515,14 @@ async function handleLogin(
   return jsonResponse(request, { token, username: user.username });
 }
 
-// Helper to verify user still exists (for deleted user token attacks)
-async function userExists(db: D1Database, userId: number): Promise<boolean> {
-  const user = await db.prepare('SELECT 1 FROM users WHERE id = ?').bind(userId).first();
-  return !!user;
-}
 
 async function handleGetPreferences(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   const prefs = await env.DB.prepare(
@@ -538,14 +549,9 @@ async function handlePutPreferences(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   let body: { categoryScores?: unknown; hiddenCategories?: unknown };
@@ -588,7 +594,7 @@ async function handleDeleteAccount(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
   }
@@ -634,6 +640,88 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM preferences WHERE user_id = ?').bind(payload.sub),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
+
+  return jsonResponse(request, { success: true });
+}
+
+async function handleLogout(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  await env.DB.prepare(
+    'UPDATE users SET token_version = token_version + 1 WHERE id = ?',
+  )
+    .bind(payload.sub)
+    .run();
+
+  return jsonResponse(request, { success: true });
+}
+
+async function handleChangePassword(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  // Rate limit: 5 change-password attempts per user per day (prevents password brute-forcing)
+  const changeKey = `changepw:${payload.sub}`;
+  const rl = await atomicIncrement(env.DB, changeKey, 86400);
+  if (rl.count > 5) {
+    return rateLimitResponse(request, rl.windowStart, 86400);
+  }
+
+  let body: { currentPassword?: string; newPassword?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(request, 'Invalid JSON body', 400);
+  }
+
+  if (typeof body.currentPassword !== 'string' || !body.currentPassword) {
+    return errorResponse(request, 'Current password is required', 400);
+  }
+  if (typeof body.newPassword !== 'string' || body.newPassword.length < MIN_PASSWORD_LENGTH) {
+    return errorResponse(request, `New password must be at least ${MIN_PASSWORD_LENGTH} characters`, 400);
+  }
+  if (body.newPassword.length > MAX_PASSWORD_LENGTH) {
+    return errorResponse(request, 'New password must be at most 256 characters', 400);
+  }
+
+  const user = await env.DB.prepare(
+    'SELECT password_hash, salt FROM users WHERE id = ?',
+  )
+    .bind(payload.sub)
+    .first<Pick<UserRow, 'password_hash' | 'salt'>>();
+
+  if (!user) {
+    return errorResponse(request, 'User not found', 404);
+  }
+
+  const salt = new Uint8Array(hexToArrayBuffer(user.salt));
+  const computedHash = await hashPassword(body.currentPassword, salt);
+
+  if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    return errorResponse(request, 'Current password is incorrect', 403);
+  }
+
+  const newSalt = generateSalt();
+  const newHash = await hashPassword(body.newPassword, newSalt);
+  const newSaltHex = arrayBufferToHex(newSalt.buffer as ArrayBuffer);
+
+  // Update password and increment token_version to invalidate all existing sessions
+  await env.DB.prepare(
+    'UPDATE users SET password_hash = ?, salt = ?, token_version = token_version + 1 WHERE id = ?',
+  )
+    .bind(newHash, newSaltHex, payload.sub)
+    .run();
 
   return jsonResponse(request, { success: true });
 }
@@ -745,6 +833,14 @@ export default {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request, env);
+        }
+
+        if (url.pathname === '/api/change-password' && request.method === 'POST') {
+          return await handleChangePassword(request, env);
         }
 
         return errorResponse(request, 'Not found', 404);
