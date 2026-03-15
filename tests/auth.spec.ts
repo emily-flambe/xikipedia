@@ -1,4 +1,5 @@
-import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Page, BrowserContext } from '@playwright/test';
 
 /** Check if running against localhost (where __xikiTest is available) */
 const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
