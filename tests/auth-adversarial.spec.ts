@@ -93,13 +93,17 @@ async function apiRegister(
   page: Page,
   username: string,
   password: string,
-): Promise<{ token: string; username: string }> {
+): Promise<{ username: string; token: string }> {
   const resp = await page.request.post('/api/register', {
     data: { username, password },
     headers: { 'x-forwarded-for': uniqueIp() },
+    credentials: 'include',
   });
   expect(resp.ok()).toBe(true);
-  return resp.json();
+  const body = await resp.json();
+  const setCookie = resp.headers()['set-cookie'] || '';
+  const tokenMatch = setCookie.match(/xiki_token=([^;]+)/);
+  return { username: body.username, token: tokenMatch ? tokenMatch[1] : '' };
 }
 
 async function gotoReady(page: Page) {
@@ -1057,7 +1061,7 @@ test.describe('CORS headers on API responses', () => {
 // =============================================================================
 
 test.describe('Token/response structure', () => {
-  test('register response contains both token and username', async ({ page }) => {
+  test('register response contains username and sets httpOnly cookie', async ({ page }) => {
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -1065,18 +1069,27 @@ test.describe('Token/response structure', () => {
     const resp = await page.request.post('/api/register', {
       data: { username: user, password: 'password123' },
       headers: { 'x-forwarded-for': uniqueIp() },
+      credentials: 'include',
     });
     expect(resp.status()).toBe(201);
     const body = await resp.json();
 
-    expect(body).toHaveProperty('token');
     expect(body).toHaveProperty('username');
-    expect(typeof body.token).toBe('string');
-    expect(body.token.split('.')).toHaveLength(3); // JWT has 3 parts
+    expect(body).not.toHaveProperty('token'); // token is now in cookie, not body
     expect(body.username).toBe(user);
+
+    // Verify JWT is set as httpOnly cookie
+    const setCookie = resp.headers()['set-cookie'] || '';
+    expect(setCookie).toContain('xiki_token=');
+    expect(setCookie).toContain('HttpOnly');
+    const tokenMatch = setCookie.match(/xiki_token=([^;]+)/);
+    expect(tokenMatch).not.toBeNull();
+    const token = tokenMatch![1];
+    expect(typeof token).toBe('string');
+    expect(token.split('.')).toHaveLength(3); // JWT has 3 parts
   });
 
-  test('login response contains both token and username', async ({ page }) => {
+  test('login response contains username and sets httpOnly cookie', async ({ page }) => {
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -1086,15 +1099,24 @@ test.describe('Token/response structure', () => {
     const resp = await page.request.post('/api/login', {
       data: { username: user, password: 'password123' },
       headers: { 'x-forwarded-for': uniqueIp() },
+      credentials: 'include',
     });
     expect(resp.status()).toBe(200);
     const body = await resp.json();
 
-    expect(body).toHaveProperty('token');
     expect(body).toHaveProperty('username');
-    expect(typeof body.token).toBe('string');
-    expect(body.token.split('.')).toHaveLength(3);
+    expect(body).not.toHaveProperty('token'); // token is now in cookie, not body
     expect(body.username).toBe(user);
+
+    // Verify JWT is set as httpOnly cookie
+    const setCookie = resp.headers()['set-cookie'] || '';
+    expect(setCookie).toContain('xiki_token=');
+    expect(setCookie).toContain('HttpOnly');
+    const tokenMatch = setCookie.match(/xiki_token=([^;]+)/);
+    expect(tokenMatch).not.toBeNull();
+    const token = tokenMatch![1];
+    expect(typeof token).toBe('string');
+    expect(token.split('.')).toHaveLength(3);
   });
 
   test('error responses have consistent structure', async ({ page }) => {

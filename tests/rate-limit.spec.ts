@@ -59,7 +59,14 @@ async function apiRegister(page: Page, username: string, password: string, ip: s
   return page.request.post('/api/register', {
     data: { username, password },
     headers: { 'x-forwarded-for': ip },
+    credentials: 'include',
   });
+}
+
+function extractToken(resp: APIResponse): string {
+  const setCookie = resp.headers()['set-cookie'] || '';
+  const match = setCookie.match(/xiki_token=([^;]+)/);
+  return match ? match[1] : '';
 }
 
 // =============================================================================
@@ -392,7 +399,7 @@ test.describe('Delete account rate limiting', () => {
 
     const regResp = await apiRegister(page, user, 'correctpassword', freshIp());
     expect(regResp.status()).toBe(201);
-    const { token } = await regResp.json();
+    const token = extractToken(regResp);
 
     // 5 wrong password attempts
     for (let i = 0; i < 5; i++) {
@@ -420,12 +427,12 @@ test.describe('Delete account rate limiting', () => {
     const userA = uniqueUser();
     const regA = await apiRegister(page, userA, 'password123', ip);
     expect(regA.status()).toBe(201);
-    const { token: tokenA } = await regA.json();
+    const tokenA = extractToken(regA);
 
     const userB = uniqueUser();
     const regB = await apiRegister(page, userB, 'password123', ip);
     expect(regB.status()).toBe(201);
-    const { token: tokenB } = await regB.json();
+    const tokenB = extractToken(regB);
 
     // User A deletes successfully
     const delA = await page.request.delete('/api/account', {
@@ -449,7 +456,7 @@ test.describe('Delete account rate limiting', () => {
 
     const regResp = await apiRegister(page, user, 'password123', freshIp());
     expect(regResp.status()).toBe(201);
-    const { token } = await regResp.json();
+    const token = extractToken(regResp);
 
     // Delete the account
     const del1 = await page.request.delete('/api/account', {
