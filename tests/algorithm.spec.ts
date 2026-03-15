@@ -336,4 +336,345 @@ test.describe('algorithm.mjs — createAlgorithm', () => {
 
     expect(result).toEqual(['Fallback Name']);
   });
+
+  // ===== SCORING INTERNALS =====
+
+  test('category affinity weight — high-score category dominates selection', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const highScorePages = Array.from({ length: 40 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `High ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['high-score-cat']),
+      }));
+      const lowScorePages = Array.from({ length: 40 }, (_: unknown, i: number) => ({
+        id: i + 41, title: `Low ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['low-score-cat']),
+      }));
+
+      const context = {
+        pagesArr: [...highScorePages, ...lowScorePages],
+        categoryScores: { 'high-score-cat': 10000, 'low-score-cat': 10 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set(['high-score-cat', 'low-score-cat']),
+        algorithmAggressiveness: 100,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      let highCount = 0;
+      let lowCount = 0;
+      for (let i = 0; i < 40; i++) {
+        const post = algo.getNextPost() as any;
+        if (post.allCategories.has('high-score-cat')) highCount++;
+        else lowCount++;
+      }
+      return { highCount, lowCount };
+    });
+
+    // With 1000x score difference, high-score posts should dominate heavily
+    expect(result.highCount).toBeGreaterThan(result.lowCount * 2);
+  });
+
+  test('time-based decay — recently engaged category beats stale one', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const recentPages = Array.from({ length: 30 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Recent ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['recent-cat']),
+      }));
+      const stalePages = Array.from({ length: 30 }, (_: unknown, i: number) => ({
+        id: i + 31, title: `Stale ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['stale-cat']),
+      }));
+
+      const context = {
+        pagesArr: [...recentPages, ...stalePages],
+        // Equal base scores — decay factor determines the winner
+        categoryScores: { 'recent-cat': 5000, 'stale-cat': 5000 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {
+          'recent-cat': Date.now(),                         // now → decay ≈ 1.0
+          'stale-cat': Date.now() - 48 * 60 * 60 * 1000,  // 48h ago → decay = 0.25%
+        } as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set(['recent-cat', 'stale-cat']),
+        algorithmAggressiveness: 100,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      let recentCount = 0;
+      let staleCount = 0;
+      for (let i = 0; i < 30; i++) {
+        const post = algo.getNextPost() as any;
+        if (post.allCategories.has('recent-cat')) recentCount++;
+        else staleCount++;
+      }
+      return { recentCount, staleCount };
+    });
+
+    // recent-cat decay ≈ 1.0, stale-cat decay ≈ Math.pow(0.5,48) ≈ 0.
+    // Effective scores: ~5000 vs ~0. Recent should dominate overwhelmingly.
+    expect(result.recentCount).toBeGreaterThan(result.staleCount * 3);
+  });
+
+  test('view penalty decay — posts with seen > 0 are strongly penalized', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      // Unseen posts — no penalty
+      const freshPages = Array.from({ length: 20 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Fresh ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['cat-a']),
+      }));
+      // Posts with seen=2 but NOT in seenPostIds (edge case the algorithm guards against)
+      const stalePages = Array.from({ length: 20 }, (_: unknown, i: number) => ({
+        id: i + 21, title: `Stale ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['cat-a']),
+        seen: 2,
+      }));
+
+      const context = {
+        pagesArr: [...freshPages, ...stalePages],
+        categoryScores: { 'cat-a': 1000 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set(['cat-a']),
+        algorithmAggressiveness: 100,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const selectedIds: number[] = [];
+      for (let i = 0; i < 15; i++) {
+        selectedIds.push((algo.getNextPost() as any).id);
+      }
+      // fresh page ids: 1-20, stale page ids: 21-40
+      return {
+        freshCount: selectedIds.filter(id => id <= 20).length,
+        staleCount: selectedIds.filter(id => id > 20).length,
+      };
+    });
+
+    // seen=2 penalty: (3^2 - 1) * -500000 = -4,000,000. Fresh posts score ~500.
+    // Score-based paths strongly favour fresh; a ~18% "default" path picks potentialPosts[0]
+    // randomly regardless of score, so a few stale posts may appear. The key invariant is
+    // that fresh posts are selected significantly more often than stale ones.
+    expect(result.freshCount).toBeGreaterThan(result.staleCount);
+  });
+
+  // ===== CATEGORY ROULETTE =====
+
+  test('category roulette — unexplored category occasionally gets 🎰 boost', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      // All posts have the same unexplored category
+      const pages = Array.from({ length: 100 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Article ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['unexplored-cat']),
+      }));
+
+      const context = {
+        pagesArr: pages,
+        categoryScores: { 'unexplored-cat': 500 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        // 'unexplored-cat' is NOT in exploredCategories, making it eligible for roulette
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 100,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const labels = Array.from({ length: 80 }, () => {
+        const post = algo.getNextPost() as any;
+        return post.recommendedBecause?.[0] ?? null;
+      });
+      return labels.filter((l: string | null) => l?.startsWith('🎰')).length;
+    });
+
+    // 10% roulette chance per post × 80 draws: P(≥1) ≈ 99.99%
+    // Post must also have the roulette category — here all do.
+    expect(result).toBeGreaterThan(0);
+  });
+
+  // ===== VARIETY ENFORCEMENT =====
+
+  test('variety enforcement — overexposed category is penalized after 2 consecutive posts', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      // Category A: score 200. With decay 0.5, effective ≈ 100.
+      // After variety penalty: 100 - 5000 = -4900.
+      // Category B: no score (0). B wins over penalized A.
+      const aPosts = Array.from({ length: 30 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `A-${i}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['dominant-cat']),
+      }));
+      const bPosts = Array.from({ length: 30 }, (_: unknown, i: number) => ({
+        id: i + 31, title: `B-${i}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['other-cat']),
+      }));
+
+      const context = {
+        pagesArr: [...aPosts, ...bPosts],
+        categoryScores: { 'dominant-cat': 200 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set(['dominant-cat', 'other-cat']),
+        algorithmAggressiveness: 100,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const posts = Array.from({ length: 25 }, () => algo.getNextPost() as any);
+      return {
+        aCount: posts.filter(p => p.allCategories.has('dominant-cat')).length,
+        bCount: posts.filter(p => p.allCategories.has('other-cat')).length,
+      };
+    });
+
+    // Without variety enforcement, dominant-cat (200 score) would always beat other-cat (0).
+    // Variety enforcement kicks in after 2 consecutive dominant-cat posts,
+    // making other-cat (0) beat penalized dominant-cat (100 - 5000 = -4900).
+    expect(result.bCount).toBeGreaterThan(0);
+  });
+
+  // ===== EDGE CASES =====
+
+  test('edge case: empty categoryScores map returns a post', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const pages = Array.from({ length: 20 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Article ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['cat-a']),
+      }));
+
+      const context = {
+        pagesArr: pages,
+        categoryScores: {},  // No scores at all
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const posts = Array.from({ length: 5 }, () => algo.getNextPost());
+      return posts.map(p => (p as any).id);
+    });
+
+    expect(result).toHaveLength(5);
+    expect(result.every((id: number) => typeof id === 'number')).toBe(true);
+  });
+
+  test('edge case: all posts already seen falls back gracefully', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const pages = Array.from({ length: 5 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Article ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['cat-a']),
+      }));
+
+      // Pre-populate seenPostIds with every post
+      const seenPostIds = new Set<number>(pages.map(p => p.id));
+
+      const context = {
+        pagesArr: pages,
+        categoryScores: { 'cat-a': 100 },
+        seenPostIds,
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 100,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      // Should not throw even when all posts are seen
+      const post = algo.getNextPost() as any;
+      return { hasPost: !!post, hasId: typeof post?.id === 'number' };
+    });
+
+    expect(result.hasPost).toBe(true);
+    expect(result.hasId).toBe(true);
+  });
+
+  test('edge case: single-category post pool — returns posts correctly', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      // All posts in a single category
+      const pages = Array.from({ length: 50 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Article ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['only-cat']),
+      }));
+
+      const context = {
+        pagesArr: pages,
+        categoryScores: { 'only-cat': 500 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const ids: number[] = [];
+      for (let i = 0; i < 20; i++) {
+        ids.push((algo.getNextPost() as any).id);
+      }
+      return { total: ids.length, unique: new Set(ids).size, allInRange: ids.every(id => id >= 1 && id <= 50) };
+    });
+
+    expect(result.total).toBe(20);
+    expect(result.unique).toBe(20);  // no repeats
+    expect(result.allInRange).toBe(true);
+  });
 });
