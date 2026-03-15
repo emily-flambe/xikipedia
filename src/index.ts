@@ -685,6 +685,9 @@ async function handleGetMe(
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
   }
+  if (!(await userExists(env.DB, payload.sub))) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
   return jsonResponse(request, { username: payload.username });
 }
 
