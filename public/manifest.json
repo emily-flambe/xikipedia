@@ -1,0 +1,16 @@
+{
+  "name": "Xikipedia",
+  "short_name": "Xikipedia",
+  "description": "Wikipedia you can doomscroll",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#15202B",
+  "theme_color": "#38444D",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
