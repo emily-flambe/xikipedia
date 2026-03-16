@@ -3114,7 +3114,7 @@
             if (item.thumb) {
                 const img = document.createElement('img');
                 img.src = item.thumb;
-                img.alt = '';
+                img.alt = `Thumbnail for ${item.title}`;
                 img.loading = 'lazy';
                 div.appendChild(img);
             } else {
@@ -3220,9 +3220,10 @@
     }
 
     // Show full-size image in popover
-    function showPic(imgName) {
+    function showPic(imgName, articleTitle) {
         const fullImg = document.createElement("img");
         fullImg.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${imgName.replace(/ /g, '_')}`;
+        fullImg.alt = articleTitle ? `Full-size image from ${articleTitle}` : 'Full-size article image';
         fullImg.popover = "auto";
         fullImg.classList.add("fullImg");
         document.body.appendChild(fullImg);
@@ -3592,11 +3593,12 @@
         if (nextPost.thumb) {
             const postImg = document.createElement("img");
             postImg.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${nextPost.thumb.replace(/ /g, '_')}&width=512`;
+            postImg.alt = `Image for ${nextPost.title}`;
             postImg.classList.add("media");
             postImg.loading = "eager";
             postImg.onerror = () => postImg.remove();
             postImg.onclick = (e) => {
-                showPic(nextPost.thumb);
+                showPic(nextPost.thumb, nextPost.title);
                 if (!postImg.dataset.engaged) {
                     postImg.dataset.engaged = engagePost(nextPost, 100);
                 }
