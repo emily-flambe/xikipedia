@@ -13,6 +13,8 @@ const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/favicon.ico',
+  '/icon.svg',
+  '/manifest.json',
   '/algorithm-worker.js',
   '/algorithm.mjs',
 ];
@@ -71,7 +73,9 @@ self.addEventListener('fetch', (event) => {
   }
   
   // Cache-first for static assets
-  if (url.pathname === '/favicon.ico') {
+  if (url.pathname === '/favicon.ico' || 
+      url.pathname === '/icon.svg' || 
+      url.pathname === '/manifest.json') {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE));
     return;
   }
