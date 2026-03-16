@@ -4297,7 +4297,7 @@
     }
 
     // Start the feed (extracted so both auth and guest paths can use it)
-    function startFeed(sharedArticle) {
+    function startFeed(sharedArticle, articleNotFound = false) {
         startScreen.hidePopover();
         startScreen.remove();
 
@@ -4341,6 +4341,9 @@
         if (sharedArticle) {
             sharedArticle.seen = (sharedArticle.seen ?? 0) + 1;
             createNextPost(sharedArticle);
+        }
+        if (articleNotFound) {
+            showErrorToast('Article not found. Showing your feed instead.');
         }
         requestAnimationFrame(render);
     }
@@ -4591,7 +4594,7 @@
                 }
 
                 // Auto-start the feed
-                startFeed(sharedArticle);
+                startFeed(sharedArticle, !!(sharedArticleId && !sharedArticle));
                 return;
             } catch (e) {
                 console.warn('Failed to load preferences, clearing auth:', e);
@@ -4612,7 +4615,7 @@
                 const page = pagesArr.find(x => x.title.toLowerCase() === e.dataset.category);
                 if (page) engagePost(page, 100);
             });
-            startFeed(sharedArticle);
+            startFeed(sharedArticle, !!(sharedArticleId && !sharedArticle));
         };
     }
 
