@@ -72,10 +72,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Cache-first for static assets
+  // Cache-first for static assets (precached on install)
   if (url.pathname === '/favicon.ico' || 
       url.pathname === '/icon.svg' || 
-      url.pathname === '/manifest.json') {
+      url.pathname === '/manifest.json' ||
+      url.pathname === '/algorithm-worker.js' ||
+      url.pathname === '/algorithm.mjs') {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE));
     return;
   }
