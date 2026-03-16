@@ -852,6 +852,22 @@
             85% { opacity: 1; transform: translateX(-50%) translateY(0); }
             100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
         }
+        .toast-error {
+            position: fixed;
+            bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            background: #dc2626;
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+            animation: toastSlide 5s ease-out forwards;
+            cursor: pointer;
+        }
         #exploreBtn.active::after {
             content: "🎲";
             filter: drop-shadow(0 0 6px white);
@@ -1830,6 +1846,7 @@
             if (savedMood) moodMode = savedMood;
         } catch (e) {
             console.warn('Failed to load category filters:', e);
+            showErrorToast('Failed to load category filters.');
         }
     }
     
@@ -2560,7 +2577,7 @@
                     ...getAuthHeaders()
                 },
                 body: JSON.stringify(body)
-            }).catch(e => console.error('Failed to save preferences:', e));
+            }).catch(e => { console.error('Failed to save preferences:', e); showErrorToast('Failed to save preferences. Changes may not persist.'); });
         }, 5000);
     }
 
@@ -2798,6 +2815,17 @@
         toast.textContent = message;
         document.body.appendChild(toast);
         toast.addEventListener('animationend', () => toast.remove());
+    }
+
+    function showErrorToast(message) {
+        const existing = document.querySelector('.toast-error');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.className = 'toast-error';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        toast.addEventListener('animationend', () => toast.remove());
+        toast.addEventListener('click', () => toast.remove());
     }
 
     function updateEngagement() {
