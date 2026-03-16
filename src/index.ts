@@ -646,33 +646,55 @@ async function serveR2File(
   request: Request,
   options: { cacheControl: string; contentType: string }
 ): Promise<Response> {
-  const object = await env.DATA_BUCKET.get(key);
-
-  if (!object) {
-    return new Response('File not found', { status: 404 });
-  }
-
   const headers = new Headers();
   headers.set('Content-Type', options.contentType);
   headers.set('Cache-Control', options.cacheControl);
   headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Accept-Ranges', 'bytes');
 
-  // Handle range requests for streaming
-  const range = request.headers.get('range');
-  if (range) {
-    const size = object.size;
-    const parts = range.replace(/bytes=/, '').split('-');
+  // Handle range requests using R2's native range support
+  const rangeHeader = request.headers.get('range');
+  if (rangeHeader) {
+    // First, get object metadata (HEAD) to know total size
+    const head = await env.DATA_BUCKET.head(key);
+    if (!head) {
+      return new Response('File not found', { status: 404 });
+    }
+
+    const totalSize = head.size;
+    const parts = rangeHeader.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
+    const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
 
-    headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+    // Validate range
+    if (start < 0 || start >= totalSize || end >= totalSize || start > end) {
+      headers.set('Content-Range', `bytes */${totalSize}`);
+      return new Response('Range Not Satisfiable', { status: 416, headers });
+    }
+
+    // Fetch only the requested range from R2
+    const object = await env.DATA_BUCKET.get(key, {
+      range: { offset: start, length: end - start + 1 },
+    });
+
+    if (!object) {
+      return new Response('File not found', { status: 404 });
+    }
+
+    headers.set('Content-Range', `bytes ${start}-${end}/${totalSize}`);
     headers.set('Content-Length', String(end - start + 1));
-    headers.set('Accept-Ranges', 'bytes');
 
     return new Response(object.body, {
       status: 206,
       headers,
     });
+  }
+
+  // Full object request
+  const object = await env.DATA_BUCKET.get(key);
+
+  if (!object) {
+    return new Response('File not found', { status: 404 });
   }
 
   headers.set('Content-Length', String(object.size));
