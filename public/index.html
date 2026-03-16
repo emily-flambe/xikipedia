@@ -4607,6 +4607,16 @@
             }
         }
 
+        // Guest with shared article: bypass start screen
+        if (sharedArticle) {
+            startFeed(sharedArticle, false);
+            return;
+        }
+        if (sharedArticleId && !sharedArticle) {
+            startFeed(null, true);
+            return;
+        }
+
         startBtn.onclick = () => {
             document.querySelectorAll(".categoryPicker>input:checked").forEach(e => {
                 categoryScores[e.dataset.category] = defaultCategories.includes(e.dataset.category) ? 1000 : 5000;
