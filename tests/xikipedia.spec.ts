@@ -664,6 +664,68 @@ test.describe('Feature 3: Sidebar category controls', () => {
 });
 
 // =============================================
+// Feature: Shared article URL (?article=ID)
+// =============================================
+test.describe('Feature: Shared article URL (?article=ID)', () => {
+  // Mock data IDs run from 100 to 299. Use ID 100 (first article) as the valid ID.
+  const VALID_ARTICLE_ID = 100;
+  const VALID_ARTICLE_TITLE = 'Test Article 0';
+  const INVALID_ARTICLE_ID = 999999999;
+
+  test('valid article, guest: bypasses start screen and shows article', async ({ page }) => {
+    test.setTimeout(60000);
+    await setupMockRoute(page);
+    await page.goto(`/?article=${VALID_ARTICLE_ID}`);
+
+    // Start screen must never appear
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 15000 });
+
+    // The article should appear as the first post in the feed
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible({ timeout: 15000 });
+    await expect(firstPost.locator('h1')).toContainText(VALID_ARTICLE_TITLE);
+  });
+
+  test('invalid article, guest: bypasses start screen, shows toast, feed loads', async ({ page }) => {
+    test.setTimeout(60000);
+    await setupMockRoute(page);
+    await page.goto(`/?article=${INVALID_ARTICLE_ID}`);
+
+    // Start screen must never appear
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 15000 });
+
+    // Toast with "Article not found" message should appear (uses .toast-error class)
+    const toast = page.locator('.toast-error');
+    await expect(toast).toBeVisible({ timeout: 10000 });
+    await expect(toast).toContainText('Article not found');
+
+    // Feed should still load posts
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test('URL is cleaned after handling ?article= param', async ({ page }) => {
+    test.setTimeout(60000);
+    await setupMockRoute(page);
+    await page.goto(`/?article=${VALID_ARTICLE_ID}`);
+
+    // Wait for feed to start (article handling complete)
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 15000 });
+
+    // The ?article= parameter should be stripped from the URL
+    const search = await page.evaluate(() => window.location.search);
+    expect(search).toBe('');
+  });
+
+  test('normal guest load: start screen still appears', async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto('/');
+
+    // Without ?article= param, start screen should be visible as usual
+    await expect(page.locator('#startScreen')).toBeVisible({ timeout: 10000 });
+  });
+});
+
+// =============================================
 // Feature 4: Mobile sidebar drawer
 // =============================================
 test.describe('Feature 4: Mobile sidebar drawer', () => {
