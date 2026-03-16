@@ -1371,6 +1371,21 @@
             color: #ff6b6b;
             border-color: #ff6b6b;
         }
+        #changePasswordBtn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+        }
+        #changePasswordBtn:hover {
+            color: #FFF;
+            border-color: #2cafff;
+        }
 
         /* === Skeleton loading animation for post text (chunked format) === */
         .post p.skeleton {
@@ -1611,6 +1626,7 @@
     <header id="topBar" class="top-bar">
         <div class="top-bar-right">
             <button id="deleteAccountBtn">Delete account</button>
+            <button id="changePasswordBtn">Change password</button>
             <button id="logoutBtn">Log out</button>
             <button class="floating-btn top-bar-refresh" id="refreshBtn" aria-label="Refresh feed" data-tooltip="Refresh (R)" style="display:none"></button>
             <button id="themeToggle" class="inline-tooltip" aria-label="Toggle dark/light mode" data-tooltip="Theme">&#127769;</button>
@@ -2528,10 +2544,28 @@
         return {};
     }
 
-    function logout() {
+    async function logout() {
+        try {
+            await fetch('/api/logout', {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
+        } catch (e) {
+            console.error('Logout request failed:', e);
+        }
         localStorage.removeItem('xiki_token');
         localStorage.removeItem('xiki_username');
         window.location.reload();
+    }
+
+    async function apiFetch(url, options) {
+        const resp = await fetch(url, options);
+        if (resp.status === 401) {
+            localStorage.removeItem('xiki_token');
+            localStorage.removeItem('xiki_username');
+            window.location.reload();
+        }
+        return resp;
     }
 
     async function deleteAccount() {
@@ -2539,7 +2573,7 @@
         if (!password) return;
         if (!confirm('Are you sure? This cannot be undone.')) return;
         try {
-            const resp = await fetch('/api/account', {
+            const resp = await apiFetch('/api/account', {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2562,6 +2596,34 @@
         window.location.reload();
     }
 
+    async function changePassword() {
+        const currentPassword = prompt('Enter your current password:');
+        if (!currentPassword) return;
+        const newPassword = prompt('Enter your new password (6-256 characters):');
+        if (!newPassword) return;
+        try {
+            const resp = await apiFetch('/api/change-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders()
+                },
+                body: JSON.stringify({ currentPassword, newPassword })
+            });
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                alert(data.error || 'Failed to change password. Please try again.');
+                return;
+            }
+        } catch (e) {
+            console.error('Change password failed:', e);
+            alert('Failed to change password. Please try again.');
+            return;
+        }
+        alert('Password changed. You will be logged out.');
+        await logout();
+    }
+
     // Debounced preference saving
     let saveTimeout = null;
     function savePreferences() {
@@ -2573,7 +2635,7 @@
                 hiddenCategories: Array.from(hiddenCategories),
                 algorithmAggressiveness: algorithmAggressiveness
             };
-            fetch('/api/preferences', {
+            apiFetch('/api/preferences', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2758,8 +2820,9 @@
         if (e.key === 'Enter') handleRegister();
     };
 
-    // Logout and delete account buttons
+    // Logout, change password, and delete account buttons
     document.getElementById('logoutBtn').onclick = logout;
+    document.getElementById('changePasswordBtn').onclick = changePassword;
     document.getElementById('deleteAccountBtn').onclick = deleteAccount;
 
     // Recursive category expansion with memoization
@@ -4336,9 +4399,10 @@
         initHistoryToggle();
         initKeyboardHint();
 
-        // Show logout/delete buttons if logged in
+        // Show logout/change password/delete buttons if logged in
         if (isLoggedIn()) {
             document.getElementById('logoutBtn').style.display = 'block';
+            document.getElementById('changePasswordBtn').style.display = 'block';
             document.getElementById('deleteAccountBtn').style.display = 'block';
         }
         // If there's a shared article, show it first
@@ -4574,7 +4638,7 @@
         // If logged in, load saved preferences and auto-start
         if (isLoggedIn()) {
             try {
-                const prefsResp = await fetch('/api/preferences', {
+                const prefsResp = await apiFetch('/api/preferences', {
                     headers: getAuthHeaders()
                 });
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');

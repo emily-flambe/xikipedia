@@ -19,6 +19,7 @@ interface UserRow {
   password_hash: string;
   salt: string;
   created_at: string;
+  token_version: number;
 }
 
 interface PreferencesRow {
@@ -32,6 +33,7 @@ interface TokenPayload {
   sub: number;
   username: string;
   exp: number;
+  tokenVersion: number;
 }
 
 // ─── Database Initialization ─────────────────────────────────────────
@@ -46,7 +48,8 @@ async function ensureTables(db: D1Database): Promise<void> {
       username TEXT UNIQUE NOT NULL COLLATE NOCASE,
       password_hash TEXT NOT NULL,
       salt TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      token_version INTEGER NOT NULL DEFAULT 1
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS preferences (
       user_id INTEGER PRIMARY KEY REFERENCES users(id),
@@ -60,6 +63,12 @@ async function ensureTables(db: D1Database): Promise<void> {
       count INTEGER NOT NULL DEFAULT 0
     )`),
   ]);
+  // Migration: add token_version to existing databases (fails silently if already present)
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1').run();
+  } catch {
+    // Column already exists — ignore
+  }
   tablesInitialized = true;
 }
 
@@ -331,12 +340,22 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
 
 async function authenticate(
   request: Request,
-  secret: string,
+  env: Env,
 ): Promise<TokenPayload | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
-  return verifyToken(token, secret);
+  const payload = await verifyToken(token, env.JWT_SECRET);
+  if (!payload) return null;
+
+  // Verify token version against DB to support server-side revocation
+  const userRow = await env.DB.prepare('SELECT token_version FROM users WHERE id = ?')
+    .bind(payload.sub)
+    .first<Pick<UserRow, 'token_version'>>();
+  if (!userRow) return null;
+  if (userRow.token_version !== payload.tokenVersion) return null;
+
+  return payload;
 }
 
 // ─── Validation ──────────────────────────────────────────────────────
@@ -414,6 +433,7 @@ async function handleRegister(
         sub: userId,
         username,
         exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+        tokenVersion: 1,
       },
       env.JWT_SECRET,
     );
@@ -449,7 +469,7 @@ async function handleLogin(
   }
 
   const user = await env.DB.prepare(
-    'SELECT id, username, password_hash, salt FROM users WHERE username = ?',
+    'SELECT id, username, password_hash, salt, token_version FROM users WHERE username = ?',
   )
     .bind(body.username)
     .first<UserRow>();
@@ -487,6 +507,7 @@ async function handleLogin(
       sub: user.id,
       username: user.username,
       exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+      tokenVersion: user.token_version,
     },
     env.JWT_SECRET,
   );
@@ -494,24 +515,13 @@ async function handleLogin(
   return jsonResponse(request, { token, username: user.username });
 }
 
-// Helper to verify user still exists (for deleted user token attacks)
-async function userExists(db: D1Database, userId: number): Promise<boolean> {
-  const user = await db.prepare('SELECT 1 FROM users WHERE id = ?').bind(userId).first();
-  return !!user;
-}
-
 async function handleGetPreferences(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   const prefs = await env.DB.prepare(
@@ -538,14 +548,9 @@ async function handlePutPreferences(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   let body: { categoryScores?: unknown; hiddenCategories?: unknown };
@@ -588,7 +593,7 @@ async function handleDeleteAccount(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
   }
@@ -633,6 +638,88 @@ async function handleDeleteAccount(
   await env.DB.batch([
     env.DB.prepare('DELETE FROM preferences WHERE user_id = ?').bind(payload.sub),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
+  ]);
+
+  return jsonResponse(request, { success: true });
+}
+
+async function handleLogout(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  await env.DB.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?')
+    .bind(payload.sub)
+    .run();
+
+  return jsonResponse(request, { success: true });
+}
+
+async function handleChangePassword(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  // Rate limit: 5 attempts per user per hour
+  const changePwKey = `changepass:${payload.sub}`;
+  const rl = await atomicIncrement(env.DB, changePwKey, 3600);
+  if (rl.count > 5) {
+    return rateLimitResponse(request, rl.windowStart, 3600);
+  }
+
+  let body: { currentPassword?: string; newPassword?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(request, 'Invalid JSON body', 400);
+  }
+
+  if (typeof body.currentPassword !== 'string' || !body.currentPassword) {
+    return errorResponse(request, 'Current password is required', 400);
+  }
+  if (typeof body.newPassword !== 'string') {
+    return errorResponse(request, 'New password is required', 400);
+  }
+  if (body.newPassword.length < MIN_PASSWORD_LENGTH || body.newPassword.length > MAX_PASSWORD_LENGTH) {
+    return errorResponse(request, `New password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters`, 400);
+  }
+  if (body.newPassword === body.currentPassword) {
+    return errorResponse(request, 'New password must differ from current password', 400);
+  }
+
+  const user = await env.DB.prepare(
+    'SELECT password_hash, salt FROM users WHERE id = ?',
+  )
+    .bind(payload.sub)
+    .first<Pick<UserRow, 'password_hash' | 'salt'>>();
+
+  if (!user) {
+    return errorResponse(request, 'User not found', 404);
+  }
+
+  const salt = new Uint8Array(hexToArrayBuffer(user.salt));
+  const computedHash = await hashPassword(body.currentPassword, salt);
+
+  if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    return errorResponse(request, 'Incorrect password', 403);
+  }
+
+  const newSalt = generateSalt();
+  const newPasswordHash = await hashPassword(body.newPassword, newSalt);
+  const newSaltHex = arrayBufferToHex(newSalt.buffer as ArrayBuffer);
+
+  await env.DB.batch([
+    env.DB.prepare(
+      'UPDATE users SET password_hash = ?, salt = ?, token_version = token_version + 1 WHERE id = ?',
+    ).bind(newPasswordHash, newSaltHex, payload.sub),
   ]);
 
   return jsonResponse(request, { success: true });
@@ -767,6 +854,14 @@ export default {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request, env);
+        }
+
+        if (url.pathname === '/api/change-password' && request.method === 'POST') {
+          return await handleChangePassword(request, env);
         }
 
         return errorResponse(request, 'Not found', 404);

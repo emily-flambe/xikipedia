@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL COLLATE NOCASE,
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  token_version INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS preferences (
