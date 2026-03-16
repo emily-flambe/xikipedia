@@ -677,7 +677,7 @@ test.describe('Feature: Shared article URL (?article=ID)', () => {
     await setupMockRoute(page);
     await page.goto(`/?article=${VALID_ARTICLE_ID}`);
 
-    // Start screen must never appear
+    // Start screen auto-dismisses for share URLs (feed starts without clicking Start)
     await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 15000 });
 
     // The article should appear as the first post in the feed
@@ -691,7 +691,7 @@ test.describe('Feature: Shared article URL (?article=ID)', () => {
     await setupMockRoute(page);
     await page.goto(`/?article=${INVALID_ARTICLE_ID}`);
 
-    // Start screen must never appear
+    // Start screen auto-dismisses for share URLs (even invalid ones)
     await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 15000 });
 
     // Toast with "Article not found" message should appear (uses .toast-error class)
