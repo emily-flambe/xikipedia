@@ -2333,7 +2333,6 @@
             while (this.cache.size >= this.maxChunks && this.accessOrder.length > 0) {
                 const evictId = this.accessOrder.shift();
                 this.cache.delete(evictId);
-                console.log(`ChunkCache: evicted chunk ${evictId}`);
             }
 
             this.cache.set(chunkId, data);
@@ -4382,7 +4381,6 @@
         // Detect data format (simple vs chunked)
         const dataFormat = getDataFormat();
         isChunkedFormat = dataFormat === 'chunked';
-        console.log('Data format:', dataFormat);
         
         const loadingDetails = document.getElementById('loadingDetails');
         const loadingProgressBar = document.getElementById('loadingProgressBar');
@@ -4440,10 +4438,6 @@
                 pagesArr.push(tempPage);
             }
             
-            console.log('Chunked format initialized:', {
-                articles: pagesArr.length,
-                chunkCount: Math.ceil(pagesArr.length / CHUNK_SIZE)
-            });
             
         } else {
             // ============================================
@@ -4520,7 +4514,7 @@
         algorithmWorker.init(pagesArr, workerInitState)
             .then(success => {
                 useWorkerAlgorithm = success;
-                console.log('Algorithm worker:', success ? 'enabled' : 'fallback mode');
+                // Worker initialized successfully or fell back to module
             })
             .catch(err => {
                 console.warn('Worker init failed:', err);
@@ -4545,7 +4539,7 @@
                 onMarkSeen: saveSeenPosts,
                 noPageMaps,
             });
-            console.log('Algorithm fallback: ready');
+            // Fallback algorithm ready
         }).catch(err => {
             console.warn('Algorithm module load failed, fallback unavailable:', err);
         });
@@ -4670,14 +4664,14 @@
         navigator.serviceWorker.register('/sw.js')
             .then(registration => {
                 swRegistration = registration;
-                console.log('SW registered:', registration.scope);
+                // SW registered
             })
             .catch(err => console.error('SW registration failed:', err));
         
         // Listen for messages from SW
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data?.type === 'SW_ACTIVATED') {
-                console.log('SW activated, version:', event.data.version);
+                // SW activated
             }
         });
     }
