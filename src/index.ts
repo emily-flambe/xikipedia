@@ -279,6 +279,27 @@ async function verifyToken(
   }
 }
 
+// ─── Security Headers ────────────────────────────────────────────────
+
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};
+
+function addSecurityHeaders(response: Response): Response {
+  const newHeaders = new Headers(response.headers);
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    newHeaders.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
 // ─── Response Helpers ────────────────────────────────────────────────
 
 const ALLOWED_ORIGINS = [
@@ -727,6 +748,12 @@ function validateR2Env(env: Env): string | null {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const response = await handleRequest(request, env);
+    return addSecurityHeaders(response);
+  },
+};
+
+async function handleRequest(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     // Handle CORS preflight for API routes
@@ -817,5 +844,4 @@ export default {
     // All other requests are handled by Cloudflare's asset serving
     // (this code won't be reached for static assets when [assets] is configured)
     return new Response('Not Found', { status: 404 });
-  },
-};
+}
