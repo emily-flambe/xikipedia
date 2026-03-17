@@ -61,6 +61,22 @@ Xikipedia presents Simple Wikipedia articles in an infinite-scroll feed (like Ti
 - 📴 **Service Worker** - Works offline after first load
 - 💾 **Smart Caching** - Data cached for instant access
 - 🔄 **Silent Updates** - Service worker auto-updates on deploy
+- 📱 **PWA** - Installable as a native app
+
+### Performance
+- ♻️ **DOM Pruning** - Caps feed at 50 posts, removes offscreen elements
+- 🎯 **Scroll-Driven Rendering** - Zero CPU when idle (no perpetual rAF loop)
+- 🔧 **WebWorker Algorithm** - Scoring runs off the main thread
+
+### Accessibility
+- 🔔 **ARIA Live Regions** - Screen readers announce toasts and errors
+- 🎬 **Reduced Motion** - Respects `prefers-reduced-motion` for all animations
+- ⌨️ **Full Keyboard Support** - Navigate and interact without a mouse
+
+### Security
+- 🔒 **Security Headers** - X-Frame-Options, CSP, Referrer-Policy
+- 🛡️ **Rate Limiting** - Brute-force protection on auth endpoints
+- ⏱️ **Timing-Safe Auth** - Constant-time password comparison
 
 ### Keyboard Shortcuts
 | Key | Action |
@@ -121,13 +137,19 @@ npm run deploy
 npm test
 ```
 
-### Local Development
+### Testing
 
-Tests always run against `localhost:8788` (wrangler dev). The test API (`window.__xikiTest`) is only created when `hostname === 'localhost'`, so tests cannot run against production.
+Tests run against localhost by default, or against production via environment variable:
 
 ```bash
+# Against localhost (requires wrangler dev)
 npm test
+
+# Against production
+PLAYWRIGHT_BASE_URL=https://xikipedia.emily-cogsdill.workers.dev npx playwright test
 ```
+
+> **Note:** Some tests are skipped on production (rate limiting, internal state APIs). These require localhost with `wrangler dev` running.
 
 ## Data Updates
 
