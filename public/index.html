@@ -3768,14 +3768,27 @@
         }
     }
 
-    // Render loop - creates posts as user scrolls
+    // Scroll-driven post creation (replaces perpetual rAF loop)
+    let renderScheduled = false;
+
+    function scheduleRender() {
+        if (renderScheduled) return;
+        renderScheduled = true;
+        requestAnimationFrame(render);
+    }
+
     function render() {
+        renderScheduled = false;
         pruneOffscreenPosts();
         if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
             createNextPost();
+            // Keep rendering while we need more posts (e.g. initial load)
+            scheduleRender();
         }
-        requestAnimationFrame(render);
     }
+
+    window.addEventListener('scroll', scheduleRender, { passive: true });
+    window.addEventListener('resize', scheduleRender, { passive: true });
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
@@ -3953,9 +3966,9 @@
             fallbackAlgorithm.reset();
         }
         
-        // Scroll to top
+        // Scroll to top and trigger post creation
         window.scrollTo(0, 0);
-        // The render loop is already running via rAF, new posts auto-generate
+        scheduleRender();
     }
 
     // Pull-to-refresh state
@@ -4413,7 +4426,7 @@
         if (articleNotFound) {
             showErrorToast('Article not found. Showing your feed instead.');
         }
-        requestAnimationFrame(render);
+        scheduleRender();
     }
 
     // Main initialization
