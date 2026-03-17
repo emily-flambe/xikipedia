@@ -2815,6 +2815,8 @@
         if (existing) existing.remove();
         const toast = document.createElement('div');
         toast.className = 'toast';
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
         toast.textContent = message;
         document.body.appendChild(toast);
         toast.addEventListener('animationend', () => toast.remove());
@@ -2825,6 +2827,8 @@
         if (existing) existing.remove();
         const toast = document.createElement('div');
         toast.className = 'toast-error';
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'assertive');
         toast.textContent = message;
         document.body.appendChild(toast);
         toast.addEventListener('animationend', () => toast.remove());
