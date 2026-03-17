@@ -66,8 +66,12 @@ async function ensureTables(db: D1Database): Promise<void> {
     await db.prepare(
       `ALTER TABLE preferences ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'`,
     ).run();
-  } catch {
-    // Column already exists — ignore
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // SQLite returns "duplicate column name" when column already exists
+    if (!msg.includes('duplicate column')) {
+      throw e; // Re-throw unexpected errors
+    }
   }
   tablesInitialized = true;
 }
