@@ -25,6 +25,7 @@ interface PreferencesRow {
   user_id: number;
   category_scores: string;
   hidden_categories: string;
+  settings: string;
   updated_at: string;
 }
 
@@ -60,6 +61,14 @@ async function ensureTables(db: D1Database): Promise<void> {
       count INTEGER NOT NULL DEFAULT 0
     )`),
   ]);
+  // Schema migration: add settings column (safe if already exists)
+  try {
+    await db.prepare(
+      `ALTER TABLE preferences ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'`,
+    ).run();
+  } catch {
+    // Column already exists — ignore
+  }
   tablesInitialized = true;
 }
 
@@ -536,19 +545,20 @@ async function handleGetPreferences(
   }
 
   const prefs = await env.DB.prepare(
-    'SELECT category_scores, hidden_categories FROM preferences WHERE user_id = ?',
+    'SELECT category_scores, hidden_categories, settings FROM preferences WHERE user_id = ?',
   )
     .bind(payload.sub)
-    .first<Pick<PreferencesRow, 'category_scores' | 'hidden_categories'>>();
+    .first<Pick<PreferencesRow, 'category_scores' | 'hidden_categories' | 'settings'>>();
 
   if (!prefs) {
-    return jsonResponse(request, { categoryScores: {}, hiddenCategories: [] });
+    return jsonResponse(request, { categoryScores: {}, hiddenCategories: [], settings: {} });
   }
 
   try {
     return jsonResponse(request, {
       categoryScores: JSON.parse(prefs.category_scores),
       hiddenCategories: JSON.parse(prefs.hidden_categories),
+      settings: JSON.parse(prefs.settings || '{}'),
     });
   } catch {
     return jsonResponse(request, { categoryScores: {}, hiddenCategories: [] });
@@ -569,7 +579,7 @@ async function handlePutPreferences(
     return errorResponse(request, 'User not found', 401);
   }
 
-  let body: { categoryScores?: unknown; hiddenCategories?: unknown };
+  let body: { categoryScores?: unknown; hiddenCategories?: unknown; algorithmAggressiveness?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -583,23 +593,31 @@ async function handlePutPreferences(
     return errorResponse(request, 'hiddenCategories must be an array', 400);
   }
 
+  // Build settings object from known client-sent fields
+  const settings: Record<string, unknown> = {};
+  if (typeof body.algorithmAggressiveness === 'number') {
+    settings.algorithmAggressiveness = Math.max(0, Math.min(100, body.algorithmAggressiveness));
+  }
+
   const categoryScores = JSON.stringify(body.categoryScores ?? {});
   const hiddenCategories = JSON.stringify(body.hiddenCategories ?? []);
+  const settingsJson = JSON.stringify(settings);
 
   // Guard against excessively large payloads (1MB limit)
-  if (categoryScores.length + hiddenCategories.length > 1_000_000) {
+  if (categoryScores.length + hiddenCategories.length + settingsJson.length > 1_000_000) {
     return errorResponse(request, 'Preferences payload too large', 413);
   }
 
   await env.DB.prepare(
-    `INSERT INTO preferences (user_id, category_scores, hidden_categories, updated_at)
-     VALUES (?, ?, ?, datetime('now'))
+    `INSERT INTO preferences (user_id, category_scores, hidden_categories, settings, updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
      ON CONFLICT(user_id) DO UPDATE SET
        category_scores = excluded.category_scores,
        hidden_categories = excluded.hidden_categories,
+       settings = excluded.settings,
        updated_at = excluded.updated_at`,
   )
-    .bind(payload.sub, categoryScores, hiddenCategories)
+    .bind(payload.sub, categoryScores, hiddenCategories, settingsJson)
     .run();
 
   return jsonResponse(request, { success: true });
