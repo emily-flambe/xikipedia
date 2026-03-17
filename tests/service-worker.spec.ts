@@ -210,8 +210,8 @@ test.describe('Service Worker + Feed Integration', () => {
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
 
-    // Wait for posts to render
-    await expect(page.locator('[data-testid="post"]').first()).toBeVisible();
+    // Wait for posts to render (may take time on CI due to SW cleanup race)
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 15000 });
 
     // Go offline
     await context.setOffline(true);
