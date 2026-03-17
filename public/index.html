@@ -3708,8 +3708,65 @@
     let postCreationInProgress = false;
     let pendingPostCreation = false;
 
+    // === DOM Pruning for infinite scroll performance ===
+    const MAX_POSTS = 50;
+    const PRUNE_DISTANCE = 3000; // px above viewport top before pruning
+    const PRUNE_INTERVAL = 500;  // ms throttle
+    let lastPruneTime = 0;
+    let pruneSpacer = null;
+
+    function pruneOffscreenPosts() {
+        const now = Date.now();
+        if (now - lastPruneTime < PRUNE_INTERVAL) return;
+        lastPruneTime = now;
+
+        const postsContainer = document.querySelector('.posts');
+        if (!postsContainer) return;
+        const posts = postsContainer.querySelectorAll('.post');
+
+        if (posts.length <= MAX_POSTS) return;
+
+        // Ensure spacer exists as first child
+        if (!pruneSpacer) {
+            pruneSpacer = document.createElement('div');
+            pruneSpacer.className = 'prune-spacer';
+            pruneSpacer.setAttribute('aria-hidden', 'true');
+            pruneSpacer.style.height = '0px';
+            postsContainer.prepend(pruneSpacer);
+        }
+
+        let prunedHeight = 0;
+
+        for (const post of posts) {
+            // Stop once we're at the cap
+            if (posts.length - prunedPostCount() <= MAX_POSTS) break;
+
+            const rect = post.getBoundingClientRect();
+            if (rect.bottom < -PRUNE_DISTANCE) {
+                const style = getComputedStyle(post);
+                prunedHeight += post.offsetHeight
+                    + parseFloat(style.marginTop)
+                    + parseFloat(style.marginBottom);
+                post.remove();
+            } else {
+                // Posts are in DOM order; once we find one not far enough above, stop
+                break;
+            }
+        }
+
+        if (prunedHeight > 0) {
+            const currentHeight = parseFloat(pruneSpacer.style.height) || 0;
+            pruneSpacer.style.height = (currentHeight + prunedHeight) + 'px';
+        }
+
+        function prunedPostCount() {
+            return postsContainer.querySelectorAll('.post').length;
+        }
+    }
+
     // Render loop - creates posts as user scrolls
     function render() {
+        pruneOffscreenPosts();
         if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
             createNextPost();
         }
@@ -3874,6 +3931,9 @@
         // Clear all posts from DOM
         const postsContainer = document.querySelector(".posts");
         postsContainer.innerHTML = "";
+        // Reset DOM pruning state
+        pruneSpacer = null;
+        lastPruneTime = 0;
         // Reset seen counters and stale recommendation reasons
         pagesArr.forEach(p => { delete p.seen; delete p.recommendedBecause; });
         // Reset like streak counter
