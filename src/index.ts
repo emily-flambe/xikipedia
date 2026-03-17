@@ -561,7 +561,7 @@ async function handleGetPreferences(
       settings: JSON.parse(prefs.settings || '{}'),
     });
   } catch {
-    return jsonResponse(request, { categoryScores: {}, hiddenCategories: [] });
+    return jsonResponse(request, { categoryScores: {}, hiddenCategories: [], settings: {} });
   }
 }
 
