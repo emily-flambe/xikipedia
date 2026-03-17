@@ -1743,8 +1743,9 @@
         themeToggle.textContent = document.documentElement.classList.contains('light-mode') ? '\u2600\uFE0F' : '\uD83C\uDF19';
         localStorage.setItem('theme', document.documentElement.classList.contains('light-mode') ? 'light' : 'dark');
     };
-    // Load saved theme
-    if (localStorage.getItem('theme') === 'light') {
+    // Load saved theme (or auto-detect OS preference on first visit)
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light' || (!savedTheme && window.matchMedia('(prefers-color-scheme: light)').matches)) {
         document.documentElement.classList.add('light-mode');
         themeToggle.textContent = '\u2600\uFE0F';
     }
