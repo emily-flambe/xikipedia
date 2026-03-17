@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS preferences (
   user_id INTEGER PRIMARY KEY REFERENCES users(id),
   category_scores TEXT NOT NULL DEFAULT '{}',
   hidden_categories TEXT NOT NULL DEFAULT '[]',
+  settings TEXT NOT NULL DEFAULT '{}',
   updated_at TEXT DEFAULT (datetime('now'))
 );
 

@@ -4699,9 +4699,10 @@
                     prefs.hiddenCategories.forEach(cat => hiddenCategories.add(cat));
                 }
 
-                // Apply saved algorithmAggressiveness if present
-                if (typeof prefs.algorithmAggressiveness === 'number') {
-                    algorithmAggressiveness = Math.max(0, Math.min(100, prefs.algorithmAggressiveness));
+                // Apply saved algorithmAggressiveness if present (from settings object)
+                const savedAggr = prefs.settings?.algorithmAggressiveness ?? prefs.algorithmAggressiveness;
+                if (typeof savedAggr === 'number') {
+                    algorithmAggressiveness = Math.max(0, Math.min(100, savedAggr));
                 }
 
                 // Auto-start the feed
