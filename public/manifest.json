@@ -3,7 +3,13 @@
   "short_name": "Xikipedia",
   "description": "Wikipedia you can doomscroll",
   "start_url": "/",
+  "id": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["education", "entertainment"],
   "background_color": "#15202B",
   "theme_color": "#38444D",
   "icons": [
