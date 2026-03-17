@@ -1,0 +1,12 @@
+# Xikipedia - Client-rendered SPA
+# Content is dynamically generated from Wikipedia data
+# Crawling produces no meaningful indexed content
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /smoldata.json
+Disallow: /articles/
+Disallow: /index.json
+
+# Sitemap: none (single-page application)
