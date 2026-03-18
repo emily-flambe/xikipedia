@@ -17,7 +17,6 @@ const PRECACHE_URLS = [
   '/manifest.json',
   '/algorithm-worker.js',
   '/algorithm.mjs',
-  '/social-card.png',
 ];
 
 // ============ INSTALL ============
