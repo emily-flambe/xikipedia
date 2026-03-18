@@ -1068,6 +1068,10 @@ test.describe('Cross-feature edge cases', () => {
 // Chunked Format: Lazy Text Loading
 // =============================================
 test.describe('Chunked Format: Lazy Text Loading', () => {
+  // Block service workers so page.route() mocks intercept chunk requests directly.
+  // Without this, the SW intercepts chunk fetches and routes them to the real server
+  // (which returns 404 for chunk files that don't exist in CI).
+  test.use({ serviceWorkers: 'block' });
   /**
    * Generate mock index data for chunked format.
    * Index contains articles without text, only with chunkId.
@@ -1233,8 +1237,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     await expect(paragraphs.first()).not.toHaveClass(/skeleton/, { timeout: 10000 });
   });
 
-  // TODO: Enable when chunk files are deployed to R2
-  test.skip('chunked format loads text successfully and caches it', async ({ page }) => {
+  test('chunked format loads text successfully and caches it', async ({ page }) => {
     await startFeedWithChunkedMock(page);
 
     // Wait for any post to have text content (not skeleton or error)
@@ -1249,8 +1252,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     expect(textContent!.length).toBeGreaterThan(50); // Should have substantial content
   });
 
-  // TODO: Enable when chunk files are deployed to R2
-  test.skip('chunked format shows error state with retry button on fetch failure', async ({ page }) => {
+  test('chunked format shows error state with retry button on fetch failure', async ({ page }) => {
     // Create a route that ALWAYS fails chunk fetches
     await page.route('**/index.json', async (route) => {
       await route.fulfill({
@@ -1287,8 +1289,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     await expect(retryBtn).toHaveText('Retry');
   });
 
-  // TODO: Enable when chunk files are deployed to R2
-  test.skip('retry button successfully loads text after failure', async ({ page }) => {
+  test('retry button successfully loads text after failure', async ({ page }) => {
     // Track fetch attempts per chunk to fail first, succeed on retry
     const fetchAttempts = new Map<number, number>();
     
@@ -1336,16 +1337,25 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
 
     // Wait for any post with error state to appear
-    const errorPosts = page.locator('[data-testid="post"] p.load-error');
-    await expect(errorPosts.first()).toBeVisible({ timeout: 10000 });
-    
+    const firstErrorParagraph = page.locator('[data-testid="post"] p.load-error').first();
+    await expect(firstErrorParagraph).toBeVisible({ timeout: 10000 });
+
+    // Get a stable reference to the parent post's data-id before clicking retry.
+    // We need data-id because the filter({ has: p.load-error }) becomes stale after
+    // the class is removed when retry succeeds.
+    const parentPost = page.locator('[data-testid="post"]').filter({
+      has: page.locator('p.load-error')
+    }).first();
+    const postId = await parentPost.getAttribute('data-id');
+
     // Click retry button on the first error post
-    const retryBtn = errorPosts.first().locator('.retry-btn');
+    const retryBtn = firstErrorParagraph.locator('.retry-btn');
     await retryBtn.click();
-    
-    // Wait for that paragraph to no longer be in error state
-    // It should either show skeleton (loading) or have text content
-    await expect(errorPosts.first()).not.toHaveClass(/load-error/, { timeout: 5000 });
+
+    // Wait for the paragraph in that specific post to no longer be in error state.
+    // The paragraph <p> always exists in the post DOM, only its class changes.
+    const postParagraph = page.locator(`[data-testid="post"][data-id="${postId}"] p`).first();
+    await expect(postParagraph).not.toHaveClass(/load-error/, { timeout: 5000 });
   });
 
   test('chunked format correctly identifies format via isChunkedFormat flag', async ({ page }) => {

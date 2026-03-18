@@ -1,0 +1,14 @@
+{
+  "articles": {
+    "1010": {"text": "This is the lazy-loaded text content of Chunked Article 10. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1011": {"text": "This is the lazy-loaded text content of Chunked Article 11. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1012": {"text": "This is the lazy-loaded text content of Chunked Article 12. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1013": {"text": "This is the lazy-loaded text content of Chunked Article 13. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1014": {"text": "This is the lazy-loaded text content of Chunked Article 14. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1015": {"text": "This is the lazy-loaded text content of Chunked Article 15. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1016": {"text": "This is the lazy-loaded text content of Chunked Article 16. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1017": {"text": "This is the lazy-loaded text content of Chunked Article 17. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1018": {"text": "This is the lazy-loaded text content of Chunked Article 18. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."},
+    "1019": {"text": "This is the lazy-loaded text content of Chunked Article 19. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough for display."}
+  }
+}

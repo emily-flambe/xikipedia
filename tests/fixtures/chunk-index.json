@@ -1,0 +1,41 @@
+{
+  "format": "chunked",
+  "pages": [
+    ["Chunked Article 0", 1000, 0, "test_image_0.jpg", ["science", "history"]],
+    ["Chunked Article 1", 1001, 0, null, ["nature", "music"]],
+    ["Chunked Article 2", 1002, 0, "test_image_2.jpg", ["animals", "art"]],
+    ["Chunked Article 3", 1003, 0, null, ["technology", "sports"]],
+    ["Chunked Article 4", 1004, 0, "test_image_4.jpg", ["music", "science"]],
+    ["Chunked Article 5", 1005, 0, null, ["art", "nature"]],
+    ["Chunked Article 6", 1006, 0, "test_image_6.jpg", ["history", "animals"]],
+    ["Chunked Article 7", 1007, 0, null, ["sports", "technology"]],
+    ["Chunked Article 8", 1008, 0, "test_image_8.jpg", ["science", "music"]],
+    ["Chunked Article 9", 1009, 0, null, ["nature", "art"]],
+    ["Chunked Article 10", 1010, 1, "test_image_10.jpg", ["animals", "history"]],
+    ["Chunked Article 11", 1011, 1, null, ["technology", "sports"]],
+    ["Chunked Article 12", 1012, 1, "test_image_12.jpg", ["music", "science"]],
+    ["Chunked Article 13", 1013, 1, null, ["art", "nature"]],
+    ["Chunked Article 14", 1014, 1, "test_image_14.jpg", ["history", "animals"]],
+    ["Chunked Article 15", 1015, 1, null, ["sports", "technology"]],
+    ["Chunked Article 16", 1016, 1, "test_image_16.jpg", ["science", "music"]],
+    ["Chunked Article 17", 1017, 1, null, ["nature", "art"]],
+    ["Chunked Article 18", 1018, 1, "test_image_18.jpg", ["animals", "history"]],
+    ["Chunked Article 19", 1019, 1, null, ["technology", "sports"]],
+    ["Chunked Article 20", 1020, 2, "test_image_20.jpg", ["music", "science"]],
+    ["Chunked Article 21", 1021, 2, null, ["art", "nature"]],
+    ["Chunked Article 22", 1022, 2, "test_image_22.jpg", ["history", "animals"]],
+    ["Chunked Article 23", 1023, 2, null, ["sports", "technology"]],
+    ["Chunked Article 24", 1024, 2, "test_image_24.jpg", ["science", "music"]],
+    ["Chunked Article 25", 1025, 2, null, ["nature", "art"]],
+    ["Chunked Article 26", 1026, 2, "test_image_26.jpg", ["animals", "history"]],
+    ["Chunked Article 27", 1027, 2, null, ["sports", "technology"]],
+    ["Chunked Article 28", 1028, 2, "test_image_28.jpg", ["science", "music"]],
+    ["Chunked Article 29", 1029, 2, null, ["nature", "art"]]
+  ],
+  "subCategories": {
+    "science": ["physics", "chemistry", "biology"],
+    "nature": ["animals", "plants"],
+    "animals": ["mammals", "birds"]
+  },
+  "noPageMaps": {}
+}
