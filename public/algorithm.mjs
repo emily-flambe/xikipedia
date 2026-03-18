@@ -54,17 +54,34 @@ export function createAlgorithm(context, options = {}) {
     }
 
     // === ALGORITHM: Random unseen post ===
+    function isHiddenPost(post) {
+        if (context.hiddenCategories.size === 0) return false;
+        const contentCats = [...post.allCategories].filter(c => !c.startsWith('p:'));
+        if (contentCats.length === 0) return false;
+        return contentCats.every(c => context.hiddenCategories.has(c));
+    }
+
     function getRandomPost() {
         for (let i = 0; i < 1000; i++) {
             const randomPost = context.pagesArr[Math.floor(Math.random() * context.pagesArr.length)];
-            if (!context.seenPostIds.has(randomPost.id)) {
+            if (!context.seenPostIds.has(randomPost.id) && !isHiddenPost(randomPost)) {
                 markPostSeen(randomPost);
                 randomPost.recommendedBecause = ['🎲 Serendipity'];
                 return randomPost;
             }
         }
-        // Fallback: if we've seen everything, allow repeat
-        console.warn('Exhausted unique posts, allowing repeat');
+        // Fallback: if we've seen everything, allow repeat (but still respect hidden)
+        for (let i = 0; i < 1000; i++) {
+            const randomPost = context.pagesArr[Math.floor(Math.random() * context.pagesArr.length)];
+            if (!isHiddenPost(randomPost)) {
+                console.warn('Exhausted unique posts, allowing repeat');
+                markPostSeen(randomPost);
+                randomPost.recommendedBecause = ['🎲 Serendipity'];
+                return randomPost;
+            }
+        }
+        // True fallback: everything is hidden or seen
+        console.warn('Exhausted all posts including hidden filter');
         const randomPost = context.pagesArr[Math.floor(Math.random() * context.pagesArr.length)];
         markPostSeen(randomPost);
         randomPost.recommendedBecause = ['🎲 Serendipity'];
