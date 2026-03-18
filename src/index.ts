@@ -294,7 +294,22 @@ async function verifyToken(
 
 // ─── Security Headers ────────────────────────────────────────────────
 
+const CSP_POLICY = [
+  'default-src \'self\'',
+  'script-src \'self\' \'unsafe-inline\'',  // inline scripts in single-file app
+  'style-src \'self\' \'unsafe-inline\'',   // inline styles
+  'img-src \'self\' https://commons.wikimedia.org https://upload.wikimedia.org data:',
+  'connect-src \'self\'',
+  'worker-src \'self\'',
+  'font-src \'self\'',
+  'object-src \'none\'',
+  'base-uri \'self\'',
+  'form-action \'self\'',
+  'frame-ancestors \'none\'',
+].join('; ');
+
 const SECURITY_HEADERS: Record<string, string> = {
+  'Content-Security-Policy': CSP_POLICY,
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
