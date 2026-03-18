@@ -119,10 +119,19 @@ async function staleWhileRevalidate(request, cacheName) {
 
   const fetchPromise = fetch(request).then(async (response) => {
     if (response.ok) {
+      // Check if the content actually changed before notifying
+      const hasChanged = cachedResponse && 
+        cachedResponse.headers.get('etag') !== response.headers.get('etag') &&
+        cachedResponse.headers.get('last-modified') !== response.headers.get('last-modified');
+
       cache.put(request, response.clone()).catch(err => {
-        // Handle quota errors gracefully - cache is full but response still works
         console.warn('Cache put failed (quota?):', err.message);
       });
+
+      // Notify clients that a newer version is available
+      if (hasChanged) {
+        notifyClients({ type: 'SW_CONTENT_UPDATED', url: request.url });
+      }
     }
     return response;
   }).catch(() => cachedResponse);

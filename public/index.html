@@ -4819,6 +4819,9 @@
             if (event.data?.type === 'SW_ACTIVATED') {
                 // SW activated
             }
+            if (event.data?.type === 'SW_CONTENT_UPDATED') {
+                showToast('✨ New version available — refresh to update');
+            }
         });
     }
 
