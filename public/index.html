@@ -2832,8 +2832,8 @@
                 cacheValue = recursiveCategories(subCategories, subs, depth + 1);
                 recursiveCache.set(cat, cacheValue);
             }
-            allCategories.add(...subs);
-            allCategories.add(...cacheValue);
+            subs.forEach(s => allCategories.add(s));
+            cacheValue.forEach(s => allCategories.add(s));
         });
         return new Set([...allCategories].map(e => e?.toLowerCase?.() || e));
     }
