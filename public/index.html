@@ -1787,6 +1787,21 @@
         try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
     }
 
+    // Reading history persistence
+    function loadViewedHistory() {
+        try {
+            const saved = safeGetItem('xiki_history');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) return parsed.slice(0, 50);
+            }
+        } catch { /* corrupt data, start fresh */ }
+        return [];
+    }
+    function saveViewedHistory() {
+        safeSetItem('xiki_history', JSON.stringify(viewedHistory.slice(0, 50)));
+    }
+
     // Theme toggle functionality
     const themeToggle = document.getElementById('themeToggle');
     themeToggle.onclick = () => {
@@ -1821,7 +1836,7 @@
     // Session stats tracking
     let articlesViewed = 0;
     let articlesLiked = 0;
-    const viewedHistory = []; // Track viewed articles for history feature
+    const viewedHistory = loadViewedHistory(); // Track viewed articles for history feature
     let currentStreak = 0;
     let maxStreak = 0;
 
@@ -3806,6 +3821,7 @@
         if (!viewedHistory.some(h => h.id === nextPost.id)) {
             viewedHistory.unshift({ title: nextPost.title, id: nextPost.id, thumb: nextPost.thumb });
             if (viewedHistory.length > 50) viewedHistory.pop(); // Keep last 50
+            saveViewedHistory();
         }
         updateSessionStats();
         updateHistoryUI();
