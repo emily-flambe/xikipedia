@@ -117,11 +117,21 @@ export function createAlgorithm(context, options = {}) {
             .map(() => context.pagesArr[Math.floor(Math.random() * context.pagesArr.length)])
             // Hard block: filter out already-seen posts
             .filter(post => !context.seenPostIds.has(post.id))
+            // Filter out posts where ALL non-page categories are hidden
+            .filter(post => {
+                if (context.hiddenCategories.size === 0) return true;
+                const contentCats = [...post.allCategories].filter(c => !c.startsWith('p:'));
+                if (contentCats.length === 0) return true;
+                return contentCats.some(c => !context.hiddenCategories.has(c));
+            })
             .map(post => {
                 // Stronger penalty (10x) as backup for any edge cases
                 const initialScore = (post.thumb ? 5 : 0) + (3 ** (post.seen ?? 0) - 1) * -500000;
                 let postScore = [...post.allCategories].reduce(
                     (sum, cat) => {
+                        // Skip hidden categories entirely — they contribute no score
+                        if (context.hiddenCategories.has(cat)) return sum;
+
                         // Apply time-based decay to category score
                         const baseScore = (context.categoryScores[cat] ?? 0) * aggFactor;
                         let catScore = baseScore * getDecayFactor(cat);
