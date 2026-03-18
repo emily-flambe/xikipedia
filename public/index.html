@@ -16,7 +16,7 @@
     <meta content="#38444D" name="theme-color">
     <link rel="icon" href="/favicon.ico">
     <link rel="apple-touch-icon" href="/icon.svg">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="/manifest.json">
     <style>
@@ -1699,17 +1699,21 @@
                 <p class="auth-guest-msg">Browse without an account. Your preferences won't be saved.</p>
             </div>
             <div class="auth-tab-content" data-tab-content="login">
+                <form id="loginForm" autocomplete="on" onsubmit="return false;">
                 <input type="text" id="loginUsername" placeholder="Username" autocomplete="username">
                 <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
-                <button class="auth-submit-btn" id="loginBtn">Log in</button>
+                <button class="auth-submit-btn" id="loginBtn" type="button">Log in</button>
                 <div class="auth-error" id="loginError"></div>
+                </form>
             </div>
             <div class="auth-tab-content" data-tab-content="register">
+                <form id="registerForm" autocomplete="on" onsubmit="return false;">
                 <input type="text" id="registerUsername" placeholder="Username" autocomplete="username">
                 <input type="password" id="registerPassword" placeholder="Password" autocomplete="new-password">
                 <input type="password" id="registerConfirm" placeholder="Confirm password" autocomplete="new-password">
-                <button class="auth-submit-btn" id="registerBtn">Create account</button>
+                <button class="auth-submit-btn" id="registerBtn" type="button">Create account</button>
                 <div class="auth-error" id="registerError"></div>
+                </form>
             </div>
         </div>
         <div id="categoryPickerSection">
