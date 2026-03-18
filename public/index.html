@@ -2547,24 +2547,73 @@
     // Auth state management
     // ============================================
 
+    // Module-level auth state (populated by initAuthState on startup)
+    let _isAuthenticated = false;
+    let _currentUsername = null;
+
     function isLoggedIn() {
-        return !!localStorage.getItem('xiki_token');
+        return _isAuthenticated;
     }
 
     function currentUser() {
-        return localStorage.getItem('xiki_username') || null;
+        return _currentUsername;
     }
 
     function getAuthHeaders() {
-        const token = localStorage.getItem('xiki_token');
-        if (token) return { 'Authorization': 'Bearer ' + token };
+        // Cookies are sent automatically with credentials: 'include'.
+        // Return empty object; callers spread this into headers.
         return {};
     }
 
-    function logout() {
+    async function logout() {
+        try {
+            await fetch('/api/logout', {
+                method: 'POST',
+                credentials: 'include'
+            });
+        } catch (e) {
+            console.warn('Logout request failed:', e);
+        }
+        // Migration cleanup: remove any old localStorage tokens
         localStorage.removeItem('xiki_token');
         localStorage.removeItem('xiki_username');
+        _isAuthenticated = false;
+        _currentUsername = null;
         window.location.reload();
+    }
+
+    // Determine auth state on startup using /api/me.
+    // Supports both cookie auth (new) and bearer token fallback (migration).
+    async function initAuthState() {
+        const headers = {};
+        const oldToken = localStorage.getItem('xiki_token');
+        if (oldToken) {
+            headers['Authorization'] = 'Bearer ' + oldToken;
+        }
+        try {
+            const resp = await fetch('/api/me', {
+                credentials: 'include',
+                headers
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                _isAuthenticated = true;
+                _currentUsername = data.username;
+                // Clean up old localStorage tokens now that cookie auth is active
+                localStorage.removeItem('xiki_token');
+                localStorage.removeItem('xiki_username');
+            } else {
+                _isAuthenticated = false;
+                _currentUsername = null;
+                // Clear any stale localStorage tokens
+                localStorage.removeItem('xiki_token');
+                localStorage.removeItem('xiki_username');
+            }
+        } catch (e) {
+            // Network error — cannot confirm auth state, treat as unauthenticated
+            _isAuthenticated = false;
+            _currentUsername = null;
+        }
     }
 
     async function deleteAccount() {
@@ -2574,6 +2623,7 @@
         try {
             const resp = await fetch('/api/account', {
                 method: 'DELETE',
+                credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json',
                     ...getAuthHeaders()
@@ -2590,8 +2640,11 @@
             alert('Failed to delete account. Please try again.');
             return;
         }
+        // Cookie cleared server-side; clean up any lingering localStorage tokens
         localStorage.removeItem('xiki_token');
         localStorage.removeItem('xiki_username');
+        _isAuthenticated = false;
+        _currentUsername = null;
         window.location.reload();
     }
 
@@ -2608,6 +2661,7 @@
             };
             fetch('/api/preferences', {
                 method: 'PUT',
+                credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json',
                     ...getAuthHeaders()
@@ -2717,6 +2771,7 @@
         try {
             const resp = await fetch('/api/login', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -2727,8 +2782,11 @@
                 btn.textContent = 'Log in';
                 return;
             }
-            localStorage.setItem('xiki_token', data.token);
-            localStorage.setItem('xiki_username', data.username);
+            // Cookie is set by server; clean up any old localStorage tokens
+            localStorage.removeItem('xiki_token');
+            localStorage.removeItem('xiki_username');
+            _isAuthenticated = true;
+            _currentUsername = data.username;
             window.location.reload();
         } catch (e) {
             errorEl.textContent = 'Network error. Please try again.';
@@ -2760,6 +2818,7 @@
         try {
             const resp = await fetch('/api/register', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -2770,8 +2829,11 @@
                 btn.textContent = 'Create account';
                 return;
             }
-            localStorage.setItem('xiki_token', data.token);
-            localStorage.setItem('xiki_username', data.username);
+            // Cookie is set by server; clean up any old localStorage tokens
+            localStorage.removeItem('xiki_token');
+            localStorage.removeItem('xiki_username');
+            _isAuthenticated = true;
+            _currentUsername = data.username;
             window.location.reload();
         } catch (e) {
             errorEl.textContent = 'Network error. Please try again.';
@@ -4681,10 +4743,14 @@
             window.history.replaceState({}, '', window.location.pathname);
         }
 
+        // Resolve auth state (cookie or legacy bearer token)
+        await initAuthState();
+
         // If logged in, load saved preferences and auto-start
         if (isLoggedIn()) {
             try {
                 const prefsResp = await fetch('/api/preferences', {
+                    credentials: 'include',
                     headers: getAuthHeaders()
                 });
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
@@ -4715,6 +4781,8 @@
                 console.warn('Failed to load preferences, clearing auth:', e);
                 localStorage.removeItem('xiki_token');
                 localStorage.removeItem('xiki_username');
+                _isAuthenticated = false;
+                _currentUsername = null;
                 // Fall through to normal start screen - reload to show guest UI
                 window.location.reload();
                 return;

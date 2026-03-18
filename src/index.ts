@@ -327,6 +327,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
   };
 }
 
@@ -361,12 +362,39 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
   });
 }
 
+// ─── Cookie Helpers ──────────────────────────────────────────────────
+
+const AUTH_COOKIE_NAME = 'xiki_token';
+const AUTH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
+
+function getAuthCookieHeader(token: string): string {
+  return `${AUTH_COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${AUTH_COOKIE_MAX_AGE}`;
+}
+
+function getClearCookieHeader(): string {
+  return `${AUTH_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+}
+
+function getTokenFromCookie(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${AUTH_COOKIE_NAME}=([^;]+)`));
+  return match ? match[1] : null;
+}
+
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
 async function authenticate(
   request: Request,
   secret: string,
 ): Promise<TokenPayload | null> {
+  // Prefer cookie auth; fall back to Authorization header for backward compatibility
+  const cookieToken = getTokenFromCookie(request);
+  if (cookieToken) {
+    const payload = await verifyToken(cookieToken, secret);
+    if (payload) return payload;
+  }
+
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
@@ -452,7 +480,15 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
-    return jsonResponse(request, { token, username }, 201);
+    const resp = new Response(JSON.stringify({ username }), {
+      status: 201,
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': getAuthCookieHeader(token),
+        ...getCorsHeaders(request),
+      },
+    });
+    return resp;
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
@@ -525,7 +561,14 @@ async function handleLogin(
     env.JWT_SECRET,
   );
 
-  return jsonResponse(request, { token, username: user.username });
+  return new Response(JSON.stringify({ username: user.username }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Set-Cookie': getAuthCookieHeader(token),
+      ...getCorsHeaders(request),
+    },
+  });
 }
 
 // Helper to verify user still exists (for deleted user token attacks)
@@ -678,7 +721,46 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
-  return jsonResponse(request, { success: true });
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Set-Cookie': getClearCookieHeader(),
+      ...getCorsHeaders(request),
+    },
+  });
+}
+
+async function handleLogout(request: Request): Promise<Response> {
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Set-Cookie': getClearCookieHeader(),
+      ...getCorsHeaders(request),
+    },
+  });
+}
+
+async function handleMe(request: Request, env: Env): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET);
+  if (!payload) {
+    return errorResponse(request, 'Not authenticated', 401);
+  }
+
+  // Verify user still exists
+  if (!(await userExists(env.DB, payload.sub))) {
+    return new Response(JSON.stringify({ error: 'Not authenticated' }), {
+      status: 401,
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': getClearCookieHeader(),
+        ...getCorsHeaders(request),
+      },
+    });
+  }
+
+  return jsonResponse(request, { username: payload.username });
 }
 
 // ─── R2 File Serving Helper ──────────────────────────────────────────
@@ -816,6 +898,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request);
+        }
+
+        if (url.pathname === '/api/me' && request.method === 'GET') {
+          return await handleMe(request, env);
         }
 
         return errorResponse(request, 'Not found', 404);
