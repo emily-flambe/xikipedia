@@ -4000,10 +4000,10 @@
             fallbackAlgorithm.reset();
         }
         
-        // Scroll to top, restore sentinel (cleared by innerHTML reset), trigger post creation
+        // Scroll to top, restore sentinel (cleared by innerHTML reset).
+        // The IntersectionObserver fires automatically when sentinel becomes visible.
         window.scrollTo(0, 0);
         postsContainer.appendChild(scrollSentinel);
-        createNextPost();
     }
 
     // Pull-to-refresh state
