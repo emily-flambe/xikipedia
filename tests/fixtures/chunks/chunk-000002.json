@@ -1,0 +1,14 @@
+{
+  "articles": {
+    "1020": { "text": "This is the lazy-loaded text content of chunked article 20. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1021": { "text": "This is the lazy-loaded text content of chunked article 21. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1022": { "text": "This is the lazy-loaded text content of chunked article 22. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1023": { "text": "This is the lazy-loaded text content of chunked article 23. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1024": { "text": "This is the lazy-loaded text content of chunked article 24. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1025": { "text": "This is the lazy-loaded text content of chunked article 25. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1026": { "text": "This is the lazy-loaded text content of chunked article 26. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1027": { "text": "This is the lazy-loaded text content of chunked article 27. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1028": { "text": "This is the lazy-loaded text content of chunked article 28. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." },
+    "1029": { "text": "This is the lazy-loaded text content of chunked article 29. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough." }
+  }
+}

@@ -804,3 +804,102 @@ test.describe('Feature 4: Mobile sidebar drawer', () => {
     await expect(backdrop).not.toHaveClass(/visible/);
   });
 });
+
+// =============================================
+// Chunked format: basic feed loading
+// =============================================
+test.describe('Chunked format: basic feed loading', () => {
+  // Block service workers so page.route() mocks intercept chunk fetches directly.
+  // Without this, the SW's clients.claim() takes control of the page and routes
+  // chunk requests through its networkFirst() handler to the real server.
+  test.use({ serviceWorkers: 'block' });
+
+  function generateChunkedIndexData() {
+    const pages: [string, number, number, string | null, string[]][] = [];
+    const categories = ['science', 'nature', 'animals', 'technology', 'music', 'art', 'history', 'sports'];
+    for (let i = 0; i < 200; i++) {
+      const cat1 = categories[i % categories.length];
+      const cat2 = categories[(i + 3) % categories.length];
+      const hasThumb = i % 3 === 0;
+      const chunkId = Math.floor(i / 10);
+      pages.push([
+        `Chunked Article ${i}`,
+        i + 1000,
+        chunkId,
+        hasThumb ? `test_image_${i}.jpg` : null,
+        [cat1, cat2],
+      ]);
+    }
+    return {
+      format: 'chunked',
+      pages,
+      subCategories: {
+        science: ['physics', 'chemistry', 'biology'],
+        nature: ['animals', 'plants'],
+        animals: ['mammals', 'birds'],
+      },
+      noPageMaps: {},
+    };
+  }
+
+  function generateChunkData(chunkId: number) {
+    const articles: Record<string, { text: string }> = {};
+    const startId = 1000 + chunkId * 10;
+    for (let i = 0; i < 10; i++) {
+      const id = startId + i;
+      articles[String(id)] = {
+        text: `This is the lazy-loaded text content of chunked article ${id - 1000}. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough.`,
+      };
+    }
+    return { articles };
+  }
+
+  async function setupChunkedRoutes(page: Page) {
+    const indexJson = JSON.stringify(generateChunkedIndexData());
+    await page.route('**/index.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: indexJson,
+      });
+    });
+    await page.route('**/articles/chunk-*.json', async (route) => {
+      const url = route.request().url();
+      const match = url.match(/chunk-(\d+)\.json/);
+      if (match) {
+        const chunkId = parseInt(match[1], 10);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(generateChunkData(chunkId)),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+  }
+
+  test('loads posts with chunked format', async ({ page }) => {
+    if (!isLocalhost) {
+      test.skip();
+      return;
+    }
+
+    await setupChunkedRoutes(page);
+    await page.goto('/?format=chunked');
+
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+
+    // Wait for at least one post to have text (not skeleton, not error)
+    const postsWithText = page.locator('[data-testid="post"] p:not(.skeleton):not(.load-error)');
+    await expect(postsWithText.first()).toBeVisible({ timeout: 10000 });
+
+    const textContent = await postsWithText.first().textContent();
+    expect(textContent).toBeTruthy();
+    expect(textContent!.length).toBeGreaterThan(50);
+  });
+});
