@@ -3,6 +3,9 @@
 // Provides offline support and caching
 // ============================================
 
+const DEBUG = false; // Set to true locally to enable console output
+const debugLog = (...args) => { if (DEBUG) console.log(...args); };
+
 const CACHE_VERSION = 'v1';
 const STATIC_CACHE = `xiki-static-${CACHE_VERSION}`;
 const DATA_CACHE = `xiki-data-${CACHE_VERSION}`;
@@ -90,7 +93,7 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'GET_CACHE_SIZE') {
     if (!event.ports?.[0]) {
-      console.warn('GET_CACHE_SIZE: No MessagePort provided');
+      debugLog('GET_CACHE_SIZE: No MessagePort provided');
       return;
     }
     getCacheSize().then(size => {
@@ -109,7 +112,7 @@ async function staleWhileRevalidate(request, cacheName) {
     if (response.ok) {
       cache.put(request, response.clone()).catch(err => {
         // Handle quota errors gracefully - cache is full but response still works
-        console.warn('Cache put failed (quota?):', err.message);
+        debugLog('Cache put failed (quota?):', err.message);
       });
     }
     return response;

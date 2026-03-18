@@ -8,6 +8,9 @@
 
 import { createAlgorithm } from './algorithm.mjs';
 
+const DEBUG = false; // Set to true locally to enable console output
+const debugLog = (...args) => { if (DEBUG) console.log(...args); };
+
 // === STATE (owned by worker, passed to algorithm as live context) ===
 const state = {
     pagesArr: [],
@@ -60,7 +63,7 @@ function fillPrefetchQueue() {
             const post = algorithm.getNextPost();
             prefetchQueue.push(serializePost(post));
         } catch (err) {
-            console.error('Error filling prefetch queue:', err);
+            debugLog('Error filling prefetch queue:', err);
             break;
         }
     }
@@ -199,10 +202,10 @@ self.onmessage = function(e) {
                 break;
 
             default:
-                console.warn('Unknown message type:', type);
+                debugLog('Unknown message type:', type);
         }
     } catch (err) {
-        console.error('Worker error:', err);
+        debugLog('Worker error:', err);
         self.postMessage({
             type: 'ERROR',
             requestId,
