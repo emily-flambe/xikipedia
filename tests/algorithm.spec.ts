@@ -1053,4 +1053,148 @@ test.describe('algorithm.mjs — scoring and selection', () => {
     // All 10 draws should be unique (pool has 20 posts, only 10 drawn)
     expect(result.uniqueIds).toBe(10);
   });
+
+  test('hidden categories: posts with all content categories hidden are never returned', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      // 10 posts with ONLY hidden category, 10 with visible category
+      const pages = [
+        ...Array.from({ length: 10 }, (_: unknown, i: number) => ({
+          id: i + 1, title: `Hidden ${i + 1}`, text: '', thumb: null, chunkId: 0,
+          allCategories: new Set(['hidden-cat', `p:${i + 1}`]),
+        })),
+        ...Array.from({ length: 10 }, (_: unknown, i: number) => ({
+          id: i + 11, title: `Visible ${i + 1}`, text: '', thumb: null, chunkId: 0,
+          allCategories: new Set(['visible-cat', `p:${i + 11}`]),
+        })),
+      ];
+
+      const context = {
+        pagesArr: pages as any[],
+        categoryScores: { 'hidden-cat': 500, 'visible-cat': 100 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: { 'hidden-cat': now, 'visible-cat': now } as Record<string, number>,
+        hiddenCategories: new Set<string>(['hidden-cat']),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const returnedIds: number[] = [];
+      for (let i = 0; i < 10; i++) {
+        returnedIds.push((algo.getNextPost() as any).id);
+      }
+
+      // All returned posts should be from the visible set (ids 11-20)
+      const allVisible = returnedIds.every(id => id >= 11 && id <= 20);
+      const anyHidden = returnedIds.some(id => id >= 1 && id <= 10);
+
+      return { allVisible, anyHidden, returnedIds };
+    });
+
+    expect(result.allVisible).toBe(true);
+    expect(result.anyHidden).toBe(false);
+  });
+
+  test('hidden categories: do not appear in recommendedBecause', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      // Posts have both hidden and visible categories
+      const pages = Array.from({ length: 50 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Mixed ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['hidden-cat', 'visible-cat', `p:${i + 1}`]),
+      }));
+
+      const context = {
+        pagesArr: pages as any[],
+        categoryScores: { 'hidden-cat': 1000, 'visible-cat': 100 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: { 'hidden-cat': now, 'visible-cat': now } as Record<string, number>,
+        hiddenCategories: new Set<string>(['hidden-cat']),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const reasons: string[][] = [];
+      for (let i = 0; i < 10; i++) {
+        const post = algo.getNextPost() as any;
+        if (post.recommendedBecause) {
+          reasons.push(post.recommendedBecause);
+        }
+      }
+
+      // None of the recommendedBecause entries should mention the hidden category
+      const mentionsHidden = reasons.some(r =>
+        r.some(reason => reason.toLowerCase().includes('hidden-cat'))
+      );
+
+      return { mentionsHidden, reasonCount: reasons.length };
+    });
+
+    expect(result.mentionsHidden).toBe(false);
+  });
+
+  test('hidden categories: fallback path also respects hidden filter', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      // Only 5 visible posts — forces fallback sampling after initial pool exhausted
+      const pages = [
+        ...Array.from({ length: 100 }, (_: unknown, i: number) => ({
+          id: i + 1, title: `Hidden ${i + 1}`, text: '', thumb: null, chunkId: 0,
+          allCategories: new Set(['hidden-cat', `p:${i + 1}`]),
+        })),
+        ...Array.from({ length: 5 }, (_: unknown, i: number) => ({
+          id: i + 101, title: `Visible ${i + 1}`, text: '', thumb: null, chunkId: 0,
+          allCategories: new Set(['visible-cat', `p:${i + 101}`]),
+        })),
+      ];
+
+      const context = {
+        pagesArr: pages as any[],
+        categoryScores: {},
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(['hidden-cat']),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      const returnedIds: number[] = [];
+      // Draw 5 posts — all should be from visible set
+      for (let i = 0; i < 5; i++) {
+        returnedIds.push((algo.getNextPost() as any).id);
+      }
+
+      const allVisible = returnedIds.every(id => id >= 101 && id <= 105);
+      return { allVisible, returnedIds };
+    });
+
+    expect(result.allVisible).toBe(true);
+  });
 });

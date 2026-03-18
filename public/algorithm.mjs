@@ -164,17 +164,21 @@ export function createAlgorithm(context, options = {}) {
                 return post;
             });
 
-        // If all sampled posts were seen, sample more aggressively
+        // If all sampled posts were filtered out, sample more aggressively
         if (potentialPosts.length === 0) {
-            console.warn('All sampled posts seen, trying harder...');
+            console.warn('All sampled posts filtered, trying harder...');
             for (let i = 0; i < 10000; i++) {
                 const randomPost = context.pagesArr[Math.floor(Math.random() * context.pagesArr.length)];
-                if (!context.seenPostIds.has(randomPost.id)) {
-                    markPostSeen(randomPost);
-                    return randomPost;
+                if (context.seenPostIds.has(randomPost.id)) continue;
+                // Apply hidden category filter in fallback too
+                if (context.hiddenCategories.size > 0) {
+                    const contentCats = [...randomPost.allCategories].filter(c => !c.startsWith('p:'));
+                    if (contentCats.length > 0 && contentCats.every(c => context.hiddenCategories.has(c))) continue;
                 }
+                markPostSeen(randomPost);
+                return randomPost;
             }
-            // True fallback - everything seen
+            // True fallback - everything seen/hidden
             const randomPost = context.pagesArr[Math.floor(Math.random() * context.pagesArr.length)];
             markPostSeen(randomPost);
             return randomPost;
@@ -207,8 +211,9 @@ export function createAlgorithm(context, options = {}) {
 
         markPostSeen(bestPost);
 
-        // Track top contributing categories for transparency
+        // Track top contributing categories for transparency (exclude hidden)
         const categoryContributions = [...bestPost.allCategories]
+            .filter(cat => !context.hiddenCategories.has(cat))
             .map(cat => ({ cat, score: context.categoryScores[cat] || 0 }))
             .filter(c => c.score > 0)
             .sort((a, b) => b.score - a.score)
