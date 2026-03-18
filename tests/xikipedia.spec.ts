@@ -900,3 +900,139 @@ test.describe('Chunked format: basic feed loading', () => {
     expect(textContent!.length).toBeGreaterThan(50);
   });
 });
+
+test.describe('Theme toggle', () => {
+  test('theme toggle button is visible on start screen', async ({ page }) => {
+    await setupMockRoute(page);
+    await page.goto('/');
+    await expect(page.locator('#themeToggle')).toBeVisible();
+  });
+
+  test('clicking theme toggle changes theme class', async ({ page }) => {
+    await setupMockRoute(page);
+    await page.goto('/');
+
+    // Record initial state (may be light or dark depending on OS color scheme)
+    const initiallyLight = await page.locator('html').evaluate(el => el.classList.contains('light-mode'));
+
+    // Click theme toggle
+    await page.locator('#themeToggle').click();
+
+    // Should have toggled
+    if (initiallyLight) {
+      await expect(page.locator('html')).not.toHaveClass(/light-mode/);
+    } else {
+      await expect(page.locator('html')).toHaveClass(/light-mode/);
+    }
+  });
+
+  test('clicking theme toggle twice returns to original state', async ({ page }) => {
+    await setupMockRoute(page);
+    await page.goto('/');
+
+    const initiallyLight = await page.locator('html').evaluate(el => el.classList.contains('light-mode'));
+
+    await page.locator('#themeToggle').click();
+    await page.locator('#themeToggle').click();
+
+    // Should be back to original
+    if (initiallyLight) {
+      await expect(page.locator('html')).toHaveClass(/light-mode/);
+    } else {
+      await expect(page.locator('html')).not.toHaveClass(/light-mode/);
+    }
+  });
+
+  test('theme preference persists via localStorage', async ({ page }) => {
+    await setupMockRoute(page);
+    await page.goto('/');
+
+    // Force a known state by setting localStorage and reloading
+    await page.evaluate(() => localStorage.setItem('theme', 'light'));
+    await page.reload();
+    await expect(page.locator('html')).toHaveClass(/light-mode/);
+
+    // Now toggle to dark
+    await page.locator('#themeToggle').click();
+    await expect(page.locator('html')).not.toHaveClass(/light-mode/);
+
+    // Check localStorage updated
+    const theme = await page.evaluate(() => localStorage.getItem('theme'));
+    expect(theme).toBe('dark');
+
+    // Reload and verify persistence
+    await page.reload();
+    await expect(page.locator('html')).not.toHaveClass(/light-mode/);
+  });
+});
+
+test.describe('Keyboard shortcuts', () => {
+  test('J key scrolls to next post', async ({ page }) => {
+    await startFeed(page);
+
+    // Wait for at least 2 posts
+    await expect(page.locator('[data-testid="post"]').nth(1)).toBeVisible({ timeout: 10000 });
+
+    const firstPostTop = await page.locator('[data-testid="post"]').first().boundingBox();
+
+    // Press J to go to next post
+    await page.keyboard.press('j');
+
+    // Should have scrolled - second post should be near top of viewport
+    await page.waitForTimeout(500); // Allow scroll animation
+    const scrollY = await page.evaluate(() => window.scrollY);
+    expect(scrollY).toBeGreaterThan(0);
+  });
+
+  test('like button toggles liked state', async ({ page }) => {
+    await startFeed(page);
+
+    // First post's like button should exist and not be liked
+    const likeBtn = page.locator('[data-testid="post"]').first().locator('[data-testid="like-button"]');
+    await expect(likeBtn).toBeVisible();
+
+    // Click the like button
+    await likeBtn.click();
+
+    // Like button should now have data-liked attribute and aria-pressed=true
+    await expect(likeBtn).toHaveAttribute('data-liked', { timeout: 3000 });
+    await expect(likeBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('? key shows keyboard help overlay', async ({ page }) => {
+    await startFeed(page);
+
+    // Help overlay should not exist initially
+    expect(await page.locator('#keyboardHelp').count()).toBe(0);
+
+    // Press ? to show help (Shift+/ on US keyboard)
+    await page.keyboard.press('?');
+
+    // Help overlay should appear
+    await expect(page.locator('#keyboardHelp')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#keyboardHelp')).toContainText('Keyboard Shortcuts');
+  });
+
+  test('Escape closes keyboard help overlay', async ({ page }) => {
+    await startFeed(page);
+
+    // Open help
+    await page.keyboard.press('?');
+    await expect(page.locator('#keyboardHelp')).toBeVisible({ timeout: 3000 });
+
+    // Press Escape to close
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#keyboardHelp')).not.toBeVisible();
+  });
+
+  test('S key toggles sidebar open', async ({ page }) => {
+    await startFeed(page);
+
+    // Press S to toggle sidebar
+    await page.keyboard.press('s');
+
+    // Sidebar should have 'open' class
+    const stats = page.locator('.stats');
+    await expect(stats).toHaveClass(/open/, { timeout: 3000 });
+  });
+});
