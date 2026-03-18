@@ -3160,7 +3160,7 @@
             div.tabIndex = 0;
             if (item.thumb) {
                 const img = document.createElement('img');
-                img.src = item.thumb;
+                img.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${item.thumb.replace(/ /g, '_')}&width=120`;
                 img.alt = `Thumbnail for ${item.title}`;
                 img.loading = 'lazy';
                 div.appendChild(img);
