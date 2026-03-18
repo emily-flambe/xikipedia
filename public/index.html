@@ -43,6 +43,25 @@
             color-scheme: light;
         }
 
+        /* Skip to content link — visible only on focus */
+        .skip-link {
+            position: fixed;
+            top: -100%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100000;
+            background: var(--accent-color);
+            color: #fff;
+            padding: 8px 24px;
+            border-radius: 0 0 8px 8px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: top 0.2s;
+        }
+        .skip-link:focus {
+            top: 0;
+        }
+
         html, body {
             background: var(--bg-primary);
             color: var(--text-primary);
@@ -1637,6 +1656,7 @@
     </style>
 </head>
 <body>
+    <a href="#feed" class="skip-link">Skip to feed</a>
     <noscript>
         <div style="text-align:center;padding:2rem;color:#fff;font-family:system-ui,sans-serif;">
             <h1>Xikipedia</h1>
@@ -1652,7 +1672,7 @@
         </div>
     </header>
     <p id="loading">Loading...</p>
-    <div class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
+    <div id="feed" class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
         <button id="historyToggle" class="inline-tooltip" aria-label="Show reading history" data-tooltip="History (H)" style="display:none">📜</button>
