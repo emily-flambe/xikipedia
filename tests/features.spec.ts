@@ -1176,12 +1176,8 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
    * Uses ?format=chunked URL parameter to trigger chunked format loading.
    */
   async function startFeedWithChunkedMock(page: Page, options: { failChunk?: number } = {}) {
-    // Chunked format tests require __xikiTest API (localhost only)
-    if (!isLocalhost) {
-      test.skip();
-      return;
-    }
-    
+    // Chunked tests use page.route() mocks with serviceWorkers: 'block',
+    // so they work against any base URL (no __xikiTest API needed).
     await setupChunkedRoutes(page, options);
     // Must use ?format=chunked to trigger chunked format mode
     await page.goto('/?format=chunked');
@@ -1357,6 +1353,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   });
 
   test('chunked format correctly identifies format via isChunkedFormat flag', async ({ page }) => {
+    test.skip(!isLocalhost, 'Requires __xikiTest API (localhost only)');
     await startFeedWithChunkedMock(page);
 
     // isChunkedFormat is exposed to window, check it
@@ -1375,6 +1372,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   });
 
   test('chunked format initializes chunk infrastructure', async ({ page }) => {
+    test.skip(!isLocalhost, 'Requires __xikiTest API (localhost only)');
     await startFeedWithChunkedMock(page);
 
     // Verify chunk infrastructure is set up
