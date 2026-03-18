@@ -108,6 +108,15 @@ async function mockSmoldata(page: Page) {
     }),
   );
 
+  // Also intercept at context level to catch SW-initiated fetches
+  await page.context().route('**/smoldata.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: mockDataJson,
+    }),
+  );
+
   // Monkey-patch TextDecoder.decode to trim trailing null bytes.
   // This runs before any page script, so the app's getFileWithProgress
   // will use the patched version when it decodes the pre-allocated buffer.
@@ -740,8 +749,7 @@ test.describe('Logout', () => {
 // =========================================================================
 
 test.describe('Account deletion', () => {
-  // Skip: page.reload() has SW cache interference in CI
-  test.skip('deleting account clears auth and prevents re-login', async ({ page }) => {
+  test('deleting account clears auth and prevents re-login', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
 
@@ -807,8 +815,7 @@ test.describe('Account deletion', () => {
     });
   });
 
-  // Skip: page.reload() has SW cache interference in CI
-  test.skip('cancel on confirm dialog does NOT delete account', async ({ page }) => {
+  test('cancel on confirm dialog does NOT delete account', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
 
@@ -855,6 +862,76 @@ test.describe('Account deletion', () => {
       headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.ok()).toBe(true);
+  });
+});
+
+// =========================================================================
+// OFFLINE PREFERENCE LOADING
+// =========================================================================
+
+test.describe('Offline preference loading', () => {
+  test('guest local category filters from localStorage are loaded when API is unavailable', async ({ page }) => {
+    await mockSmoldata(page); // serves smoldata (simulates SW cache)
+
+    // Seed localStorage with blocked categories before page loads
+    await page.addInitScript(() => {
+      localStorage.setItem('xiki_blocked_categories', JSON.stringify(['science']));
+    });
+
+    await page.goto('/');
+
+    // App should load correctly with mocked smoldata (no network API needed for guest)
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+
+    // Start feed as guest
+    await startBtn.click();
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Verify blocked category was loaded from localStorage (not from API)
+    const hidden = await page.evaluate(() =>
+      Array.from((window as any).__xikiTest!.hiddenCategories),
+    );
+    expect(hidden).toContain('science');
+  });
+
+  test('logged-in session falls back to start screen when preferences API is unreachable', async ({ page }) => {
+    const user = uniqueUser();
+    const password = 'password123';
+
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Register while online
+    const { token } = await apiRegister(page, user, password);
+
+    // Inject auth into localStorage
+    await page.evaluate(
+      ({ token, user }) => {
+        localStorage.setItem('xiki_token', token);
+        localStorage.setItem('xiki_username', user);
+      },
+      { token, user },
+    );
+
+    // Block the preferences API at context level with a URL predicate (most reliable
+    // for intercepting SW-proxied requests, since string glob may not match).
+    await page.context().route(
+      (url) => url.pathname === '/api/preferences',
+      (route) => route.abort(),
+    );
+
+    // Reload — app loads data, then tries to fetch preferences (which fails)
+    await page.reload();
+
+    // After preferences fail, the app clears auth and triggers a second reload.
+    // page.waitForFunction re-evaluates across navigations and throws if not met
+    // within the timeout — this is both the wait and the assertion.
+    await page.waitForFunction(() => !localStorage.getItem('xiki_token'), {
+      timeout: 30000,
+    });
   });
 });
 
