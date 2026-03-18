@@ -2561,7 +2561,24 @@
         return {};
     }
 
-    function logout() {
+    async function apiFetch(url, options = {}) {
+        const resp = await fetch(url, {
+            ...options,
+            headers: { ...getAuthHeaders(), ...(options.headers || {}) }
+        });
+        if (resp.status === 401) {
+            localStorage.removeItem('xiki_token');
+            localStorage.removeItem('xiki_username');
+            window.location.reload();
+            return resp;
+        }
+        return resp;
+    }
+
+    async function logout() {
+        try {
+            await fetch('/api/logout', { method: 'POST', headers: getAuthHeaders() });
+        } catch (_) {}
         localStorage.removeItem('xiki_token');
         localStorage.removeItem('xiki_username');
         window.location.reload();
@@ -2606,12 +2623,9 @@
                 hiddenCategories: Array.from(hiddenCategories),
                 algorithmAggressiveness: algorithmAggressiveness
             };
-            fetch('/api/preferences', {
+            apiFetch('/api/preferences', {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             }).catch(e => { console.error('Failed to save preferences:', e); showErrorToast('Failed to save preferences. Changes may not persist.'); });
         }, 5000);
