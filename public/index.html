@@ -1745,6 +1745,10 @@
     // Recreation for Cloudflare Workers deployment
     // ============================================
 
+    // Debug logging helper — gate verbose logs behind localStorage flag
+    // Enable with: localStorage.setItem('debug', '1')
+    const debugLog = (...args) => { if (localStorage.getItem('debug')) console.log(...args); };
+
     // Theme toggle functionality
     const themeToggle = document.getElementById('themeToggle');
     themeToggle.onclick = () => {

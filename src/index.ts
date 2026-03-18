@@ -5,6 +5,9 @@
  * and provides user authentication + preferences API.
  */
 
+import { createLogger } from './logger';
+type Logger = ReturnType<typeof createLogger>;
+
 export interface Env {
   DATA_BUCKET: R2Bucket;
   DB: D1Database;
@@ -403,16 +406,19 @@ function validateRegistration(
 async function handleRegister(
   request: Request,
   env: Env,
+  log: Logger,
 ): Promise<Response> {
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
   } catch {
+    log.warn('auth.register.failure', { reason: 'invalid_json' });
     return errorResponse(request, 'Invalid JSON body', 400);
   }
 
   const validationError = validateRegistration(body.username, body.password);
   if (validationError) {
+    log.warn('auth.register.failure', { username: body.username, reason: 'validation_error' });
     return errorResponse(request, validationError, 400);
   }
 
@@ -452,13 +458,15 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
+    log.info('auth.register.success', { username });
     return jsonResponse(request, { token, username }, 201);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
+      log.warn('auth.register.failure', { username, reason: 'username_taken' });
       return errorResponse(request, 'Username already taken', 409);
     }
-    console.error('Registration error:', errMsg);
+    log.error('auth.register.failure', { username, reason: 'internal_error' });
     return errorResponse(request, 'Registration failed', 500);
   }
 }
@@ -466,6 +474,7 @@ async function handleRegister(
 async function handleLogin(
   request: Request,
   env: Env,
+  log: Logger,
 ): Promise<Response> {
   const ip = getClientIp(request);
   const rateLimitKey = `login_fail:${ip}`;
@@ -474,18 +483,22 @@ async function handleLogin(
   try {
     body = await request.json();
   } catch {
+    log.warn('auth.login.failure', { reason: 'invalid_json' });
     return errorResponse(request, 'Invalid JSON body', 400);
   }
 
   if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
       !body.username || !body.password) {
+    log.warn('auth.login.failure', { reason: 'missing_credentials' });
     return errorResponse(request, 'Username and password are required', 400);
   }
+
+  const username = body.username;
 
   const user = await env.DB.prepare(
     'SELECT id, username, password_hash, salt FROM users WHERE username = ?',
   )
-    .bind(body.username)
+    .bind(username)
     .first<UserRow>();
 
   if (!user) {
@@ -495,6 +508,7 @@ async function handleLogin(
         return rateLimitResponse(request, rl.windowStart, 900);
       }
     }
+    log.warn('auth.login.failure', { username });
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -508,6 +522,7 @@ async function handleLogin(
         return rateLimitResponse(request, rl.windowStart, 900);
       }
     }
+    log.warn('auth.login.failure', { username });
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -525,6 +540,7 @@ async function handleLogin(
     env.JWT_SECRET,
   );
 
+  log.info('auth.login.success', { username: user.username });
   return jsonResponse(request, { token, username: user.username });
 }
 
@@ -572,6 +588,7 @@ async function handleGetPreferences(
 async function handlePutPreferences(
   request: Request,
   env: Env,
+  log: Logger,
 ): Promise<Response> {
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
@@ -624,12 +641,14 @@ async function handlePutPreferences(
     .bind(payload.sub, categoryScores, hiddenCategories, settingsJson)
     .run();
 
+  log.info('preferences.save', { username: payload.username });
   return jsonResponse(request, { success: true });
 }
 
 async function handleDeleteAccount(
   request: Request,
   env: Env,
+  log: Logger,
 ): Promise<Response> {
   const payload = await authenticate(request, env.JWT_SECRET);
   if (!payload) {
@@ -669,6 +688,7 @@ async function handleDeleteAccount(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    log.warn('auth.delete.failure', { username: payload.username });
     return errorResponse(request, 'Incorrect password', 403);
   }
 
@@ -678,6 +698,7 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
+  log.info('auth.delete.success', { username: payload.username });
   return jsonResponse(request, { success: true });
 }
 
@@ -776,14 +797,22 @@ export default {
 };
 
 async function handleRequest(request: Request, env: Env): Promise<Response> {
+    const requestId = crypto.randomUUID();
+    const log = createLogger(requestId);
     const url = new URL(request.url);
+
+    log.info('request.start', { method: request.method, pathname: url.pathname });
+
+    let response: Response;
 
     // Handle CORS preflight for API routes
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
-      return new Response(null, {
+      response = new Response(null, {
         status: 204,
         headers: getCorsHeaders(request),
       });
+      log.info('request.end', { status: response.status });
+      return response;
     }
 
     // API Routes
@@ -791,53 +820,55 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       // Validate JWT_SECRET and DB before processing API requests
       const apiEnvError = validateApiEnv(env);
       if (apiEnvError) {
-        console.error(`Environment validation failed: ${apiEnvError}`);
-        return new Response('Server misconfigured', { status: 500 });
+        log.error('config.error', { message: 'Environment validation failed', detail: apiEnvError });
+        response = new Response('Server misconfigured', { status: 500 });
+        log.info('request.end', { status: response.status });
+        return response;
       }
 
       await ensureTables(env.DB);
 
       try {
         if (url.pathname === '/api/register' && request.method === 'POST') {
-          return await handleRegister(request, env);
+          response = await handleRegister(request, env, log);
+        } else if (url.pathname === '/api/login' && request.method === 'POST') {
+          response = await handleLogin(request, env, log);
+        } else if (url.pathname === '/api/preferences' && request.method === 'GET') {
+          response = await handleGetPreferences(request, env);
+        } else if (url.pathname === '/api/preferences' && request.method === 'PUT') {
+          response = await handlePutPreferences(request, env, log);
+        } else if (url.pathname === '/api/account' && request.method === 'DELETE') {
+          response = await handleDeleteAccount(request, env, log);
+        } else {
+          response = errorResponse(request, 'Not found', 404);
         }
-
-        if (url.pathname === '/api/login' && request.method === 'POST') {
-          return await handleLogin(request, env);
-        }
-
-        if (url.pathname === '/api/preferences' && request.method === 'GET') {
-          return await handleGetPreferences(request, env);
-        }
-
-        if (url.pathname === '/api/preferences' && request.method === 'PUT') {
-          return await handlePutPreferences(request, env);
-        }
-
-        if (url.pathname === '/api/account' && request.method === 'DELETE') {
-          return await handleDeleteAccount(request, env);
-        }
-
-        return errorResponse(request, 'Not found', 404);
       } catch (e: unknown) {
-        console.error('API error:', e instanceof Error ? e.message : String(e));
-        return errorResponse(request, 'Internal server error', 500);
+        log.error('api.error', { message: e instanceof Error ? e.message : String(e) });
+        response = errorResponse(request, 'Internal server error', 500);
       }
+
+      log.info('request.end', { status: response.status });
+      return response;
     }
 
     // Validate R2 binding before serving data files
     const r2EnvError = validateR2Env(env);
     if (r2EnvError) {
-      console.error(`Environment validation failed: ${r2EnvError}`);
-      return new Response('Server misconfigured', { status: 500 });
+      log.error('config.error', { message: 'Environment validation failed', detail: r2EnvError });
+      response = new Response('Server misconfigured', { status: 500 });
+      log.info('request.end', { status: response.status });
+      return response;
     }
 
     // Handle index.json request - serve from R2
     if (url.pathname === '/index.json') {
-      return serveR2File(env, 'index.json', request, {
+      log.info('data.serve', { file: 'index.json' });
+      response = await serveR2File(env, 'index.json', request, {
         cacheControl: 'public, max-age=86400', // 1 day - may update with new articles
         contentType: 'application/json',
       });
+      log.info('request.end', { status: response.status });
+      return response;
     }
 
     // Handle article chunk requests - /articles/chunk-NNNNNN.json
@@ -846,24 +877,34 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       const chunkId = parseInt(chunkMatch[1], 10);
       // Validate chunk ID is in valid range (0-999, allowing room for growth)
       if (chunkId < 0 || chunkId > 999) {
-        return new Response('Invalid chunk ID', { status: 400 });
+        response = new Response('Invalid chunk ID', { status: 400 });
+        log.info('request.end', { status: response.status });
+        return response;
       }
       const chunkKey = `articles/chunk-${chunkMatch[1]}.json`;
-      return serveR2File(env, chunkKey, request, {
+      log.info('data.serve', { file: chunkKey });
+      response = await serveR2File(env, chunkKey, request, {
         cacheControl: 'public, max-age=604800, immutable', // 1 week, content rarely changes
         contentType: 'application/json',
       });
+      log.info('request.end', { status: response.status });
+      return response;
     }
 
     // Handle smoldata.json request - serve from R2
     if (url.pathname === '/smoldata.json') {
-      return serveR2File(env, 'smoldata.json', request, {
+      log.info('data.serve', { file: 'smoldata.json' });
+      response = await serveR2File(env, 'smoldata.json', request, {
         cacheControl: 'public, max-age=604800', // 1 week
         contentType: 'application/json',
       });
+      log.info('request.end', { status: response.status });
+      return response;
     }
 
     // All other requests are handled by Cloudflare's asset serving
     // (this code won't be reached for static assets when [assets] is configured)
-    return new Response('Not Found', { status: 404 });
+    response = new Response('Not Found', { status: 404 });
+    log.info('request.end', { status: response.status });
+    return response;
 }
