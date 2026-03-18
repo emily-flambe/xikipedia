@@ -1,5 +1,10 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Check if running against localhost (where __xikiTest is available) */
 const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
@@ -1072,57 +1077,23 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   // Without this, the SW intercepts chunk fetches and routes them to the real server
   // (which returns 404 for chunk files that don't exist in CI).
   test.use({ serviceWorkers: 'block' });
-  /**
-   * Generate mock index data for chunked format.
-   * Index contains articles without text, only with chunkId.
-   * Production format: [title, pageId, chunkId, thumbHash, categories]
-   */
-  function generateChunkedIndexData() {
-    const pages = [];
-    const categories = ['science', 'nature', 'animals', 'technology', 'music', 'art', 'history', 'sports'];
-    for (let i = 0; i < 200; i++) {
-      const cat1 = categories[i % categories.length];
-      const cat2 = categories[(i + 3) % categories.length];
-      const hasThumb = i % 3 === 0;
-      const chunkId = Math.floor(i / 10); // 10 articles per chunk
-      // Format: [title, pageId, chunkId, thumbHash, categories]
-      pages.push([
-        `Chunked Article ${i}`,
-        i + 1000, // pageId - different IDs from simple format
-        chunkId,  // chunkId at position [2]
-        hasThumb ? `test_image_${i}.jpg` : null,  // thumbHash
-        [cat1, cat2]  // categories
-      ]);
-    }
-    return {
-      format: 'chunked',
-      pages,
-      subCategories: {
-        science: ['physics', 'chemistry', 'biology'],
-        nature: ['animals', 'plants'],
-        animals: ['mammals', 'birds'],
-      },
-      noPageMaps: {}
-    };
-  }
+  // Load fixture data from committed files under tests/fixtures/.
+  const CHUNKED_INDEX_JSON = fs.readFileSync(
+    path.join(__dirname, 'fixtures/chunk-index.json'),
+    'utf-8'
+  );
 
   /**
-   * Generate mock chunk data for a specific chunk ID.
+   * Read a committed chunk fixture file for the given chunk ID.
+   * Fixture files are under tests/fixtures/chunks/chunk-000000.json etc.
    */
-  function generateChunkData(chunkId: number) {
-    const articles: Record<string, { text: string }> = {};
-    const startId = 1000 + chunkId * 10;
-    for (let i = 0; i < 10; i++) {
-      const id = startId + i;
-      articles[String(id)] = {
-        text: `This is the lazy-loaded text content of chunked article ${id - 1000}. It contains enough text to pass the 100-character minimum filter. Here is additional padding content to make this article long enough.`
-      };
-    }
-    return { articles };
+  function getChunkFixtureJSON(chunkId: number): string {
+    const filename = `chunk-${String(chunkId).padStart(6, '0')}.json`;
+    return fs.readFileSync(
+      path.join(__dirname, `fixtures/chunks/${filename}`),
+      'utf-8'
+    );
   }
-
-  const CHUNKED_INDEX = generateChunkedIndexData();
-  const CHUNKED_INDEX_JSON = JSON.stringify(CHUNKED_INDEX);
 
   /**
    * Setup routes for chunked format testing.
@@ -1160,11 +1131,10 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
           return;
         }
         
-        const chunkData = generateChunkData(chunkId);
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify(chunkData),
+          body: getChunkFixtureJSON(chunkId),
         });
       }
     });
@@ -1210,11 +1180,10 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
       const match = url.match(/chunk-(\d+)\.json/);
       if (match) {
         const chunkId = parseInt(match[1], 10);
-        const chunkData = generateChunkData(chunkId);
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify(chunkData),
+          body: getChunkFixtureJSON(chunkId),
         });
       }
     });
@@ -1319,11 +1288,10 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
           return;
         }
         
-        const chunkData = generateChunkData(chunkId);
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify(chunkData),
+          body: getChunkFixtureJSON(chunkId),
         });
       }
     });

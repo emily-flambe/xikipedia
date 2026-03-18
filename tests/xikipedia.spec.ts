@@ -1,5 +1,10 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Check if running against localhost (where __xikiTest is available) */
 const isLocalhost = process.env.PLAYWRIGHT_BASE_URL?.includes('localhost') ?? true;
@@ -802,5 +807,69 @@ test.describe('Feature 4: Mobile sidebar drawer', () => {
 
     await expect(stats).not.toHaveClass(/open/);
     await expect(backdrop).not.toHaveClass(/visible/);
+  });
+});
+
+// =============================================
+// Chunked Format: basic feed loading
+// =============================================
+test.describe('Chunked format: basic feed loading', () => {
+  // Block service workers so page.route() mocks intercept chunk requests directly.
+  test.use({ serviceWorkers: 'block' });
+
+  const CHUNKED_INDEX_JSON = fs.readFileSync(
+    path.join(__dirname, 'fixtures/chunk-index.json'),
+    'utf-8'
+  );
+
+  function getChunkFixtureJSON(chunkId: number): string {
+    const filename = `chunk-${String(chunkId).padStart(6, '0')}.json`;
+    return fs.readFileSync(
+      path.join(__dirname, `fixtures/chunks/${filename}`),
+      'utf-8'
+    );
+  }
+
+  test('loads posts with chunked format', async ({ page }) => {
+    if (!isLocalhost) {
+      test.skip();
+      return;
+    }
+
+    await page.route('**/index.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: CHUNKED_INDEX_JSON,
+      });
+    });
+
+    await page.route('**/articles/chunk-*.json', async (route) => {
+      const url = route.request().url();
+      const match = url.match(/chunk-(\d+)\.json/);
+      if (match) {
+        const chunkId = parseInt(match[1], 10);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: getChunkFixtureJSON(chunkId),
+        });
+      }
+    });
+
+    await page.goto('/?format=chunked');
+
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+
+    // Verify article text from fixture is visible
+    const postsWithText = page.locator('[data-testid="post"] p:not(.skeleton):not(.load-error)');
+    await expect(postsWithText.first()).toBeVisible({ timeout: 10000 });
+    const textContent = await postsWithText.first().textContent();
+    expect(textContent).toBeTruthy();
+    expect(textContent!.length).toBeGreaterThan(50);
   });
 });
