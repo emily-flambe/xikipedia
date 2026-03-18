@@ -1772,15 +1772,26 @@
     // Recreation for Cloudflare Workers deployment
     // ============================================
 
+    // Safe localStorage wrappers (private browsing, storage full, disabled)
+    function safeGetItem(key) {
+        try { return localStorage.getItem(key); } catch { return null; }
+    }
+    function safeSetItem(key, value) {
+        try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+    }
+    function safeRemoveItem(key) {
+        try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
+    }
+
     // Theme toggle functionality
     const themeToggle = document.getElementById('themeToggle');
     themeToggle.onclick = () => {
         document.documentElement.classList.toggle('light-mode');
         themeToggle.textContent = document.documentElement.classList.contains('light-mode') ? '\u2600\uFE0F' : '\uD83C\uDF19';
-        localStorage.setItem('theme', document.documentElement.classList.contains('light-mode') ? 'light' : 'dark');
+        safeSetItem('theme', document.documentElement.classList.contains('light-mode') ? 'light' : 'dark');
     };
     // Load saved theme (or auto-detect OS preference on first visit)
-    const savedTheme = localStorage.getItem('theme');
+    const savedTheme = safeGetItem('theme');
     if (savedTheme === 'light' || (!savedTheme && window.matchMedia('(prefers-color-scheme: light)').matches)) {
         document.documentElement.classList.add('light-mode');
         themeToggle.textContent = '\u2600\uFE0F';
@@ -1788,7 +1799,7 @@
 
     // Follow OS theme changes when user hasn't set a manual preference
     window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-        if (localStorage.getItem('theme')) return; // User chose manually, don't override
+        if (safeGetItem('theme')) return; // User chose manually, don't override
         if (e.matches) {
             document.documentElement.classList.add('light-mode');
             themeToggle.textContent = '\u2600\uFE0F';
@@ -1891,11 +1902,11 @@
     
     // Save all category filters to localStorage
     function saveCategoryFilters() {
-        localStorage.setItem('xiki_blocked_categories', JSON.stringify(Array.from(hiddenCategories)));
-        localStorage.setItem('xiki_reduced_categories', JSON.stringify(Array.from(reducedCategories)));
-        localStorage.setItem('xiki_boosted_categories', JSON.stringify(Array.from(boostedCategories)));
-        localStorage.setItem('xiki_active_presets', JSON.stringify(Array.from(activePresets)));
-        localStorage.setItem('xiki_mood_mode', moodMode);
+        safeSetItem('xiki_blocked_categories', JSON.stringify(Array.from(hiddenCategories)));
+        safeSetItem('xiki_reduced_categories', JSON.stringify(Array.from(reducedCategories)));
+        safeSetItem('xiki_boosted_categories', JSON.stringify(Array.from(boostedCategories)));
+        safeSetItem('xiki_active_presets', JSON.stringify(Array.from(activePresets)));
+        safeSetItem('xiki_mood_mode', moodMode);
         
         // Sync filters to worker
         if (algorithmWorker) {
@@ -1906,19 +1917,19 @@
     // Load all category filters from localStorage
     function loadCategoryFilters() {
         try {
-            const blocked = localStorage.getItem('xiki_blocked_categories');
+            const blocked = safeGetItem('xiki_blocked_categories');
             if (blocked) JSON.parse(blocked).forEach(cat => hiddenCategories.add(cat));
             
-            const reduced = localStorage.getItem('xiki_reduced_categories');
+            const reduced = safeGetItem('xiki_reduced_categories');
             if (reduced) JSON.parse(reduced).forEach(cat => reducedCategories.add(cat));
             
-            const boosted = localStorage.getItem('xiki_boosted_categories');
+            const boosted = safeGetItem('xiki_boosted_categories');
             if (boosted) JSON.parse(boosted).forEach(cat => boostedCategories.add(cat));
             
-            const savedPresets = localStorage.getItem('xiki_active_presets');
+            const savedPresets = safeGetItem('xiki_active_presets');
             if (savedPresets) JSON.parse(savedPresets).forEach(p => activePresets.add(p));
             
-            const savedMood = localStorage.getItem('xiki_mood_mode');
+            const savedMood = safeGetItem('xiki_mood_mode');
             if (savedMood) moodMode = savedMood;
         } catch (e) {
             console.warn('Failed to load category filters:', e);
@@ -2059,7 +2070,7 @@
     // Load persisted seen posts from localStorage
     function loadSeenPosts() {
         try {
-            const saved = localStorage.getItem('xiki_seen_posts');
+            const saved = safeGetItem('xiki_seen_posts');
             if (saved) {
                 const ids = JSON.parse(saved);
                 if (Array.isArray(ids)) {
@@ -2079,7 +2090,7 @@
             try {
                 // Keep only last 5000 to avoid localStorage bloat
                 const ids = [...seenPostIds].slice(-5000);
-                localStorage.setItem('xiki_seen_posts', JSON.stringify(ids));
+                safeSetItem('xiki_seen_posts', JSON.stringify(ids));
             } catch (e) {
                 console.warn('Failed to save seen posts:', e);
             }
@@ -2383,7 +2394,7 @@
         if (urlParam === 'chunked' || urlParam === 'simple') {
             return urlParam;
         }
-        return localStorage.getItem('xiki-data-format') || 'simple';
+        return safeGetItem('xiki-data-format') || 'simple';
     }
 
     // LRU Cache for chunk data
@@ -2587,22 +2598,22 @@
     // ============================================
 
     function isLoggedIn() {
-        return !!localStorage.getItem('xiki_token');
+        return !!safeGetItem('xiki_token');
     }
 
     function currentUser() {
-        return localStorage.getItem('xiki_username') || null;
+        return safeGetItem('xiki_username') || null;
     }
 
     function getAuthHeaders() {
-        const token = localStorage.getItem('xiki_token');
+        const token = safeGetItem('xiki_token');
         if (token) return { 'Authorization': 'Bearer ' + token };
         return {};
     }
 
     function logout() {
-        localStorage.removeItem('xiki_token');
-        localStorage.removeItem('xiki_username');
+        safeRemoveItem('xiki_token');
+        safeRemoveItem('xiki_username');
         window.location.reload();
     }
 
@@ -2629,8 +2640,8 @@
             alert('Failed to delete account. Please try again.');
             return;
         }
-        localStorage.removeItem('xiki_token');
-        localStorage.removeItem('xiki_username');
+        safeRemoveItem('xiki_token');
+        safeRemoveItem('xiki_username');
         window.location.reload();
     }
 
@@ -2656,8 +2667,8 @@
                 if (!resp.ok) {
                     if (resp.status === 401) {
                         // Token expired or invalid — clear auth and notify user
-                        localStorage.removeItem('xiki_token');
-                        localStorage.removeItem('xiki_username');
+                        safeRemoveItem('xiki_token');
+                        safeRemoveItem('xiki_username');
                         showErrorToast('Session expired. Please log in again to save preferences.');
                     } else {
                         showErrorToast('Failed to save preferences. Changes may not persist.');
@@ -2777,8 +2788,8 @@
                 btn.textContent = 'Log in';
                 return;
             }
-            localStorage.setItem('xiki_token', data.token);
-            localStorage.setItem('xiki_username', data.username);
+            safeSetItem('xiki_token', data.token);
+            safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
             errorEl.textContent = 'Network error. Please try again.';
@@ -2820,8 +2831,8 @@
                 btn.textContent = 'Create account';
                 return;
             }
-            localStorage.setItem('xiki_token', data.token);
-            localStorage.setItem('xiki_username', data.username);
+            safeSetItem('xiki_token', data.token);
+            safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
             errorEl.textContent = 'Network error. Please try again.';
@@ -3268,13 +3279,13 @@
         const storageKey = 'xiki_keyboard_hint_seen';
         
         // Don't show if user has seen it before
-        if (localStorage.getItem(storageKey)) return;
+        if (safeGetItem(storageKey)) return;
         
         // Show the hint
         hint.style.display = 'flex';
         
         // Mark as seen
-        localStorage.setItem(storageKey, 'true');
+        safeSetItem(storageKey, 'true');
         
         // Auto-dismiss after 8 seconds
         const autoDismiss = setTimeout(() => {
@@ -4789,8 +4800,8 @@
                 return;
             } catch (e) {
                 console.warn('Failed to load preferences, clearing auth:', e);
-                localStorage.removeItem('xiki_token');
-                localStorage.removeItem('xiki_username');
+                safeRemoveItem('xiki_token');
+                safeRemoveItem('xiki_username');
                 // Fall through to normal start screen - reload to show guest UI
                 window.location.reload();
                 return;
@@ -4835,7 +4846,7 @@
             set algorithmAggressiveness(v) { algorithmAggressiveness = v; },
             clearSeenPosts() {
                 seenPostIds.clear();
-                localStorage.removeItem('xiki_seen_posts');
+                safeRemoveItem('xiki_seen_posts');
                 pagesArr.forEach(p => p.seen = 0);
             },
             get postsWithoutLike() { return postsWithoutLike; },
