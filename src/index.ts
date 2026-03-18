@@ -729,7 +729,7 @@ async function handleChangePassword(
   if (typeof current_password !== 'string' || !current_password) {
     return errorResponse(request, 'Current password is required', 400);
   }
-  if (!new_password || new_password.length < MIN_PASSWORD_LENGTH_CHANGE) {
+  if (typeof new_password !== 'string' || !new_password || new_password.length < MIN_PASSWORD_LENGTH_CHANGE) {
     return errorResponse(request, `New password must be at least ${MIN_PASSWORD_LENGTH_CHANGE} characters`, 400);
   }
 

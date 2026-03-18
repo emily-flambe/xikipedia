@@ -2589,12 +2589,9 @@
         if (!password) return;
         if (!confirm('Are you sure? This cannot be undone.')) return;
         try {
-            const resp = await fetch('/api/account', {
+            const resp = await apiFetch('/api/account', {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password })
             });
             if (!resp.ok) {
@@ -4698,9 +4695,7 @@
         // If logged in, load saved preferences and auto-start
         if (isLoggedIn()) {
             try {
-                const prefsResp = await fetch('/api/preferences', {
-                    headers: getAuthHeaders()
-                });
+                const prefsResp = await apiFetch('/api/preferences');
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
                 const prefs = await prefsResp.json();
 
