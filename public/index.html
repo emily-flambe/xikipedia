@@ -2652,6 +2652,17 @@
                     ...getAuthHeaders()
                 },
                 body: JSON.stringify(body)
+            }).then(resp => {
+                if (!resp.ok) {
+                    if (resp.status === 401) {
+                        // Token expired or invalid — clear auth and notify user
+                        localStorage.removeItem('xiki_token');
+                        localStorage.removeItem('xiki_username');
+                        showErrorToast('Session expired. Please log in again to save preferences.');
+                    } else {
+                        showErrorToast('Failed to save preferences. Changes may not persist.');
+                    }
+                }
             }).catch(e => { console.error('Failed to save preferences:', e); showErrorToast('Failed to save preferences. Changes may not persist.'); });
         }, 5000);
     }
