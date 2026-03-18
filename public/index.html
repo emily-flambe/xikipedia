@@ -3801,27 +3801,30 @@
         }
     }
 
-    // Scroll-driven post creation (replaces perpetual rAF loop)
-    let renderScheduled = false;
+    // === IntersectionObserver-driven infinite scroll ===
+    // Sentinel placed after .posts; observer fires when sentinel enters the
+    // extended viewport (1500px lookahead), replacing the old rAF loop.
+    const scrollSentinel = document.createElement('div');
+    scrollSentinel.setAttribute('aria-hidden', 'true');
+    scrollSentinel.style.cssText = 'height:1px;pointer-events:none;';
+    document.querySelector('.posts').insertAdjacentElement('afterend', scrollSentinel);
 
-    function scheduleRender() {
-        if (renderScheduled) return;
-        renderScheduled = true;
-        requestAnimationFrame(render);
-    }
+    const scrollObserver = new IntersectionObserver(
+        (entries) => {
+            if (entries[0].isIntersecting) {
+                // Disconnect before loading to prevent concurrent triggers;
+                // re-observe in finally so the observer re-evaluates after the
+                // post is added (fires again immediately if still in zone).
+                scrollObserver.disconnect();
+                createNextPost().finally(() => scrollObserver.observe(scrollSentinel));
+            }
+        },
+        { rootMargin: '0px 0px 1500px 0px' }
+    );
 
-    function render() {
-        renderScheduled = false;
-        pruneOffscreenPosts();
-        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-            createNextPost();
-            // Keep rendering while we need more posts (e.g. initial load)
-            scheduleRender();
-        }
-    }
+    scrollObserver.observe(scrollSentinel);
 
-    window.addEventListener('scroll', scheduleRender, { passive: true });
-    window.addEventListener('resize', scheduleRender, { passive: true });
+    window.addEventListener('scroll', pruneOffscreenPosts, { passive: true });
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
@@ -4001,7 +4004,7 @@
         
         // Scroll to top and trigger post creation
         window.scrollTo(0, 0);
-        scheduleRender();
+        createNextPost();
     }
 
     // Pull-to-refresh state
@@ -4459,7 +4462,7 @@
         if (articleNotFound) {
             showErrorToast('Article not found. Showing your feed instead.');
         }
-        scheduleRender();
+        createNextPost();
     }
 
     // Main initialization
