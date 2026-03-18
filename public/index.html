@@ -1789,8 +1789,8 @@
 
     // Debug logger — gate all frontend console output behind localStorage.getItem('debug')
     const dbg = {
-        warn: (...args) => { if (safeGetItem('debug')) dbg.warn(...args); },
-        error: (...args) => { if (safeGetItem('debug')) dbg.error(...args); },
+        warn: (...args) => { if (safeGetItem('debug')) console.warn(...args); },
+        error: (...args) => { if (safeGetItem('debug')) console.error(...args); },
     };
 
     // Reading history persistence
