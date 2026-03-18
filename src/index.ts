@@ -5,7 +5,7 @@
  * and provides user authentication + preferences API.
  */
 
-import { createLogger, Logger } from './logger';
+import { createLogger, type Logger } from './logger';
 
 export interface Env {
   DATA_BUCKET: R2Bucket;
@@ -470,15 +470,15 @@ async function handleRegister(
       env.JWT_SECRET,
     );
 
-    logger.info('auth.register.success', { username });
+    logger.info('auth.register.success', { username, userId });
     return jsonResponse(request, { token, username }, 201);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
-      logger.warn('auth.register.failure', { reason: 'username_taken' });
+      logger.warn('auth.register.failure', { username, reason: 'username_taken' });
       return errorResponse(request, 'Username already taken', 409);
     }
-    logger.error('auth.register.failure', { reason: 'db_error' });
+    logger.error('auth.register.failure', { username, reason: 'internal_error', error: errMsg });
     return errorResponse(request, 'Registration failed', 500);
   }
 }
@@ -517,7 +517,7 @@ async function handleLogin(
         return rateLimitResponse(request, rl.windowStart, 900);
       }
     }
-    logger.warn('auth.login.failure', { reason: 'user_not_found' });
+    logger.warn('auth.login.failure', { username: body.username, reason: 'user_not_found' });
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -532,7 +532,7 @@ async function handleLogin(
         return rateLimitResponse(request, rl.windowStart, 900);
       }
     }
-    logger.warn('auth.login.failure', { reason: 'invalid_password' });
+    logger.warn('auth.login.failure', { username: body.username, reason: 'wrong_password' });
     return errorResponse(request, 'Invalid username or password', 401);
   }
 
@@ -550,7 +550,7 @@ async function handleLogin(
     env.JWT_SECRET,
   );
 
-  logger.info('auth.login.success', { username: user.username });
+  logger.info('auth.login.success', { username: user.username, userId: user.id });
   return jsonResponse(request, { token, username: user.username });
 }
 
@@ -692,7 +692,7 @@ async function handleDeleteAccount(
     .first<Pick<UserRow, 'password_hash' | 'salt'>>();
 
   if (!user) {
-    logger.warn('auth.delete.failure', { reason: 'user_not_found' });
+    logger.warn('auth.delete.failure', { userId: payload.sub, reason: 'user_not_found' });
     return errorResponse(request, 'User not found', 404);
   }
 
@@ -700,7 +700,7 @@ async function handleDeleteAccount(
   const computedHash = await hashPassword(body.password, salt);
 
   if (!(await timingSafeEqual(computedHash, user.password_hash))) {
-    logger.warn('auth.delete.failure', { reason: 'incorrect_password' });
+    logger.warn('auth.delete.failure', { userId: payload.sub, reason: 'wrong_password' });
     return errorResponse(request, 'Incorrect password', 403);
   }
 
@@ -710,7 +710,7 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
 
-  logger.info('auth.delete.success', { userId: payload.sub });
+  logger.info('auth.delete.success', { userId: payload.sub, username: payload.username });
   return jsonResponse(request, { success: true });
 }
 
@@ -762,6 +762,7 @@ async function serveR2File(
     headers.set('Content-Range', `bytes ${start}-${end}/${totalSize}`);
     headers.set('Content-Length', String(end - start + 1));
 
+    logger.info('data.serve', { key, bytes: end - start + 1, range: true });
     return new Response(object.body, {
       status: 206,
       headers,
@@ -775,6 +776,7 @@ async function serveR2File(
     return new Response('File not found', { status: 404 });
   }
 
+  logger.info('data.serve', { key, bytes: object.size });
   headers.set('Content-Length', String(object.size));
   return new Response(object.body, { headers });
 }
@@ -815,6 +817,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const logger = createLogger(requestId);
     const url = new URL(request.url);
 
+    logger.info('request.received', {
+      method: request.method,
+      pathname: url.pathname,
+    });
+
     // Handle CORS preflight for API routes
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
       return new Response(null, {
@@ -828,7 +835,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       // Validate JWT_SECRET and DB before processing API requests
       const apiEnvError = validateApiEnv(env);
       if (apiEnvError) {
-        logger.warn('env.error', { message: apiEnvError });
+        logger.error('env.invalid', { reason: apiEnvError });
         return new Response('Server misconfigured', { status: 500 });
       }
 
@@ -857,7 +864,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         return errorResponse(request, 'Not found', 404);
       } catch (e: unknown) {
-        logger.error('api.error', { error: e instanceof Error ? e.message : String(e) });
+        logger.error('api.error', { pathname: url.pathname, error: e instanceof Error ? e.message : String(e) });
         return errorResponse(request, 'Internal server error', 500);
       }
     }
@@ -865,7 +872,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     // Validate R2 binding before serving data files
     const r2EnvError = validateR2Env(env);
     if (r2EnvError) {
-      logger.warn('env.error', { message: r2EnvError });
+      logger.error('env.invalid', { reason: r2EnvError });
       return new Response('Server misconfigured', { status: 500 });
     }
 

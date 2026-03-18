@@ -1,4 +1,7 @@
-// ─── Structured JSON Logger ──────────────────────────────────────────
+/**
+ * Structured JSON logger for Cloudflare Workers.
+ * Cloudflare Observability parses JSON from stdout automatically.
+ */
 
 type LogLevel = 'info' | 'warn' | 'error';
 
@@ -33,14 +36,8 @@ export function createLogger(requestId: string): Logger {
   }
 
   return {
-    info(event: string, data?: Record<string, unknown>): void {
-      log('info', event, data);
-    },
-    warn(event: string, data?: Record<string, unknown>): void {
-      log('warn', event, data);
-    },
-    error(event: string, data?: Record<string, unknown>): void {
-      log('error', event, data);
-    },
+    info:  (event, data) => log('info',  event, data),
+    warn:  (event, data) => log('warn',  event, data),
+    error: (event, data) => log('error', event, data),
   };
 }
