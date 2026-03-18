@@ -3942,19 +3942,26 @@
     // Clean raw Wikipedia markup from article text
     function sanitizeWikiText(text) {
         if (!text) return text;
-        return text
+        let result = text
             // Remove <ref>...</ref> tags and self-closing <ref ... />
             .replace(/<ref[^>]*\/>/gi, '')
             .replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, '')
-            // Remove {{template}} markup (non-greedy, handles nested braces poorly but covers common cases)
-            .replace(/\{\{[^{}]*\}\}/g, '')
             // Remove leftover <ref> opening tags without closing (malformed)
             .replace(/<ref[^>]*>/gi, '')
             // Remove other common HTML-like tags that leak through
-            .replace(/<\/?(?:br|sup|sub|small|big|nowiki|gallery|imagemap|poem|source|syntaxhighlight|math|chem|score|categorytree|hiero|inputbox|timeline|templatestyles|mapframe|maplink|references|includeonly|noinclude|onlyinclude)\b[^>]*\/?>/gi, '')
-            // Collapse multiple spaces and trim
-            .replace(/\s{2,}/g, ' ')
-            .trim();
+            .replace(/<\/?(?:br|sup|sub|small|big|nowiki|gallery|imagemap|poem|source|syntaxhighlight|math|chem|score|categorytree|hiero|inputbox|timeline|templatestyles|mapframe|maplink|references|includeonly|noinclude|onlyinclude)\b[^>]*\/?>/gi, '');
+        // Remove {{template}} markup iteratively to handle nesting like {{foo|{{bar}}}}
+        let prev;
+        do {
+            prev = result;
+            result = result.replace(/\{\{[^{}]*\}\}/g, '');
+        } while (result !== prev);
+        // Remove [[File:...|...]] and [[Image:...|...]] wiki markup
+        result = result.replace(/\[\[(?:File|Image):[^\]]*\]\]/gi, '');
+        // Clean [[link|display]] → display, and [[link]] → link
+        result = result.replace(/\[\[(?:[^|\]]*\|)?([^\]]*)\]\]/g, '$1');
+        // Collapse multiple spaces and trim
+        return result.replace(/\s{2,}/g, ' ').trim();
     }
 
     // Stream reader helper

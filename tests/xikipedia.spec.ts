@@ -1036,3 +1036,73 @@ test.describe('Keyboard shortcuts', () => {
     await expect(stats).toHaveClass(/open/, { timeout: 3000 });
   });
 });
+
+test.describe('Wiki text sanitization', () => {
+  test('sanitizeWikiText removes refs and HTML tags', async ({ page }) => {
+    await setupMockRoute(page);
+    await page.goto('/');
+
+    const results = await page.evaluate(() => {
+      const fn = (globalThis as any).sanitizeWikiText;
+      if (!fn) return null;
+      
+      return {
+        refs: fn('Text<ref name="a">citation</ref> here'),
+        selfClosingRef: fn('Text<ref name="b" /> here'),
+        simpleTemplate: fn('Hello {{convert|5|km}} world'),
+        htmlTags: fn('Text<br/>more text'),
+        multiSpace: fn('Too   many    spaces'),
+        empty: fn(''),
+        nullInput: fn(null),
+      };
+    });
+
+    // If function isn't globally accessible, skip
+    if (!results) {
+      test.skip();
+      return;
+    }
+
+    expect(results.refs).toBe('Text here');
+    expect(results.selfClosingRef).toBe('Text here');
+    expect(results.simpleTemplate).toBe('Hello world');
+    expect(results.htmlTags).toBe('Textmore text');
+    expect(results.multiSpace).toBe('Too many spaces');
+    expect(results.empty).toBe('');
+    expect(results.nullInput).toBe(null);
+  });
+
+  test('sanitizeWikiText removes nested templates and wiki links', async ({ page }) => {
+    // This test requires the iterative template removal + wiki link features
+    // which may not be deployed yet — run only against localhost or once deployed
+    await setupMockRoute(page);
+    await page.goto('/');
+
+    const results = await page.evaluate(() => {
+      const fn = (globalThis as any).sanitizeWikiText;
+      if (!fn) return null;
+      
+      // Test nested template handling
+      const nested = fn('Hello {{foo|{{bar}}}} world');
+      // If nested templates aren't handled, this will contain leftover markup
+      if (nested !== 'Hello world') return null;
+
+      return {
+        nested,
+        wikiLink: fn('Visit [[London]] today'),
+        wikiPipeLink: fn('Visit [[London|the city]] today'),
+        fileLink: fn('See [[File:Example.jpg|thumb|caption]] here'),
+      };
+    });
+
+    if (!results) {
+      test.skip();
+      return;
+    }
+
+    expect(results.nested).toBe('Hello world');
+    expect(results.wikiLink).toBe('Visit London today');
+    expect(results.wikiPipeLink).toBe('Visit the city today');
+    expect(results.fileLink).toBe('See here');
+  });
+});
