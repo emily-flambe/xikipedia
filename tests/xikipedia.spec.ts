@@ -880,11 +880,8 @@ test.describe('Chunked format: basic feed loading', () => {
   }
 
   test('loads posts with chunked format', async ({ page }) => {
-    if (!isLocalhost) {
-      test.skip();
-      return;
-    }
-
+    // This test uses page.route() mocks with serviceWorkers: 'block',
+    // so it works against any base URL (no __xikiTest API needed).
     await setupChunkedRoutes(page);
     await page.goto('/?format=chunked');
 
