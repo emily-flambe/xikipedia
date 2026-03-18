@@ -3718,8 +3718,8 @@
         // If another request came in while we were working, handle it
         if (pendingPostCreation) {
             pendingPostCreation = false;
-            // Check if we still need more posts
-            if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+            // Check if sentinel is still visible (i.e. still near the bottom)
+            if (sentinelVisible) {
                 createNextPost();
             }
         }
@@ -3801,27 +3801,28 @@
         }
     }
 
-    // Scroll-driven post creation (replaces perpetual rAF loop)
-    let renderScheduled = false;
+    // Infinite scroll via IntersectionObserver — no continuous rAF loop
+    let sentinelVisible = false;
 
-    function scheduleRender() {
-        if (renderScheduled) return;
-        renderScheduled = true;
-        requestAnimationFrame(render);
-    }
+    const scrollSentinel = document.createElement('div');
+    scrollSentinel.className = 'scroll-sentinel';
+    scrollSentinel.setAttribute('aria-hidden', 'true');
+    document.querySelector('.posts').appendChild(scrollSentinel);
 
-    function render() {
-        renderScheduled = false;
-        pruneOffscreenPosts();
-        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+    const infiniteScrollObserver = new IntersectionObserver((entries) => {
+        sentinelVisible = entries[0].isIntersecting;
+        if (sentinelVisible) {
             createNextPost();
-            // Keep rendering while we need more posts (e.g. initial load)
-            scheduleRender();
         }
-    }
+    }, {
+        // Trigger when sentinel is within 1500px below the visible viewport
+        rootMargin: '0px 0px 1500px 0px',
+    });
 
-    window.addEventListener('scroll', scheduleRender, { passive: true });
-    window.addEventListener('resize', scheduleRender, { passive: true });
+    infiniteScrollObserver.observe(scrollSentinel);
+
+    // Prune off-screen posts on scroll (has internal throttle via PRUNE_INTERVAL)
+    window.addEventListener('scroll', pruneOffscreenPosts, { passive: true });
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
@@ -3999,9 +4000,10 @@
             fallbackAlgorithm.reset();
         }
         
-        // Scroll to top and trigger post creation
+        // Scroll to top, restore sentinel (cleared by innerHTML reset), trigger post creation
         window.scrollTo(0, 0);
-        scheduleRender();
+        postsContainer.appendChild(scrollSentinel);
+        createNextPost();
     }
 
     // Pull-to-refresh state
@@ -4459,7 +4461,8 @@
         if (articleNotFound) {
             showErrorToast('Article not found. Showing your feed instead.');
         }
-        scheduleRender();
+        // IntersectionObserver fires asynchronously; call directly to avoid initial delay
+        createNextPost();
     }
 
     // Main initialization
