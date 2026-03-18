@@ -3221,6 +3221,12 @@
                 img.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${item.thumb.replace(/ /g, '_')}&width=120`;
                 img.alt = `Thumbnail for ${item.title}`;
                 img.loading = 'lazy';
+                img.onerror = () => {
+                    const noThumb = document.createElement('div');
+                    noThumb.className = 'no-thumb';
+                    noThumb.textContent = '📄';
+                    img.replaceWith(noThumb);
+                };
                 div.appendChild(img);
             } else {
                 const noThumb = document.createElement('div');
@@ -3331,6 +3337,7 @@
         fullImg.alt = articleTitle ? `Full-size image from ${articleTitle}` : 'Full-size article image';
         fullImg.popover = "auto";
         fullImg.classList.add("fullImg");
+        fullImg.onerror = () => fullImg.remove();
         document.body.appendChild(fullImg);
         fullImg.showPopover();
         fullImg.ontoggle = (e) => e.newState === "open" || fullImg.remove();
