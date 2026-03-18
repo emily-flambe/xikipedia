@@ -1766,6 +1766,18 @@
         themeToggle.textContent = '\u2600\uFE0F';
     }
 
+    // Follow OS theme changes when user hasn't set a manual preference
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+        if (localStorage.getItem('theme')) return; // User chose manually, don't override
+        if (e.matches) {
+            document.documentElement.classList.add('light-mode');
+            themeToggle.textContent = '\u2600\uFE0F';
+        } else {
+            document.documentElement.classList.remove('light-mode');
+            themeToggle.textContent = '\uD83C\uDF19';
+        }
+    });
+
     const DATA_LAST_UPDATED = "February 2026";
     const pagesArr = [];
     let noPageMaps = {};
