@@ -65,6 +65,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
+  // Cache-first for chunked article data (immutable content-addressed chunks)
+  if (url.pathname.startsWith('/articles/chunk-') && url.pathname.endsWith('.json')) {
+    event.respondWith(cacheFirst(event.request, DATA_CACHE));
+    return;
+  }
+
+  // Cache-first for chunked article index
+  if (url.pathname === '/articles/index.json') {
+    event.respondWith(staleWhileRevalidate(event.request, DATA_CACHE));
+    return;
+  }
+
   // Runtime cache for thumbnails
   if (url.pathname.startsWith('/thumbs/') || 
       url.hostname === 'upload.wikimedia.org') {
