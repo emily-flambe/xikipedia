@@ -102,7 +102,6 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'GET_CACHE_SIZE') {
     if (!event.ports?.[0]) {
-      console.warn('GET_CACHE_SIZE: No MessagePort provided');
       return;
     }
     getCacheSize().then(size => {
@@ -131,8 +130,8 @@ async function staleWhileRevalidate(request, cacheName) {
         (!oldEtag && !oldModified) // No headers to compare — assume changed
       );
 
-      cache.put(request, response.clone()).catch(err => {
-        console.warn('Cache put failed (quota?):', err.message);
+      cache.put(request, response.clone()).catch(() => {
+        // Cache quota exceeded — silently ignore
       });
 
       // Notify clients that a newer version is available
