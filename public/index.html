@@ -3486,9 +3486,26 @@
         shareBtn.dataset.testid = "share-button";
         shareBtn.setAttribute("aria-label", `Share this article: ${nextPost.title}`);
 
-        shareBtn.onclick = (e) => {
+        shareBtn.onclick = async (e) => {
             e.stopPropagation();
             const shareUrl = `${window.location.origin}${window.location.pathname}?article=${nextPost.id}`;
+
+            // Use Web Share API on supported devices (mobile native share sheet)
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: nextPost.title,
+                        text: `Check out this article: ${nextPost.title}`,
+                        url: shareUrl,
+                    });
+                    return; // User shared or dismissed — either way, done
+                } catch (err) {
+                    // User cancelled or API failed — fall through to clipboard
+                    if (err.name === 'AbortError') return; // User cancelled
+                }
+            }
+
+            // Fallback: copy to clipboard
             navigator.clipboard.writeText(shareUrl)
                 .then(() => {
                     shareBtn.classList.add("copied");
@@ -3499,7 +3516,7 @@
                     }, 2000);
                 })
                 .catch(() => {
-                    // Fallback: show the URL in a prompt
+                    // Last resort: show the URL in a prompt
                     prompt('Copy this link:', shareUrl);
                 });
         };
