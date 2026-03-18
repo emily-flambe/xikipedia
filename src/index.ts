@@ -559,12 +559,6 @@ async function handleLogin(
   return jsonResponse(request, { token, username: user.username });
 }
 
-// Helper to verify user still exists (for deleted user token attacks)
-async function userExists(db: D1Database, userId: number): Promise<boolean> {
-  const user = await db.prepare('SELECT 1 FROM users WHERE id = ?').bind(userId).first();
-  return !!user;
-}
-
 async function handleGetPreferences(
   request: Request,
   env: Env,
@@ -572,11 +566,6 @@ async function handleGetPreferences(
   const payload = await authenticate(request, env.JWT_SECRET, env.DB);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   const prefs = await env.DB.prepare(
@@ -607,11 +596,6 @@ async function handlePutPreferences(
   const payload = await authenticate(request, env.JWT_SECRET, env.DB);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   let body: { categoryScores?: unknown; hiddenCategories?: unknown; algorithmAggressiveness?: unknown };
