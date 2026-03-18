@@ -2594,6 +2594,12 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password })
             });
+            if (resp.status === 401) {
+                localStorage.removeItem('xiki_token');
+                localStorage.removeItem('xiki_username');
+                window.location.reload();
+                return;
+            }
             if (!resp.ok) {
                 const data = await resp.json().catch(() => ({}));
                 alert(data.error || 'Failed to delete account. Please try again.');
@@ -2624,6 +2630,12 @@
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
+            }).then(resp => {
+                if (resp.status === 401) {
+                    localStorage.removeItem('xiki_token');
+                    localStorage.removeItem('xiki_username');
+                    window.location.reload();
+                }
             }).catch(e => { console.error('Failed to save preferences:', e); showErrorToast('Failed to save preferences. Changes may not persist.'); });
         }, 5000);
     }

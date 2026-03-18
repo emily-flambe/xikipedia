@@ -642,6 +642,83 @@ async function handlePutPreferences(
   return jsonResponse(request, { success: true });
 }
 
+async function handleLogout(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  await env.DB.prepare(
+    'UPDATE users SET token_version = token_version + 1 WHERE id = ?',
+  ).bind(payload.sub).run();
+
+  return jsonResponse(request, { success: true });
+}
+
+async function handleChangePassword(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  let body: { currentPassword?: string; newPassword?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(request, 'Invalid JSON body', 400);
+  }
+
+  if (typeof body.currentPassword !== 'string' || !body.currentPassword) {
+    return errorResponse(request, 'currentPassword is required', 400);
+  }
+  if (typeof body.newPassword !== 'string' || !body.newPassword) {
+    return errorResponse(request, 'newPassword is required', 400);
+  }
+  if (body.newPassword.length < MIN_PASSWORD_LENGTH_CHANGE) {
+    return errorResponse(request, `Password must be at least ${MIN_PASSWORD_LENGTH_CHANGE} characters`, 400);
+  }
+  if (body.newPassword.length > MAX_PASSWORD_LENGTH) {
+    return errorResponse(request, 'Password must be at most 256 characters', 400);
+  }
+
+  const user = await env.DB.prepare(
+    'SELECT password_hash, salt FROM users WHERE id = ?',
+  ).bind(payload.sub).first<Pick<UserRow, 'password_hash' | 'salt'>>();
+
+  if (!user) {
+    return errorResponse(request, 'User not found', 404);
+  }
+
+  const salt = new Uint8Array(hexToArrayBuffer(user.salt));
+  const computedHash = await hashPassword(body.currentPassword, salt);
+
+  const changePwRateLimitKey = `changepw_fail:${payload.sub}`;
+  if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    const rl = await atomicIncrement(env.DB, changePwRateLimitKey, 900);
+    if (rl.count > 5) {
+      return rateLimitResponse(request, rl.windowStart, 900);
+    }
+    return errorResponse(request, 'Incorrect password', 403);
+  }
+  await resetRateLimit(env.DB, changePwRateLimitKey);
+
+  const newSalt = generateSalt();
+  const newPasswordHash = await hashPassword(body.newPassword, newSalt);
+  const newSaltHex = arrayBufferToHex(newSalt.buffer as ArrayBuffer);
+
+  await env.DB.prepare(
+    'UPDATE users SET password_hash = ?, salt = ?, token_version = token_version + 1 WHERE id = ?',
+  ).bind(newPasswordHash, newSaltHex, payload.sub).run();
+
+  return jsonResponse(request, { success: true });
+}
+
 async function handleDeleteAccount(
   request: Request,
   env: Env,
@@ -692,73 +769,6 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM preferences WHERE user_id = ?').bind(payload.sub),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
-
-  return jsonResponse(request, { success: true });
-}
-
-async function handleLogout(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
-  if (!payload) {
-    return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  await env.DB.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').bind(payload.sub).run();
-  return jsonResponse(request, { success: true });
-}
-
-async function handleChangePassword(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET, env.DB);
-  if (!payload) {
-    return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  let body: { current_password?: string; new_password?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(request, 'Invalid JSON body', 400);
-  }
-
-  const { current_password, new_password } = body;
-  if (typeof current_password !== 'string' || !current_password) {
-    return errorResponse(request, 'Current password is required', 400);
-  }
-  if (typeof new_password !== 'string' || !new_password || new_password.length < MIN_PASSWORD_LENGTH_CHANGE) {
-    return errorResponse(request, `New password must be at least ${MIN_PASSWORD_LENGTH_CHANGE} characters`, 400);
-  }
-
-  const user = await env.DB.prepare(
-    'SELECT id, password_hash, salt FROM users WHERE id = ?',
-  )
-    .bind(payload.sub)
-    .first<Pick<UserRow, 'id' | 'password_hash' | 'salt'>>();
-
-  if (!user) {
-    return errorResponse(request, 'User not found', 404);
-  }
-
-  const salt = new Uint8Array(hexToArrayBuffer(user.salt));
-  const currentHash = await hashPassword(current_password, salt);
-
-  if (!(await timingSafeEqual(currentHash, user.password_hash))) {
-    return errorResponse(request, 'Current password is incorrect', 401);
-  }
-
-  const newSalt = generateSalt();
-  const newHash = await hashPassword(new_password, newSalt);
-  const newSaltHex = arrayBufferToHex(newSalt.buffer as ArrayBuffer);
-
-  await env.DB.prepare(
-    'UPDATE users SET password_hash = ?, salt = ?, token_version = token_version + 1 WHERE id = ?',
-  )
-    .bind(newHash, newSaltHex, user.id)
-    .run();
 
   return jsonResponse(request, { success: true });
 }

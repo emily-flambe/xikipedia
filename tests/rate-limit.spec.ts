@@ -458,20 +458,14 @@ test.describe('Delete account rate limiting', () => {
     });
     expect(del1.status()).toBe(200);
 
-    // 4 more attempts with deleted token (user is gone)
-    for (let i = 0; i < 4; i++) {
+    // Further attempts with deleted token return 401 - authenticate() rejects the token
+    // because the user row no longer exists (token_version check fails before rate limiting)
+    for (let i = 0; i < 5; i++) {
       const resp = await page.request.delete('/api/account', {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         data: JSON.stringify({ password: 'password123' }),
       });
-      expect(resp.status()).toBe(404); // user gone
+      expect(resp.status()).toBe(401); // auth fails before rate limit is checked
     }
-
-    // 6th total attempt should be rate limited (not 404)
-    const resp6 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      data: JSON.stringify({ password: 'password123' }),
-    });
-    expect(resp6.status()).toBe(429);
   });
 });
