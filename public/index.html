@@ -1787,6 +1787,12 @@
         try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
     }
 
+    // Debug logger — gate all frontend console output behind localStorage.getItem('debug')
+    const dbg = {
+        warn: (...args) => { if (safeGetItem('debug')) dbg.warn(...args); },
+        error: (...args) => { if (safeGetItem('debug')) dbg.error(...args); },
+    };
+
     // Reading history persistence
     function loadViewedHistory() {
         try {
@@ -1951,7 +1957,7 @@
             const savedMood = safeGetItem('xiki_mood_mode');
             if (savedMood) moodMode = savedMood;
         } catch (e) {
-            console.warn('Failed to load category filters:', e);
+            dbg.warn('Failed to load category filters:', e);
             showErrorToast('Failed to load category filters.');
         }
     }
@@ -2097,7 +2103,7 @@
                 }
             }
         } catch (e) {
-            console.warn('Failed to load seen posts:', e);
+            dbg.warn('Failed to load seen posts:', e);
         }
     }
 
@@ -2111,7 +2117,7 @@
                 const ids = [...seenPostIds].slice(-5000);
                 safeSetItem('xiki_seen_posts', JSON.stringify(ids));
             } catch (e) {
-                console.warn('Failed to save seen posts:', e);
+                dbg.warn('Failed to save seen posts:', e);
             }
         }, 1000);
     }
@@ -2135,14 +2141,14 @@
         // Initialize worker with article data
         async init(pagesArrData, initialState) {
             if (typeof Worker === 'undefined') {
-                console.warn('WebWorkers not supported, using fallback');
+                dbg.warn('WebWorkers not supported, using fallback');
                 return false;
             }
 
             try {
                 this.worker = new Worker('/algorithm-worker.js', { type: 'module' });
             } catch (err) {
-                console.warn('Failed to create worker:', err);
+                dbg.warn('Failed to create worker:', err);
                 return false;
             }
             
@@ -2195,7 +2201,7 @@
                 
                 return true;
             } catch (err) {
-                console.warn('Worker init failed:', err);
+                dbg.warn('Worker init failed:', err);
                 this.terminate();
                 return false;
             }
@@ -2351,7 +2357,7 @@
                     break;
 
                 case 'ERROR':
-                    console.error('Worker error:', payload.message);
+                    dbg.error('Worker error:', payload.message);
                     if (requestId) {
                         const pendingReq = this.pendingRequests.get(requestId);
                         if (pendingReq) {
@@ -2366,7 +2372,7 @@
 
         // Private: Handle worker errors
         _handleError(e) {
-            console.error('Worker error event:', e);
+            dbg.error('Worker error event:', e);
             // Reject all pending requests
             for (const [id, { reject, timeout }] of this.pendingRequests) {
                 clearTimeout(timeout);
@@ -2655,7 +2661,7 @@
                 return;
             }
         } catch (e) {
-            console.error('Delete account failed:', e);
+            dbg.error('Delete account failed:', e);
             alert('Failed to delete account. Please try again.');
             return;
         }
@@ -2693,7 +2699,7 @@
                         showErrorToast('Failed to save preferences. Changes may not persist.');
                     }
                 }
-            }).catch(e => { console.error('Failed to save preferences:', e); showErrorToast('Failed to save preferences. Changes may not persist.'); });
+            }).catch(e => { dbg.error('Failed to save preferences:', e); showErrorToast('Failed to save preferences. Changes may not persist.'); });
         }, 5000);
     }
 
@@ -3383,7 +3389,7 @@
         try {
             nextPost = specificPost || await getNextPostAsync();
         } catch (err) {
-            console.error('Failed to get next post:', err);
+            dbg.error('Failed to get next post:', err);
             postCreationInProgress = false;
             return;
         }
@@ -3478,7 +3484,7 @@
                     nextPost.text = text;
                 })
                 .catch(err => {
-                    console.warn('Failed to load article text:', err);
+                    dbg.warn('Failed to load article text:', err);
                     postP.classList.remove("skeleton");
                     postP.classList.add("load-error");
                     postP.removeAttribute("aria-busy");
@@ -3845,7 +3851,7 @@
             try {
                 return await algorithmWorker.getNextPost();
             } catch (err) {
-                console.warn('Worker failed, falling back to module:', err);
+                dbg.warn('Worker failed, falling back to module:', err);
             }
         }
         // Fallback: shared algorithm module (initialized during data load)
@@ -4086,7 +4092,7 @@
             return JSON.parse(new TextDecoder().decode(bytes.subarray(0, responseSize)));
 
         } catch (error) {
-            console.error('Download failed:', error);
+            dbg.error('Download failed:', error);
 
             if (retryCount < MAX_RETRIES) {
                 const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
@@ -4775,7 +4781,7 @@
                 // Worker initialized successfully or fell back to module
             })
             .catch(err => {
-                console.warn('Worker init failed:', err);
+                dbg.warn('Worker init failed:', err);
                 useWorkerAlgorithm = false;
             });
 
@@ -4799,7 +4805,7 @@
             });
             // Fallback algorithm ready
         }).catch(err => {
-            console.warn('Algorithm module load failed, fallback unavailable:', err);
+            dbg.warn('Algorithm module load failed, fallback unavailable:', err);
         });
         
         startBtn.removeAttribute("disabled");
@@ -4814,7 +4820,7 @@
             sharedArticle = pagesArr.find(p => p.id == sharedArticleId);
             if (!sharedArticle) {
                 // Article not found - log warning
-                console.warn('Shared article not found:', sharedArticleId);
+                dbg.warn('Shared article not found:', sharedArticleId);
             }
             // Clear the URL parameter
             window.history.replaceState({}, '', window.location.pathname);
@@ -4851,7 +4857,7 @@
                 startFeed(sharedArticle, !!(sharedArticleId && !sharedArticle));
                 return;
             } catch (e) {
-                console.warn('Failed to load preferences, clearing auth:', e);
+                dbg.warn('Failed to load preferences, clearing auth:', e);
                 safeRemoveItem('xiki_token');
                 safeRemoveItem('xiki_username');
                 // Fall through to normal start screen - reload to show guest UI
@@ -4935,7 +4941,7 @@
                 swRegistration = registration;
                 // SW registered
             })
-            .catch(err => console.error('SW registration failed:', err));
+            .catch(err => dbg.error('SW registration failed:', err));
         
         // Listen for messages from SW
         navigator.serviceWorker.addEventListener('message', event => {
