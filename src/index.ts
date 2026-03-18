@@ -401,6 +401,7 @@ async function authenticate(
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const MIN_PASSWORD_LENGTH = 6;
+const MIN_PASSWORD_LENGTH_CHANGE = 8;
 const MAX_PASSWORD_LENGTH = 256;
 
 function validateRegistration(
@@ -744,8 +745,8 @@ async function handleChangePassword(
   if (typeof current_password !== 'string' || !current_password) {
     return errorResponse(request, 'Current password is required', 400);
   }
-  if (!new_password || new_password.length < MIN_PASSWORD_LENGTH) {
-    return errorResponse(request, `New password must be at least ${MIN_PASSWORD_LENGTH} characters`, 400);
+  if (!new_password || new_password.length < MIN_PASSWORD_LENGTH_CHANGE) {
+    return errorResponse(request, `New password must be at least ${MIN_PASSWORD_LENGTH_CHANGE} characters`, 400);
   }
 
   const user = await env.DB.prepare(
@@ -775,21 +776,7 @@ async function handleChangePassword(
     .bind(newHash, newSaltHex, user.id)
     .run();
 
-  // Fetch the new token_version so we can issue a fresh token
-  const updated = await env.DB.prepare('SELECT token_version FROM users WHERE id = ?')
-    .bind(user.id)
-    .first<{ token_version: number }>();
-  const newToken = await createToken(
-    {
-      sub: payload.sub,
-      username: payload.username,
-      exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
-      token_version: updated?.token_version ?? 1,
-    },
-    env.JWT_SECRET,
-  );
-
-  return jsonResponse(request, { success: true, token: newToken });
+  return jsonResponse(request, { success: true });
 }
 
 // ─── R2 File Serving Helper ──────────────────────────────────────────
