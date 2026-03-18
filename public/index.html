@@ -3451,7 +3451,7 @@
                     postP.classList.remove("skeleton");
                     postP.removeAttribute("aria-busy");
                     postP.innerHTML = ""; // Clear skeleton
-                    postP.innerText = text || "[Article text unavailable]";
+                    postP.innerText = sanitizeWikiText(text) || "[Article text unavailable]";
                     // Cache the text on the article object for future reference
                     nextPost.text = text;
                 })
@@ -3494,13 +3494,13 @@
         // Handle text loading (supports both simple and chunked formats)
         if (nextPost.text) {
             // Text already loaded (simple format or cached chunk)
-            postP.innerText = nextPost.text;
+            postP.innerText = sanitizeWikiText(nextPost.text);
         } else if (isChunkedFormat && nextPost.chunkId !== undefined && chunkFetcher) {
             // Chunked format: show skeleton and fetch on demand
             fetchChunkedText();
         } else {
             // Fallback
-            postP.innerText = nextPost.text || "";
+            postP.innerText = sanitizeWikiText(nextPost.text) || "";
         }
         
         postYes.dataset.testid = "like-button";
@@ -3930,6 +3930,24 @@
         check.dataset.category = cat;
         if (checked) check.checked = true;
         categoryPickList.appendChild(picker);
+    }
+
+    // Clean raw Wikipedia markup from article text
+    function sanitizeWikiText(text) {
+        if (!text) return text;
+        return text
+            // Remove <ref>...</ref> tags and self-closing <ref ... />
+            .replace(/<ref[^>]*\/>/gi, '')
+            .replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, '')
+            // Remove {{template}} markup (non-greedy, handles nested braces poorly but covers common cases)
+            .replace(/\{\{[^{}]*\}\}/g, '')
+            // Remove leftover <ref> opening tags without closing (malformed)
+            .replace(/<ref[^>]*>/gi, '')
+            // Remove other common HTML-like tags that leak through
+            .replace(/<\/?(?:br|sup|sub|small|big|nowiki|gallery|imagemap|poem|source|syntaxhighlight|math|chem|score|categorytree|hiero|inputbox|timeline|templatestyles|mapframe|maplink|references|includeonly|noinclude|onlyinclude)\b[^>]*\/?>/gi, '')
+            // Collapse multiple spaces and trim
+            .replace(/\s{2,}/g, ' ')
+            .trim();
     }
 
     // Stream reader helper
