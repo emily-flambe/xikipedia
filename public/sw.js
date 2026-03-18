@@ -120,9 +120,16 @@ async function staleWhileRevalidate(request, cacheName) {
   const fetchPromise = fetch(request).then(async (response) => {
     if (response.ok) {
       // Check if the content actually changed before notifying
-      const hasChanged = cachedResponse && 
-        cachedResponse.headers.get('etag') !== response.headers.get('etag') &&
-        cachedResponse.headers.get('last-modified') !== response.headers.get('last-modified');
+      const oldEtag = cachedResponse?.headers.get('etag');
+      const newEtag = response.headers.get('etag');
+      const oldModified = cachedResponse?.headers.get('last-modified');
+      const newModified = response.headers.get('last-modified');
+      // Content changed if we had a cached version and any available header differs
+      const hasChanged = cachedResponse && (
+        (oldEtag && newEtag && oldEtag !== newEtag) ||
+        (oldModified && newModified && oldModified !== newModified) ||
+        (!oldEtag && !oldModified) // No headers to compare — assume changed
+      );
 
       cache.put(request, response.clone()).catch(err => {
         console.warn('Cache put failed (quota?):', err.message);
