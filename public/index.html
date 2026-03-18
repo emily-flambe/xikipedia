@@ -2630,7 +2630,12 @@
         return {};
     }
 
-    function logout() {
+    async function logout() {
+        try {
+            if (isLoggedIn()) {
+                await fetch('/api/logout', { method: 'POST', headers: getAuthHeaders() });
+            }
+        } catch (_) {}
         safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
@@ -2650,6 +2655,12 @@
                 body: JSON.stringify({ password })
             });
             if (!resp.ok) {
+                if (resp.status === 401) {
+                    safeRemoveItem('xiki_token');
+                    safeRemoveItem('xiki_username');
+                    window.location.reload();
+                    return;
+                }
                 const data = await resp.json().catch(() => ({}));
                 alert(data.error || 'Failed to delete account. Please try again.');
                 return;
@@ -2685,10 +2696,11 @@
             }).then(resp => {
                 if (!resp.ok) {
                     if (resp.status === 401) {
-                        // Token expired or invalid — clear auth and notify user
+                        // Token expired or invalid — clear auth and reload to show login
                         safeRemoveItem('xiki_token');
                         safeRemoveItem('xiki_username');
-                        showErrorToast('Session expired. Please log in again to save preferences.');
+                        window.location.reload();
+                        return;
                     } else {
                         showErrorToast('Failed to save preferences. Changes may not persist.');
                     }
@@ -4826,7 +4838,15 @@
                 const prefsResp = await fetch('/api/preferences', {
                     headers: getAuthHeaders()
                 });
-                if (!prefsResp.ok) throw new Error('Failed to load preferences');
+                if (!prefsResp.ok) {
+                    if (prefsResp.status === 401) {
+                        safeRemoveItem('xiki_token');
+                        safeRemoveItem('xiki_username');
+                        window.location.reload();
+                        return;
+                    }
+                    throw new Error('Failed to load preferences');
+                }
                 const prefs = await prefsResp.json();
 
                 // Apply saved categoryScores (merge, preserving defaults like given names: -1000)

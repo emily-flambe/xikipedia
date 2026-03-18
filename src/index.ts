@@ -19,6 +19,7 @@ interface UserRow {
   password_hash: string;
   salt: string;
   created_at: string;
+  token_version: number;
 }
 
 interface PreferencesRow {
@@ -33,6 +34,7 @@ interface TokenPayload {
   sub: number;
   username: string;
   exp: number;
+  token_version: number;
 }
 
 // ─── Database Initialization ─────────────────────────────────────────
@@ -72,6 +74,14 @@ async function ensureTables(db: D1Database): Promise<void> {
     if (!msg.includes('duplicate column')) {
       throw e; // Re-throw unexpected errors
     }
+  }
+  // Schema migration: add token_version column (safe if already exists)
+  try {
+    await db.prepare(
+      'ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1',
+    ).run();
+  } catch (e: unknown) {
+    if (!(e instanceof Error) || !e.message.includes('duplicate column name')) throw e;
   }
   tablesInitialized = true;
 }
@@ -380,12 +390,24 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
 
 async function authenticate(
   request: Request,
-  secret: string,
+  env: Env,
 ): Promise<TokenPayload | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
-  return verifyToken(token, secret);
+  const payload = await verifyToken(token, env.JWT_SECRET);
+  if (!payload) return null;
+  // Verify token_version matches DB (invalidates tokens after logout)
+  let dbUser: { token_version: number } | null;
+  try {
+    dbUser = await env.DB.prepare('SELECT token_version FROM users WHERE id = ?')
+      .bind(payload.sub)
+      .first<{ token_version: number }>();
+  } catch {
+    return null;
+  }
+  if (!dbUser || payload.token_version !== dbUser.token_version) return null;
+  return payload;
 }
 
 // ─── Validation ──────────────────────────────────────────────────────
@@ -463,6 +485,7 @@ async function handleRegister(
         sub: userId,
         username,
         exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+        token_version: 1,
       },
       env.JWT_SECRET,
     );
@@ -498,7 +521,7 @@ async function handleLogin(
   }
 
   const user = await env.DB.prepare(
-    'SELECT id, username, password_hash, salt FROM users WHERE username = ?',
+    'SELECT id, username, password_hash, salt, token_version FROM users WHERE username = ?',
   )
     .bind(body.username)
     .first<UserRow>();
@@ -536,6 +559,7 @@ async function handleLogin(
       sub: user.id,
       username: user.username,
       exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+      token_version: user.token_version,
     },
     env.JWT_SECRET,
   );
@@ -553,7 +577,7 @@ async function handleGetPreferences(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
   }
@@ -588,7 +612,7 @@ async function handlePutPreferences(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
   }
@@ -646,7 +670,7 @@ async function handleDeleteAccount(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
   }
@@ -692,6 +716,20 @@ async function handleDeleteAccount(
     env.DB.prepare('DELETE FROM preferences WHERE user_id = ?').bind(payload.sub),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(payload.sub),
   ]);
+
+  return jsonResponse(request, { success: true });
+}
+
+async function handleLogout(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const payload = await authenticate(request, env);
+  if (!payload) return errorResponse(request, 'Unauthorized', 401);
+
+  await env.DB.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?')
+    .bind(payload.sub)
+    .run();
 
   return jsonResponse(request, { success: true });
 }
@@ -831,6 +869,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request, env);
         }
 
         return errorResponse(request, 'Not found', 404);
