@@ -3373,13 +3373,15 @@
         postTitle.innerText = nextPost.title;
         
         // Helper function to fetch text for chunked format (supports retry)
+        const MAX_CHUNK_RETRIES = 3;
+        let chunkRetryCount = 0;
         const fetchChunkedText = () => {
             // Reset to skeleton state
             postP.className = '';
             postP.classList.add("skeleton");
             postP.setAttribute("aria-busy", "true");
             postP.innerHTML = ""; // Clear any previous content
-            
+
             chunkFetcher.getArticleText(nextPost.id, nextPost.chunkId)
                 .then(text => {
                     postP.classList.remove("skeleton");
@@ -3395,25 +3397,33 @@
                     postP.classList.add("load-error");
                     postP.removeAttribute("aria-busy");
                     postP.innerHTML = ""; // Clear any previous content
-                    
-                    // Create error message with retry button
+
                     const errorText = document.createElement("span");
                     errorText.classList.add("error-text");
-                    errorText.innerText = "Failed to load article text";
-                    
-                    const retryBtn = document.createElement("button");
-                    retryBtn.classList.add("retry-btn");
-                    retryBtn.innerText = "Retry";
-                    retryBtn.setAttribute("aria-label", "Retry loading article text");
-                    retryBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        retryBtn.disabled = true;
-                        postP.classList.remove("load-error");
-                        fetchChunkedText(); // Recursively retry
-                    };
-                    
-                    postP.appendChild(errorText);
-                    postP.appendChild(retryBtn);
+
+                    if (chunkRetryCount >= MAX_CHUNK_RETRIES) {
+                        // Max retries reached — show permanent error, no retry button
+                        errorText.innerText = "Unable to load article. Please try again later.";
+                        postP.appendChild(errorText);
+                    } else {
+                        // Create error message with retry button
+                        errorText.innerText = "Failed to load article text";
+
+                        const retryBtn = document.createElement("button");
+                        retryBtn.classList.add("retry-btn");
+                        retryBtn.innerText = "Retry";
+                        retryBtn.setAttribute("aria-label", "Retry loading article text");
+                        retryBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            retryBtn.disabled = true;
+                            chunkRetryCount++;
+                            postP.classList.remove("load-error");
+                            fetchChunkedText();
+                        };
+
+                        postP.appendChild(errorText);
+                        postP.appendChild(retryBtn);
+                    }
                 });
         };
         
