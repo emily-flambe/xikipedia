@@ -3361,9 +3361,8 @@
 
     // Create and render a post element
     async function createNextPost(specificPost = null) {
-        // Prevent rapid duplicate calls
+        // Prevent concurrent calls
         if (postCreationInProgress && !specificPost) {
-            pendingPostCreation = true;
             return;
         }
 
@@ -3828,14 +3827,13 @@
         
         // Post creation complete
         postCreationInProgress = false;
-        
-        // If another request came in while we were working, handle it
-        if (pendingPostCreation) {
-            pendingPostCreation = false;
-            // Check if we still need more posts
-            if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-                createNextPost();
-            }
+
+        // Re-check if more posts are needed. IntersectionObserver only fires on
+        // state transitions, so if the sentinel remained intersecting throughout
+        // creation (common on initial load / after refresh), we must poll here.
+        const sentinel = document.getElementById('scroll-sentinel');
+        if (sentinel && sentinel.getBoundingClientRect().top < window.innerHeight + 1500) {
+            createNextPost();
         }
     }
 
@@ -3855,9 +3853,8 @@
         throw new Error('Algorithm not ready: worker unavailable and fallback not initialized');
     }
 
-    // Post creation queue to prevent rapid duplicate calls
+    // Post creation guard to prevent concurrent calls
     let postCreationInProgress = false;
-    let pendingPostCreation = false;
 
     // === DOM Pruning for infinite scroll performance ===
     const MAX_POSTS = 50;
@@ -3915,27 +3912,21 @@
         }
     }
 
-    // Scroll-driven post creation (replaces perpetual rAF loop)
-    let renderScheduled = false;
+    // IntersectionObserver-based post creation
+    const scrollSentinel = document.createElement('div');
+    scrollSentinel.id = 'scroll-sentinel';
+    scrollSentinel.setAttribute('aria-hidden', 'true');
+    scrollSentinel.style.height = '1px';
+    document.querySelector('.posts').after(scrollSentinel);
 
-    function scheduleRender() {
-        if (renderScheduled) return;
-        renderScheduled = true;
-        requestAnimationFrame(render);
-    }
-
-    function render() {
-        renderScheduled = false;
-        pruneOffscreenPosts();
-        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+    const feedObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
             createNextPost();
-            // Keep rendering while we need more posts (e.g. initial load)
-            scheduleRender();
         }
-    }
+    }, { rootMargin: '0px 0px 1500px 0px' });
+    feedObserver.observe(scrollSentinel);
 
-    window.addEventListener('scroll', scheduleRender, { passive: true });
-    window.addEventListener('resize', scheduleRender, { passive: true });
+    window.addEventListener('scroll', pruneOffscreenPosts, { passive: true });
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
@@ -4138,9 +4129,12 @@
             fallbackAlgorithm.reset();
         }
         
+        // Reset post creation state so in-flight calls don't append stale posts
+        postCreationInProgress = false;
+
         // Scroll to top and trigger post creation
         window.scrollTo(0, 0);
-        scheduleRender();
+        createNextPost();
     }
 
     // Pull-to-refresh state
@@ -4598,7 +4592,7 @@
         if (articleNotFound) {
             showErrorToast('Article not found. Showing your feed instead.');
         }
-        scheduleRender();
+        createNextPost();
     }
 
     // Main initialization
