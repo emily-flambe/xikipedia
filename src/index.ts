@@ -36,7 +36,7 @@ interface TokenPayload {
   sub: number;
   username: string;
   exp: number;
-  token_version: number;
+  token_version?: number; // optional for legacy tokens issued before revocation support
 }
 
 // ─── Database Initialization ─────────────────────────────────────────

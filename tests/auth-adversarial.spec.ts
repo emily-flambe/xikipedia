@@ -1669,10 +1669,10 @@ test.describe('token_version in JWT payload', () => {
     expect(version2).toBeGreaterThan(version1);
   });
 
-  test('crafted token with no token_version field (legacy) is rejected AFTER logout', async ({ page }) => {
-    // After logout, DB version becomes 2. A token without token_version defaults
-    // to 1 in authenticate(). 1 !== 2, so it should be rejected.
-    // This tests that the legacy fallback doesn't bypass revocation.
+  test('token with original token_version is rejected after logout (version mismatch)', async ({ page }) => {
+    // After logout, DB version increments from 1 to 2.
+    // The original token still has token_version=1, so authenticate() rejects it.
+    // This also covers legacy tokens (no token_version field) which default to 1 via ?? fallback.
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -1689,10 +1689,7 @@ test.describe('token_version in JWT payload', () => {
       headers: { Authorization: `Bearer ${realToken}` },
     });
 
-    // Now craft a token without token_version — this will be treated as version 1
-    // by the server's `?? 1` fallback. DB is now 2. Should be rejected.
-    // We can't forge a valid HMAC signature, so we verify via the real token
-    // which also has token_version=1. After logout DB=2, so token with version=1 is rejected.
+    // The original token has token_version=1, DB is now 2 — rejected
     const afterResp = await page.request.get('/api/preferences', {
       headers: { Authorization: `Bearer ${realToken}` },
     });
