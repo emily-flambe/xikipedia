@@ -2636,7 +2636,21 @@
         return {};
     }
 
-    function logout() {
+    async function logout() {
+        try {
+            await fetch('/api/logout', {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
+        } catch (_) {
+            // Network failure — proceed with local logout anyway
+        }
+        safeRemoveItem('xiki_token');
+        safeRemoveItem('xiki_username');
+        window.location.reload();
+    }
+
+    function handle401() {
         safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
@@ -2692,8 +2706,7 @@
                 if (!resp.ok) {
                     if (resp.status === 401) {
                         // Token expired or invalid — clear auth and notify user
-                        safeRemoveItem('xiki_token');
-                        safeRemoveItem('xiki_username');
+                        handle401();
                         showErrorToast('Session expired. Please log in again to save preferences.');
                     } else {
                         showErrorToast('Failed to save preferences. Changes may not persist.');
@@ -4858,10 +4871,7 @@
                 return;
             } catch (e) {
                 dbg.warn('Failed to load preferences, clearing auth:', e);
-                safeRemoveItem('xiki_token');
-                safeRemoveItem('xiki_username');
-                // Fall through to normal start screen - reload to show guest UI
-                window.location.reload();
+                handle401();
                 return;
             }
         }
