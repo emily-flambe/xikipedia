@@ -100,7 +100,9 @@ async function mockSmoldata(page: Page) {
   });
 
   // Intercept the network request so it never hits R2.
-  await page.route('**/smoldata.json', (route) =>
+  // Use context.route() instead of page.route() so the mock also intercepts
+  // requests made by the service worker (page.route() does not intercept SW requests).
+  await page.context().route('**/smoldata.json', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -740,8 +742,7 @@ test.describe('Logout', () => {
 // =========================================================================
 
 test.describe('Account deletion', () => {
-  // Skip: page.reload() has SW cache interference in CI
-  test.skip('deleting account clears auth and prevents re-login', async ({ page }) => {
+  test('deleting account clears auth and prevents re-login', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
 
@@ -807,8 +808,7 @@ test.describe('Account deletion', () => {
     });
   });
 
-  // Skip: page.reload() has SW cache interference in CI
-  test.skip('cancel on confirm dialog does NOT delete account', async ({ page }) => {
+  test('cancel on confirm dialog does NOT delete account', async ({ page }) => {
     const user = uniqueUser();
     const password = 'password123';
 
@@ -855,6 +855,75 @@ test.describe('Account deletion', () => {
       headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.ok()).toBe(true);
+  });
+});
+
+// =========================================================================
+// OFFLINE BEHAVIOR
+// =========================================================================
+
+test.describe('Offline behavior', () => {
+  test('offline: preferences API failure clears auth and shows guest mode', async ({ page }) => {
+    const user = uniqueUser();
+    const password = 'password123';
+
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, password);
+
+    // Set auth in localStorage so the app tries to load preferences on reload
+    await page.evaluate(
+      ({ token, user }) => {
+        localStorage.setItem('xiki_token', token);
+        localStorage.setItem('xiki_username', user);
+      },
+      { token, user },
+    );
+
+    // Simulate offline: abort preferences API requests.
+    // Use context.route() (not page.route()) so SW-originated fetches are also intercepted —
+    // the app's service worker forwards API requests to the network, and page.route()
+    // does not intercept requests initiated by the service worker.
+    await page.context().route('**/api/preferences', (route) => route.abort('failed'));
+
+    await page.reload();
+
+    // After preferences fail, the app removes auth and reloads to guest mode.
+    // Auth tabs (.auth-tab[data-tab="guest"]) are only visible in guest mode —
+    // when logged in, the auth section is replaced with a "Welcome back" message.
+    // Waiting for auth tabs confirms the second (guest-mode) reload is complete.
+    await expect(page.locator('.auth-tab[data-tab="guest"]')).toBeVisible({ timeout: 20000 });
+
+    // Auth should be cleared from localStorage
+    const tokenAfter = await page.evaluate(() => localStorage.getItem('xiki_token'));
+    expect(tokenAfter).toBeNull();
+  });
+
+  test('offline: offline indicator appears when network becomes unavailable', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Start the feed as a guest
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+
+    // Offline indicator should not be visible initially
+    const offlineIndicator = page.locator('[data-testid="offlineIndicator"]');
+    await expect(offlineIndicator).not.toHaveClass(/visible/);
+
+    // Simulate going offline using context.setOffline(true)
+    await page.context().setOffline(true);
+
+    // Offline indicator should become visible
+    await expect(offlineIndicator).toHaveClass(/visible/, { timeout: 5000 });
+
+    // Restore connection — indicator should hide
+    await page.context().setOffline(false);
+    await expect(offlineIndicator).not.toHaveClass(/visible/, { timeout: 5000 });
   });
 });
 
@@ -913,23 +982,21 @@ test.describe('API edge cases', () => {
     expect(resp.status()).toBe(400);
   });
 
-  // NOTE: This test is flaky because Playwright may serialize the data differently.
-  // The API correctly returns 400 when tested directly. Skipping for now.
-  test.skip('PUT /api/preferences with invalid JSON returns 400', async ({ page }) => {
+  test('PUT /api/preferences with invalid JSON returns 400', async ({ page }) => {
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
 
     const { token } = await apiRegister(page, user, 'password123');
 
-    // Use failOnStatusCode: false to get the response even on error status
+    // Send raw bytes to prevent Playwright from re-serializing the string as JSON
     const resp = await page.request.fetch('/api/preferences', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      data: '{invalid json{{',
+      data: Buffer.from('{invalid json{{'),
       failOnStatusCode: false,
     });
     expect(resp.status()).toBe(400);
@@ -1067,9 +1134,9 @@ test.describe('API edge cases', () => {
     expect(body.error).toContain('at least 6');
   });
 
-  // Known flaky test - noted in TOOLS.md
-  test.skip('register with username of exactly 3 characters succeeds', async ({ page }) => {
-    const user = `t${Date.now().toString(36).slice(-2)}`;
+  test('register with username of exactly 3 characters succeeds', async ({ page }) => {
+    // Use random suffix (not timestamp) to avoid collisions when tests run concurrently
+    const user = `t${Math.random().toString(36).slice(2, 4).padEnd(2, '0')}`;
     await mockSmoldata(page);
     await page.goto('/');
 
