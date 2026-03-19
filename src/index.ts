@@ -356,7 +356,8 @@ function getCorsHeaders(request: Request): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Credentials': 'true',
   };
 }
 
@@ -393,14 +394,35 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
 
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
+function getTokenFromCookies(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
+  for (const cookie of cookieHeader.split(';')) {
+    const [name, ...rest] = cookie.trim().split('=');
+    if (name.trim() === 'xiki_token') return rest.join('=').trim();
+  }
+  return null;
+}
+
+function authCookieHeader(token: string, request?: Request): string {
+  const maxAge = 30 * 24 * 60 * 60;
+  const secure = !request || new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `xiki_token=${token}; HttpOnly${secure}; SameSite=Strict; Max-Age=${maxAge}; Path=/api`;
+}
+
+function clearAuthCookieHeader(request?: Request): string {
+  const secure = !request || new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `xiki_token=; HttpOnly${secure}; SameSite=Strict; Max-Age=0; Path=/api`;
+}
+
 async function authenticate(
   request: Request,
   env: Env,
 ): Promise<TokenPayload | null> {
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.substring(7);
-  const payload = await verifyToken(token, env.JWT_SECRET);
+  const cookieToken = getTokenFromCookies(request);
+  if (!cookieToken) return null;
+
+  const payload = await verifyToken(cookieToken, env.JWT_SECRET);
   if (!payload) return null;
 
   // Verify token_version matches DB to support revocation
@@ -504,7 +526,15 @@ async function handleRegister(
     );
 
     logger.info('auth.register.success', { username, userId });
-    return jsonResponse(request, { token, username }, 201);
+    const resp = new Response(JSON.stringify({ username }), {
+      status: 201,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getCorsHeaders(request),
+        'Set-Cookie': authCookieHeader(token, request),
+      },
+    });
+    return resp;
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
@@ -585,7 +615,27 @@ async function handleLogin(
   );
 
   logger.info('auth.login.success', { username: user.username, userId: user.id });
-  return jsonResponse(request, { token, username: user.username });
+  const resp = new Response(JSON.stringify({ username: user.username }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders(request),
+      'Set-Cookie': authCookieHeader(token, request),
+    },
+  });
+  return resp;
+}
+
+
+
+async function handleMe(
+  request: Request,
+  env: Env,
+  _logger: Logger,
+): Promise<Response> {
+  const payload = await authenticate(request, env);
+  if (!payload) return errorResponse(request, 'Unauthorized', 401);
+  return jsonResponse(request, { username: payload.username, userId: payload.sub });
 }
 
 async function handleGetPreferences(
@@ -729,7 +779,14 @@ async function handleDeleteAccount(
   ]);
 
   logger.info('auth.delete.success', { userId: payload.sub, username: payload.username });
-  return jsonResponse(request, { success: true });
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders(request),
+      'Set-Cookie': clearAuthCookieHeader(request),
+    },
+  });
 }
 
 async function handleLogout(
@@ -747,7 +804,14 @@ async function handleLogout(
   ).bind(payload.sub).run();
 
   logger.info('auth.logout.success', { userId: payload.sub, username: payload.username });
-  return jsonResponse(request, { success: true });
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders(request),
+      'Set-Cookie': clearAuthCookieHeader(request),
+    },
+  });
 }
 
 async function handleChangePassword(
@@ -943,6 +1007,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           return await handleLogin(request, env, logger);
         }
 
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request, env, logger);
+        }
+
+        if (url.pathname === '/api/me' && request.method === 'GET') {
+          return await handleMe(request, env, logger);
+        }
+
         if (url.pathname === '/api/preferences' && request.method === 'GET') {
           return await handleGetPreferences(request, env, logger);
         }
@@ -953,10 +1025,6 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env, logger);
-        }
-
-        if (url.pathname === '/api/logout' && request.method === 'POST') {
-          return await handleLogout(request, env, logger);
         }
 
         if (url.pathname === '/api/password' && request.method === 'POST') {

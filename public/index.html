@@ -1787,6 +1787,9 @@
         try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
     }
 
+    // Migrate: clear legacy token from localStorage (now stored as httpOnly cookie)
+    safeRemoveItem('xiki_token');
+
     // Debug logger — gate all frontend console output behind localStorage.getItem('debug')
     const dbg = {
         warn: (...args) => { if (safeGetItem('debug')) console.warn(...args); },
@@ -2623,35 +2626,24 @@
     // ============================================
 
     function isLoggedIn() {
-        return !!safeGetItem('xiki_token');
+        return !!safeGetItem('xiki_username');
     }
 
     function currentUser() {
         return safeGetItem('xiki_username') || null;
     }
 
-    function getAuthHeaders() {
-        const token = safeGetItem('xiki_token');
-        if (token) return { 'Authorization': 'Bearer ' + token };
-        return {};
-    }
-
     async function logout() {
         try {
-            await fetch('/api/logout', {
-                method: 'POST',
-                headers: getAuthHeaders()
-            });
+            await fetch('/api/logout', { method: 'POST', credentials: 'include' });
         } catch (_) {
             // Network failure — proceed with local logout anyway
         }
-        safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
 
     function handle401() {
-        safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
@@ -2663,10 +2655,8 @@
         try {
             const resp = await fetch('/api/account', {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password })
             });
             if (!resp.ok) {
@@ -2679,7 +2669,6 @@
             alert('Failed to delete account. Please try again.');
             return;
         }
-        safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
@@ -2697,15 +2686,12 @@
             };
             fetch('/api/preferences', {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             }).then(resp => {
                 if (!resp.ok) {
                     if (resp.status === 401) {
-                        // Token expired or invalid — clear auth and notify user
                         handle401();
                         showErrorToast('Session expired. Please log in again to save preferences.');
                     } else {
@@ -2816,6 +2802,7 @@
         try {
             const resp = await fetch('/api/login', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -2826,7 +2813,6 @@
                 btn.textContent = 'Log in';
                 return;
             }
-            safeSetItem('xiki_token', data.token);
             safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -2859,6 +2845,7 @@
         try {
             const resp = await fetch('/api/register', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -2869,7 +2856,6 @@
                 btn.textContent = 'Create account';
                 return;
             }
-            safeSetItem('xiki_token', data.token);
             safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -2890,7 +2876,7 @@
     };
 
     // Logout and delete account buttons
-    document.getElementById('logoutBtn').onclick = logout;
+    document.getElementById('logoutBtn').onclick = () => logout();
     document.getElementById('deleteAccountBtn').onclick = deleteAccount;
 
     // Recursive category expansion with memoization
@@ -4839,12 +4825,24 @@
             window.history.replaceState({}, '', window.location.pathname);
         }
 
-        // If logged in, load saved preferences and auto-start
+        // If logged in, verify session is still valid then load saved preferences and auto-start
+        if (isLoggedIn()) {
+            // Verify session is still valid (handles stale localStorage state)
+            try {
+                const meResp = await fetch('/api/me', { credentials: 'include' });
+                if (!meResp.ok) {
+                    safeRemoveItem('xiki_token');
+                    safeRemoveItem('xiki_username');
+                    // Don't reload - just proceed as logged out
+                }
+            } catch (e) {
+                // Network error - proceed optimistically
+            }
+        }
+
         if (isLoggedIn()) {
             try {
-                const prefsResp = await fetch('/api/preferences', {
-                    headers: getAuthHeaders()
-                });
+                const prefsResp = await fetch('/api/preferences', { credentials: 'include' });
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
                 const prefs = await prefsResp.json();
 
