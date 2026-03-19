@@ -1787,6 +1787,9 @@
         try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
     }
 
+    // Migrate old localStorage-based auth: clear any stale token (sessions now use httpOnly cookies)
+    safeRemoveItem('xiki_token');
+
     // Debug logger — gate all frontend console output behind localStorage.getItem('debug')
     const dbg = {
         warn: (...args) => { if (safeGetItem('debug')) console.warn(...args); },
@@ -2623,7 +2626,7 @@
     // ============================================
 
     function isLoggedIn() {
-        return !!safeGetItem('xiki_token');
+        return !!safeGetItem('xiki_username');
     }
 
     function currentUser() {
@@ -2631,13 +2634,11 @@
     }
 
     function getAuthHeaders() {
-        const token = safeGetItem('xiki_token');
-        if (token) return { 'Authorization': 'Bearer ' + token };
         return {};
     }
 
-    function logout() {
-        safeRemoveItem('xiki_token');
+    async function logout() {
+        try { await fetch('/api/logout', { method: 'POST', credentials: 'include' }); } catch {}
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
@@ -2649,6 +2650,7 @@
         try {
             const resp = await fetch('/api/account', {
                 method: 'DELETE',
+                credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json',
                     ...getAuthHeaders()
@@ -2665,7 +2667,6 @@
             alert('Failed to delete account. Please try again.');
             return;
         }
-        safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
@@ -2683,6 +2684,7 @@
             };
             fetch('/api/preferences', {
                 method: 'PUT',
+                credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json',
                     ...getAuthHeaders()
@@ -2692,7 +2694,6 @@
                 if (!resp.ok) {
                     if (resp.status === 401) {
                         // Token expired or invalid — clear auth and notify user
-                        safeRemoveItem('xiki_token');
                         safeRemoveItem('xiki_username');
                         showErrorToast('Session expired. Please log in again to save preferences.');
                     } else {
@@ -2803,6 +2804,7 @@
         try {
             const resp = await fetch('/api/login', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -2813,7 +2815,6 @@
                 btn.textContent = 'Log in';
                 return;
             }
-            safeSetItem('xiki_token', data.token);
             safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -2846,6 +2847,7 @@
         try {
             const resp = await fetch('/api/register', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -2856,7 +2858,6 @@
                 btn.textContent = 'Create account';
                 return;
             }
-            safeSetItem('xiki_token', data.token);
             safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -4830,6 +4831,7 @@
         if (isLoggedIn()) {
             try {
                 const prefsResp = await fetch('/api/preferences', {
+                    credentials: 'include',
                     headers: getAuthHeaders()
                 });
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
@@ -4858,7 +4860,6 @@
                 return;
             } catch (e) {
                 dbg.warn('Failed to load preferences, clearing auth:', e);
-                safeRemoveItem('xiki_token');
                 safeRemoveItem('xiki_username');
                 // Fall through to normal start screen - reload to show guest UI
                 window.location.reload();

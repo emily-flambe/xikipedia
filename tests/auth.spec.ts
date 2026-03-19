@@ -161,6 +161,29 @@ async function injectAuth(
   // then use addInitScript or evaluate. Easier: use page.goto + evaluate.
 }
 
+/** Inject auth credentials as a cookie into the browser context. */
+async function injectAuthCookie(
+  page: Page,
+  token: string,
+  username: string,
+): Promise<void> {
+  const baseURL = page.url() || 'http://localhost';
+  const url = new URL(baseURL);
+  await page.context().addCookies([{
+    name: 'xiki_auth_token',
+    value: token,
+    domain: url.hostname,
+    path: '/',
+    httpOnly: true,
+    secure: false,
+    sameSite: 'Strict',
+  }]);
+  await page.evaluate(
+    (u) => { localStorage.setItem('xiki_username', u); },
+    username,
+  );
+}
+
 /** Navigate to the app with smoldata mocked and wait until ready. */
 async function gotoReady(page: Page) {
   await mockSmoldata(page);
@@ -750,14 +773,7 @@ test.describe('Account deletion', () => {
     await page.goto('/');
 
     const { token } = await apiRegister(page, user, password);
-
-    await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
-        localStorage.setItem('xiki_username', user);
-      },
-      { token, user },
-    );
+    await injectAuthCookie(page, token, user);
 
     await page.reload();
 
@@ -789,11 +805,11 @@ test.describe('Account deletion', () => {
     // After reload, should be back to guest start screen
     await expect(page.locator('#startScreen')).toBeVisible({ timeout: 30000 });
 
-    // Token should be cleared
-    const tokenAfter = await page.evaluate(() =>
-      localStorage.getItem('xiki_token'),
+    // Username should be cleared
+    const usernameAfter = await page.evaluate(() =>
+      localStorage.getItem('xiki_username'),
     );
-    expect(tokenAfter).toBeNull();
+    expect(usernameAfter).toBeNull();
 
     // Now try to log in with the deleted credentials - should fail
     const startBtn = page.locator('[data-testid="start-button"]');
@@ -816,14 +832,7 @@ test.describe('Account deletion', () => {
     await page.goto('/');
 
     const { token } = await apiRegister(page, user, password);
-
-    await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
-        localStorage.setItem('xiki_username', user);
-      },
-      { token, user },
-    );
+    await injectAuthCookie(page, token, user);
 
     await page.reload();
 
@@ -843,11 +852,11 @@ test.describe('Account deletion', () => {
     // We should still be on the feed (no reload)
     await expect(page.locator('[data-testid="post"]').first()).toBeVisible();
 
-    // Token should still be present
-    const tokenStill = await page.evaluate(() =>
-      localStorage.getItem('xiki_token'),
+    // Username should still be present
+    const usernameStill = await page.evaluate(() =>
+      localStorage.getItem('xiki_username'),
     );
-    expect(tokenStill).not.toBeNull();
+    expect(usernameStill).not.toBeNull();
 
     // Verify the account still exists by trying to login via API
     const loginResp = await page.request.post('/api/login', {
@@ -871,15 +880,7 @@ test.describe('Offline behavior', () => {
     await page.goto('/');
 
     const { token } = await apiRegister(page, user, password);
-
-    // Set auth in localStorage so the app tries to load preferences on reload
-    await page.evaluate(
-      ({ token, user }) => {
-        localStorage.setItem('xiki_token', token);
-        localStorage.setItem('xiki_username', user);
-      },
-      { token, user },
-    );
+    await injectAuthCookie(page, token, user);
 
     // Simulate offline: abort preferences API requests.
     // Use context.route() (not page.route()) so SW-originated fetches are also intercepted —
@@ -896,8 +897,8 @@ test.describe('Offline behavior', () => {
     await expect(page.locator('.auth-tab[data-tab="guest"]')).toBeVisible({ timeout: 20000 });
 
     // Auth should be cleared from localStorage
-    const tokenAfter = await page.evaluate(() => localStorage.getItem('xiki_token'));
-    expect(tokenAfter).toBeNull();
+    const usernameAfter = await page.evaluate(() => localStorage.getItem('xiki_username'));
+    expect(usernameAfter).toBeNull();
   });
 
   test('offline: offline indicator appears when network becomes unavailable', async ({ page }) => {

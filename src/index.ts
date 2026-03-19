@@ -337,6 +337,35 @@ const ALLOWED_ORIGINS = [
   'https://xikipedia.emily-cogsdill.workers.dev',
 ];
 
+const AUTH_COOKIE_NAME = 'xiki_auth_token';
+
+function setAuthCookieHeader(token: string, secure: boolean): string {
+  const secureAttr = secure ? '; Secure' : '';
+  return `${AUTH_COOKIE_NAME}=${token}; HttpOnly${secureAttr}; SameSite=Strict; Max-Age=2592000; Path=/`;
+}
+
+function clearAuthCookieHeader(secure: boolean): string {
+  const secureAttr = secure ? '; Secure' : '';
+  return `${AUTH_COOKIE_NAME}=; HttpOnly${secureAttr}; SameSite=Strict; Max-Age=0; Path=/`;
+}
+
+function getTokenFromCookie(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${AUTH_COOKIE_NAME}=([^;]+)`));
+  return match ? match[1] : null;
+}
+
+function addCookieToResponse(response: Response, setCookieValue: string): Response {
+  const newHeaders = new Headers(response.headers);
+  newHeaders.append('Set-Cookie', setCookieValue);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
 function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -344,6 +373,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
   };
 }
 
@@ -384,6 +414,12 @@ async function authenticate(
   request: Request,
   secret: string,
 ): Promise<TokenPayload | null> {
+  // Try cookie first (preferred - httpOnly, not accessible to JS)
+  const cookieToken = getTokenFromCookie(request);
+  if (cookieToken) {
+    return verifyToken(cookieToken, secret);
+  }
+  // Fall back to Authorization Bearer header (backward compat)
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
@@ -471,7 +507,9 @@ async function handleRegister(
     );
 
     logger.info('auth.register.success', { username, userId });
-    return jsonResponse(request, { token, username }, 201);
+    const secure = new URL(request.url).protocol === 'https:';
+    const resp = jsonResponse(request, { token, username }, 201);
+    return addCookieToResponse(resp, setAuthCookieHeader(token, secure));
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
@@ -551,7 +589,9 @@ async function handleLogin(
   );
 
   logger.info('auth.login.success', { username: user.username, userId: user.id });
-  return jsonResponse(request, { token, username: user.username });
+  const secure = new URL(request.url).protocol === 'https:';
+  const resp = jsonResponse(request, { token, username: user.username });
+  return addCookieToResponse(resp, setAuthCookieHeader(token, secure));
 }
 
 // Helper to verify user still exists (for deleted user token attacks)
@@ -711,7 +751,35 @@ async function handleDeleteAccount(
   ]);
 
   logger.info('auth.delete.success', { userId: payload.sub, username: payload.username });
-  return jsonResponse(request, { success: true });
+  const secure = new URL(request.url).protocol === 'https:';
+  const resp = jsonResponse(request, { success: true });
+  return addCookieToResponse(resp, clearAuthCookieHeader(secure));
+}
+
+async function handleLogout(
+  request: Request,
+  _env: Env,
+  logger: Logger,
+): Promise<Response> {
+  const secure = new URL(request.url).protocol === 'https:';
+  logger.info('auth.logout', {});
+  const resp = jsonResponse(request, { success: true });
+  return addCookieToResponse(resp, clearAuthCookieHeader(secure));
+}
+
+async function handleMe(
+  request: Request,
+  env: Env,
+  _logger: Logger,
+): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+  if (!(await userExists(env.DB, payload.sub))) {
+    return errorResponse(request, 'User not found', 401);
+  }
+  return jsonResponse(request, { username: payload.username });
 }
 
 // ─── R2 File Serving Helper ──────────────────────────────────────────
@@ -826,7 +894,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
       return new Response(null, {
         status: 204,
-        headers: getCorsHeaders(request),
+        headers: {
+          ...getCorsHeaders(request),
+          'Access-Control-Allow-Credentials': 'true',
+        },
       });
     }
 
@@ -860,6 +931,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env, logger);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request, env, logger);
+        }
+
+        if (url.pathname === '/api/me' && request.method === 'GET') {
+          return await handleMe(request, env, logger);
         }
 
         return errorResponse(request, 'Not found', 404);
