@@ -464,7 +464,7 @@ test.describe('Delete account rate limiting', () => {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         data: JSON.stringify({ password: 'password123' }),
       });
-      expect(resp.status()).toBe(404); // user gone
+      expect(resp.status()).toBe(401); // token revoked (user deleted, token_version invalid)
     }
 
     // 6th total attempt should be rate limited (not 404)
