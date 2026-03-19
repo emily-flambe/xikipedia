@@ -859,6 +859,75 @@ test.describe('Account deletion', () => {
 });
 
 // =========================================================================
+// OFFLINE BEHAVIOR
+// =========================================================================
+
+test.describe('Offline behavior', () => {
+  test('offline: preferences API failure clears auth and shows guest mode', async ({ page }) => {
+    const user = uniqueUser();
+    const password = 'password123';
+
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, password);
+
+    // Set auth in localStorage so the app tries to load preferences on reload
+    await page.evaluate(
+      ({ token, user }) => {
+        localStorage.setItem('xiki_token', token);
+        localStorage.setItem('xiki_username', user);
+      },
+      { token, user },
+    );
+
+    // Simulate offline: abort preferences API requests.
+    // Use context.route() (not page.route()) so SW-originated fetches are also intercepted —
+    // the app's service worker forwards API requests to the network, and page.route()
+    // does not intercept requests initiated by the service worker.
+    await page.context().route('**/api/preferences', (route) => route.abort('failed'));
+
+    await page.reload();
+
+    // After preferences fail, the app removes auth and reloads to guest mode.
+    // Auth tabs (.auth-tab[data-tab="guest"]) are only visible in guest mode —
+    // when logged in, the auth section is replaced with a "Welcome back" message.
+    // Waiting for auth tabs confirms the second (guest-mode) reload is complete.
+    await expect(page.locator('.auth-tab[data-tab="guest"]')).toBeVisible({ timeout: 20000 });
+
+    // Auth should be cleared from localStorage
+    const tokenAfter = await page.evaluate(() => localStorage.getItem('xiki_token'));
+    expect(tokenAfter).toBeNull();
+  });
+
+  test('offline: offline indicator appears when network becomes unavailable', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Start the feed as a guest
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+    await startBtn.click();
+
+    await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
+
+    // Offline indicator should not be visible initially
+    const offlineIndicator = page.locator('[data-testid="offlineIndicator"]');
+    await expect(offlineIndicator).not.toHaveClass(/visible/);
+
+    // Simulate going offline using context.setOffline(true)
+    await page.context().setOffline(true);
+
+    // Offline indicator should become visible
+    await expect(offlineIndicator).toHaveClass(/visible/, { timeout: 5000 });
+
+    // Restore connection — indicator should hide
+    await page.context().setOffline(false);
+    await expect(offlineIndicator).not.toHaveClass(/visible/, { timeout: 5000 });
+  });
+});
+
+// =========================================================================
 // API-LEVEL EDGE CASES (direct API tests, no browser UI)
 // =========================================================================
 
