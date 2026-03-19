@@ -1083,7 +1083,10 @@ test.describe('Token/response structure', () => {
     expect(match).toBeTruthy();
     expect(match![1].split('.')).toHaveLength(3); // JWT has 3 parts
     expect(setCookie).toContain('HttpOnly');
-    expect(setCookie).toContain('Secure');
+    // Secure flag is conditional on HTTPS (omitted on localhost/HTTP)
+    if (process.env.PLAYWRIGHT_BASE_URL?.startsWith('https')) {
+      expect(setCookie).toContain('Secure');
+    }
   });
 
   test('login response contains username and sets httpOnly auth cookie', async ({ page }) => {
@@ -1109,7 +1112,9 @@ test.describe('Token/response structure', () => {
     expect(match).toBeTruthy();
     expect(match![1].split('.')).toHaveLength(3); // JWT has 3 parts
     expect(setCookie).toContain('HttpOnly');
-    expect(setCookie).toContain('Secure');
+    if (process.env.PLAYWRIGHT_BASE_URL?.startsWith('https')) {
+      expect(setCookie).toContain('Secure');
+    }
   });
 
   test('error responses have consistent structure', async ({ page }) => {
@@ -1614,12 +1619,7 @@ test.describe('token_version in JWT payload', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const resp = await page.request.post('/api/register', {
-      data: { username: user, password: 'password123' },
-      headers: { 'x-forwarded-for': uniqueIp() },
-    });
-    expect(resp.status()).toBe(201);
-    const { token } = await resp.json();
+    const { token } = await apiRegister(page, user, 'password123');
 
     // Decode the JWT payload (middle segment, base64url)
     const payloadB64 = token.split('.')[1];
@@ -1642,7 +1642,10 @@ test.describe('token_version in JWT payload', () => {
       headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.status()).toBe(200);
-    const { token } = await loginResp.json();
+    const setCookie = loginResp.headers()['set-cookie'] ?? '';
+    const match = setCookie.match(/xiki_token=([^;]+)/);
+    expect(match, `Expected xiki_token in Set-Cookie: ${setCookie}`).toBeTruthy();
+    const token = match![1];
 
     const payloadB64 = token.split('.')[1];
     const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
@@ -1678,7 +1681,10 @@ test.describe('token_version in JWT payload', () => {
       data: { username: user, password: 'password123' },
       headers: { 'x-forwarded-for': uniqueIp() },
     });
-    const { token: token2 } = await loginResp.json();
+    const loginCookie = loginResp.headers()['set-cookie'] ?? '';
+    const loginMatch = loginCookie.match(/xiki_token=([^;]+)/);
+    expect(loginMatch, `Expected xiki_token in login Set-Cookie: ${loginCookie}`).toBeTruthy();
+    const token2 = loginMatch![1];
     const version2 = decode(token2).token_version;
 
     // The new token must have a higher version than the old one

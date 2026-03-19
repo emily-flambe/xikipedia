@@ -425,12 +425,14 @@ async function authenticate(
 
   if (cookieToken) {
     payload = await verifyToken(cookieToken, env.JWT_SECRET);
-  } else {
-    // Fallback: Authorization header (used by automated tests and old sessions)
+  }
+
+  // Fallback: Authorization header (used by automated tests and old sessions)
+  if (!payload) {
     const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-    const token = authHeader.substring(7);
-    payload = await verifyToken(token, env.JWT_SECRET);
+    if (authHeader?.startsWith('Bearer ')) {
+      payload = await verifyToken(authHeader.substring(7), env.JWT_SECRET);
+    }
   }
 
   if (!payload) return null;

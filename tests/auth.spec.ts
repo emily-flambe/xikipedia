@@ -1318,7 +1318,13 @@ test.describe('API edge cases', () => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const resp = await page.request.post('/api/logout');
+    // Register to get a valid token
+    const user = uniqueUser();
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     expect(resp.ok()).toBe(true);
 
     // Verify the response clears the auth cookie
