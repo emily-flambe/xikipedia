@@ -4825,7 +4825,21 @@
             window.history.replaceState({}, '', window.location.pathname);
         }
 
-        // If logged in, load saved preferences and auto-start
+        // If logged in, verify session is still valid then load saved preferences and auto-start
+        if (isLoggedIn()) {
+            // Verify session is still valid (handles stale localStorage state)
+            try {
+                const meResp = await fetch('/api/me', { credentials: 'include' });
+                if (!meResp.ok) {
+                    safeRemoveItem('xiki_token');
+                    safeRemoveItem('xiki_username');
+                    // Don't reload - just proceed as logged out
+                }
+            } catch (e) {
+                // Network error - proceed optimistically
+            }
+        }
+
         if (isLoggedIn()) {
             try {
                 const prefsResp = await fetch('/api/preferences', { credentials: 'include' });

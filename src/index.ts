@@ -404,13 +404,15 @@ function getTokenFromCookies(request: Request): string | null {
   return null;
 }
 
-function authCookieHeader(token: string): string {
+function authCookieHeader(token: string, request?: Request): string {
   const maxAge = 30 * 24 * 60 * 60;
-  return `xiki_token=${token}; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}; Path=/`;
+  const secure = !request || new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `xiki_token=${token}; HttpOnly${secure}; SameSite=Strict; Max-Age=${maxAge}; Path=/api`;
 }
 
-function clearAuthCookieHeader(): string {
-  return `xiki_token=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/`;
+function clearAuthCookieHeader(request?: Request): string {
+  const secure = !request || new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `xiki_token=; HttpOnly${secure}; SameSite=Strict; Max-Age=0; Path=/api`;
 }
 
 async function authenticate(
@@ -419,13 +421,18 @@ async function authenticate(
 ): Promise<TokenPayload | null> {
   // Cookie takes precedence (httpOnly, set by server on login/register)
   const cookieToken = getTokenFromCookies(request);
-  if (cookieToken) return verifyToken(cookieToken, secret);
+  let payload: TokenPayload | null = null;
 
-  // Fallback: Authorization header (used by automated tests and old sessions)
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.substring(7);
-  const payload = await verifyToken(token, env.JWT_SECRET);
+  if (cookieToken) {
+    payload = await verifyToken(cookieToken, env.JWT_SECRET);
+  } else {
+    // Fallback: Authorization header (used by automated tests and old sessions)
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+    const token = authHeader.substring(7);
+    payload = await verifyToken(token, env.JWT_SECRET);
+  }
+
   if (!payload) return null;
 
   // Verify token_version matches DB to support revocation
@@ -534,7 +541,7 @@ async function handleRegister(
       headers: {
         'Content-Type': 'application/json',
         ...getCorsHeaders(request),
-        'Set-Cookie': authCookieHeader(token),
+        'Set-Cookie': authCookieHeader(token, request),
       },
     });
     return resp;
@@ -623,33 +630,21 @@ async function handleLogin(
     headers: {
       'Content-Type': 'application/json',
       ...getCorsHeaders(request),
-      'Set-Cookie': authCookieHeader(token),
+      'Set-Cookie': authCookieHeader(token, request),
     },
   });
   return resp;
 }
 
-async function handleLogout(request: Request): Promise<Response> {
-  return new Response(JSON.stringify({ success: true }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getCorsHeaders(request),
-      'Set-Cookie': clearAuthCookieHeader(),
-    },
-  });
-}
+
 
 async function handleMe(
   request: Request,
   env: Env,
   _logger: Logger,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) return errorResponse(request, 'Unauthorized', 401);
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
-  }
   return jsonResponse(request, { username: payload.username, userId: payload.sub });
 }
 
@@ -799,7 +794,7 @@ async function handleDeleteAccount(
     headers: {
       'Content-Type': 'application/json',
       ...getCorsHeaders(request),
-      'Set-Cookie': clearAuthCookieHeader(),
+      'Set-Cookie': clearAuthCookieHeader(request),
     },
   });
 }
@@ -819,7 +814,14 @@ async function handleLogout(
   ).bind(payload.sub).run();
 
   logger.info('auth.logout.success', { userId: payload.sub, username: payload.username });
-  return jsonResponse(request, { success: true });
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders(request),
+      'Set-Cookie': clearAuthCookieHeader(request),
+    },
+  });
 }
 
 async function handleChangePassword(
@@ -1016,7 +1018,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }
 
         if (url.pathname === '/api/logout' && request.method === 'POST') {
-          return await handleLogout(request);
+          return await handleLogout(request, env, logger);
         }
 
         if (url.pathname === '/api/me' && request.method === 'GET') {

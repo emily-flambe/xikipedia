@@ -147,26 +147,27 @@ async function apiRegister(
   expect(resp.ok()).toBe(true);
   const setCookie = resp.headers()['set-cookie'] ?? '';
   const match = setCookie.match(/xiki_token=([^;]+)/);
-  const token = match ? match[1] : '';
+  expect(match, `Expected xiki_token cookie in Set-Cookie header, got: ${setCookie}`).toBeTruthy();
+  const token = match![1];
+  expect(token.length).toBeGreaterThan(0);
   const body = await resp.json();
   return { token, username: body.username };
 }
 
-/** Inject auth credentials (cookie + localStorage) so the app starts as logged-in. */
+/** Inject auth cookie so the app starts as logged-in. */
 async function injectAuth(
   context: BrowserContext,
   baseURL: string,
   token: string,
-  username: string,
 ) {
   const url = new URL(baseURL);
   await context.addCookies([{
     name: 'xiki_token',
     value: token,
     domain: url.hostname,
-    path: '/',
+    path: '/api',
     httpOnly: true,
-    secure: false,
+    secure: url.protocol === 'https:',
     sameSite: 'Strict',
   }]);
 }
@@ -1319,6 +1320,11 @@ test.describe('API edge cases', () => {
 
     const resp = await page.request.post('/api/logout');
     expect(resp.ok()).toBe(true);
+
+    // Verify the response clears the auth cookie
+    const setCookie = resp.headers()['set-cookie'] ?? '';
+    expect(setCookie).toContain('xiki_token=');
+    expect(setCookie).toContain('Max-Age=0');
   });
 });
 

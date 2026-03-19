@@ -101,7 +101,9 @@ async function apiRegister(
   expect(resp.ok()).toBe(true);
   const setCookie = resp.headers()['set-cookie'] ?? '';
   const match = setCookie.match(/xiki_token=([^;]+)/);
-  const token = match ? match[1] : '';
+  expect(match, `Expected xiki_token cookie in Set-Cookie header, got: ${setCookie}`).toBeTruthy();
+  const token = match![1];
+  expect(token.length).toBeGreaterThan(0);
   const body = await resp.json();
   return { token, username: body.username };
 }

@@ -65,7 +65,8 @@ async function apiRegister(page: Page, username: string, password: string, ip: s
 function extractTokenFromCookie(resp: APIResponse): string {
   const setCookie = resp.headers()['set-cookie'] ?? '';
   const match = setCookie.match(/xiki_token=([^;]+)/);
-  return match ? match[1] : '';
+  expect(match, `Expected xiki_token cookie in Set-Cookie header, got: ${setCookie}`).toBeTruthy();
+  return match![1];
 }
 
 // =============================================================================
