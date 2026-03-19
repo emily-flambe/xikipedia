@@ -1351,16 +1351,15 @@ test.describe('Security', () => {
       localStorage.setItem('xiki_username', '<script>alert(1)</script>');
     });
 
-    // On reload, the app will try to load preferences which will fail (bad token),
-    // causing it to clear auth and reload again. So we need to handle this.
-    // Actually, looking at the code: if preferences load fails, it clears auth and reloads.
-    // So we can't easily test this through normal flow.
-    // Instead, let's verify the escaping function in the source directly.
-    // The code does: currentUser().replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    // That's correct for preventing script injection in innerHTML.
-    // We can verify this by checking the auth-welcome HTML doesn't contain raw <script>.
-    // But since the fake token causes a preferences load failure -> reload loop,
-    // we need to mock the preferences endpoint too.
+    // The app now calls /api/me first (to verify session) before loading preferences.
+    // We mock both endpoints to simulate a "logged in" state so the welcome message is shown.
+    await page.route('**/api/me', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ username: '<script>alert(1)</script>', userId: 1 }),
+      }),
+    );
     await page.route('**/api/preferences', (route) =>
       route.fulfill({
         status: 200,

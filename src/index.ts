@@ -1039,10 +1039,6 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           return await handleDeleteAccount(request, env, logger);
         }
 
-        if (url.pathname === '/api/logout' && request.method === 'POST') {
-          return await handleLogout(request, env, logger);
-        }
-
         if (url.pathname === '/api/password' && request.method === 'POST') {
           return await handleChangePassword(request, env, logger);
         }
