@@ -108,6 +108,12 @@ async function apiRegister(
   return { token, username: body.username };
 }
 
+function extractTokenFromSetCookie(setCookieHeader: string): string {
+  const match = setCookieHeader.match(/xiki_token=([^;]+)/);
+  expect(match, `Expected xiki_token in Set-Cookie: ${setCookieHeader}`).toBeTruthy();
+  return match![1];
+}
+
 async function gotoReady(page: Page) {
   await mockSmoldata(page);
   await page.goto('/');
@@ -1286,7 +1292,7 @@ test.describe('token revocation: logout invalidation', () => {
 });
 
 test.describe('token revocation: logout requires authentication', () => {
-  test('POST /api/logout without Authorization header returns 401', async ({ page }) => {
+  test('POST /api/logout without auth cookie returns 401', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
 
@@ -1328,7 +1334,7 @@ test.describe('token revocation: multiple sessions invalidated by single logout'
       headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.status()).toBe(200);
-    const { token: tokenB } = await loginResp.json();
+    const tokenB = extractTokenFromSetCookie(loginResp.headers()['set-cookie'] ?? '');
 
     // Both tokens work
     const aBeforeResp = await page.request.get('/api/preferences', {
@@ -1385,7 +1391,7 @@ test.describe('token revocation: login after logout gives working token', () => 
       headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.status()).toBe(200);
-    const { token: newToken } = await loginResp.json();
+    const newToken = extractTokenFromSetCookie(loginResp.headers()['set-cookie'] ?? '');
 
     // New token works
     const freshResp = await page.request.get('/api/preferences', {
@@ -1464,7 +1470,7 @@ test.describe('token revocation: password change invalidates tokens', () => {
       headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(loginResp.status()).toBe(200);
-    const { token: newToken } = await loginResp.json();
+    const newToken = extractTokenFromSetCookie(loginResp.headers()['set-cookie'] ?? '');
 
     const prefsResp = await page.request.get('/api/preferences', {
       headers: { Cookie: `xiki_token=${newToken}` },

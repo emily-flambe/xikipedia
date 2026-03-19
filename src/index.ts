@@ -419,22 +419,10 @@ async function authenticate(
   request: Request,
   env: Env,
 ): Promise<TokenPayload | null> {
-  // Cookie takes precedence (httpOnly, set by server on login/register)
   const cookieToken = getTokenFromCookies(request);
-  let payload: TokenPayload | null = null;
+  if (!cookieToken) return null;
 
-  if (cookieToken) {
-    payload = await verifyToken(cookieToken, env.JWT_SECRET);
-  }
-
-  // Fallback: Authorization header (used by automated tests and old sessions)
-  if (!payload) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader?.startsWith('Bearer ')) {
-      payload = await verifyToken(authHeader.substring(7), env.JWT_SECRET);
-    }
-  }
-
+  const payload = await verifyToken(cookieToken, env.JWT_SECRET);
   if (!payload) return null;
 
   // Verify token_version matches DB to support revocation
