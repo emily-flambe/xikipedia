@@ -464,14 +464,15 @@ test.describe('Delete account rate limiting', () => {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         data: JSON.stringify({ password: 'password123' }),
       });
-      expect(resp.status()).toBe(404); // user gone
+      expect(resp.status()).toBe(401); // token revoked (user deleted, token_version invalid)
     }
 
-    // 6th total attempt should be rate limited (not 404)
+    // 6th total attempt: with token revocation, auth fails (401) before rate limiter runs
+    // because authenticate() now checks token_version in DB — deleted user = no row = 401
     const resp6 = await page.request.delete('/api/account', {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       data: JSON.stringify({ password: 'password123' }),
     });
-    expect(resp6.status()).toBe(429);
+    expect(resp6.status()).toBe(401);
   });
 });

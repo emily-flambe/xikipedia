@@ -491,9 +491,8 @@ test.describe('Deleted user token reuse', () => {
     });
 
     // Token is cryptographically valid but user no longer exists - should be rejected
+    // authenticate() now queries token_version from users table; missing row returns null → 'Unauthorized'
     expect(putResp.status()).toBe(401);
-    const body = await putResp.json();
-    expect(body.error).toBe('User not found');
   });
 
   test('deleted user token is rejected for reading preferences', async ({ page }) => {
@@ -1189,5 +1188,514 @@ test.describe('Extra fields in request body', () => {
       headers: { 'x-forwarded-for': uniqueIp() },
     });
     expect(resp.status()).toBe(200);
+  });
+});
+
+// =============================================================================
+// TOKEN REVOCATION / LOGOUT (EMI-47)
+// =============================================================================
+
+test.describe('token revocation: logout invalidation', () => {
+  test('after POST /api/logout, old token returns 401 on GET /api/preferences', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // Confirm token works before logout
+    const beforeResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(beforeResp.status()).toBe(200);
+
+    // Logout
+    const logoutResp = await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(logoutResp.status()).toBe(200);
+
+    // Old token must now be rejected
+    const afterResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(afterResp.status()).toBe(401);
+  });
+
+  test('after POST /api/logout, old token returns 401 on PUT /api/preferences', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const resp = await page.request.put('/api/preferences', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { categoryScores: { attack: 999 }, hiddenCategories: [] },
+    });
+    expect(resp.status()).toBe(401);
+  });
+
+  test('after POST /api/logout, old token cannot call logout again', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // First logout succeeds
+    const first = await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(first.status()).toBe(200);
+
+    // Second logout with same token must be rejected (token is revoked)
+    const second = await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(second.status()).toBe(401);
+  });
+});
+
+test.describe('token revocation: logout requires authentication', () => {
+  test('POST /api/logout without Authorization header returns 401', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.post('/api/logout');
+    expect(resp.status()).toBe(401);
+  });
+
+  test('POST /api/logout with invalid token returns 401', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.post('/api/logout', {
+      headers: { Authorization: 'Bearer not.a.real.token' },
+    });
+    expect(resp.status()).toBe(401);
+  });
+
+  test('GET /api/logout returns 404 (wrong method)', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.get('/api/logout');
+    expect(resp.status()).toBe(404);
+  });
+});
+
+test.describe('token revocation: multiple sessions invalidated by single logout', () => {
+  test('logging in twice and logging out once invalidates BOTH tokens (global token_version)', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Register — gets token A
+    const { token: tokenA } = await apiRegister(page, user, 'password123');
+
+    // Login again — gets token B (same token_version as A since no logout yet)
+    const loginResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(loginResp.status()).toBe(200);
+    const { token: tokenB } = await loginResp.json();
+
+    // Both tokens work
+    const aBeforeResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${tokenA}` },
+    });
+    expect(aBeforeResp.status()).toBe(200);
+    const bBeforeResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${tokenB}` },
+    });
+    expect(bBeforeResp.status()).toBe(200);
+
+    // Logout using token A — increments token_version globally for this user
+    const logoutResp = await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${tokenA}` },
+    });
+    expect(logoutResp.status()).toBe(200);
+
+    // Token A is revoked
+    const aAfterResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${tokenA}` },
+    });
+    expect(aAfterResp.status()).toBe(401);
+
+    // Token B is ALSO revoked (shared token_version)
+    const bAfterResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${tokenB}` },
+    });
+    expect(bAfterResp.status()).toBe(401);
+  });
+});
+
+test.describe('token revocation: login after logout gives working token', () => {
+  test('after logout, logging in again returns a new valid token', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token: oldToken } = await apiRegister(page, user, 'password123');
+
+    // Logout
+    await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${oldToken}` },
+    });
+
+    // Old token is dead
+    const staleResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${oldToken}` },
+    });
+    expect(staleResp.status()).toBe(401);
+
+    // Login again
+    const loginResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(loginResp.status()).toBe(200);
+    const { token: newToken } = await loginResp.json();
+
+    // New token works
+    const freshResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${newToken}` },
+    });
+    expect(freshResp.status()).toBe(200);
+  });
+});
+
+test.describe('token revocation: password change invalidates tokens', () => {
+  test('after POST /api/password, old token returns 401', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // Confirm token works
+    const beforeResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(beforeResp.status()).toBe(200);
+
+    // Change password
+    const changeResp = await page.request.post('/api/password', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { currentPassword: 'password123', newPassword: 'newpass456' },
+    });
+    expect(changeResp.status()).toBe(200);
+
+    // Old token must now be rejected
+    const afterResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(afterResp.status()).toBe(401);
+  });
+
+  test('after password change, old token cannot be used for another password change', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // First password change
+    await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123', newPassword: 'newpass456' },
+    });
+
+    // Try to use old token for another password change
+    const secondResp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'newpass456', newPassword: 'another789' },
+    });
+    expect(secondResp.status()).toBe(401);
+  });
+
+  test('after password change, login with new password works', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123', newPassword: 'newpass456' },
+    });
+
+    const loginResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'newpass456' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(loginResp.status()).toBe(200);
+    const { token: newToken } = await loginResp.json();
+
+    const prefsResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${newToken}` },
+    });
+    expect(prefsResp.status()).toBe(200);
+  });
+
+  test('after password change, login with OLD password returns 401', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123', newPassword: 'newpass456' },
+    });
+
+    const loginOldResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(loginOldResp.status()).toBe(401);
+  });
+});
+
+test.describe('password change endpoint validation', () => {
+  test('missing currentPassword returns 400', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { newPassword: 'newpass456' },
+    });
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toMatch(/current password/i);
+  });
+
+  test('empty string currentPassword returns 400', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: '', newPassword: 'newpass456' },
+    });
+    expect(resp.status()).toBe(400);
+  });
+
+  test('missing newPassword returns 400', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123' },
+    });
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toMatch(/new password/i);
+  });
+
+  test('newPassword shorter than 6 chars returns 400', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123', newPassword: 'abc' },
+    });
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toMatch(/6 characters/i);
+  });
+
+  test('newPassword longer than 256 chars returns 400', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123', newPassword: 'a'.repeat(257) },
+    });
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toMatch(/256/i);
+  });
+
+  test('wrong currentPassword returns 403', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'wrongpassword', newPassword: 'newpass456' },
+    });
+    expect(resp.status()).toBe(403);
+  });
+
+  test('POST /api/password without auth returns 401', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123', newPassword: 'newpass456' },
+    });
+    expect(resp.status()).toBe(401);
+  });
+
+  test('newPassword equal to currentPassword is accepted (no same-password restriction)', async ({ page }) => {
+    // This documents the current behavior: server does NOT prevent reuse
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/password', {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { currentPassword: 'password123', newPassword: 'password123' },
+    });
+    // Implementation does not block same-password reuse; this should succeed
+    expect(resp.status()).toBe(200);
+  });
+});
+
+test.describe('token_version in JWT payload', () => {
+  test('token from register contains token_version field', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.post('/api/register', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(resp.status()).toBe(201);
+    const { token } = await resp.json();
+
+    // Decode the JWT payload (middle segment, base64url)
+    const payloadB64 = token.split('.')[1];
+    const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(padded.padEnd(padded.length + (4 - padded.length % 4) % 4, '=')));
+
+    expect(decoded).toHaveProperty('token_version');
+    expect(decoded.token_version).toBe(1);
+  });
+
+  test('token from login contains token_version field', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    await apiRegister(page, user, 'password123');
+
+    const loginResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(loginResp.status()).toBe(200);
+    const { token } = await loginResp.json();
+
+    const payloadB64 = token.split('.')[1];
+    const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(padded.padEnd(padded.length + (4 - padded.length % 4) % 4, '=')));
+
+    expect(decoded).toHaveProperty('token_version');
+    expect(typeof decoded.token_version).toBe('number');
+  });
+
+  test('token_version increments after logout + re-login', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token: token1 } = await apiRegister(page, user, 'password123');
+
+    // Decode version from first token
+    const decode = (t: string) => {
+      const b64 = t.split('.')[1];
+      const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(atob(padded.padEnd(padded.length + (4 - padded.length % 4) % 4, '=')));
+    };
+
+    const version1 = decode(token1).token_version;
+
+    // Logout
+    await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token1}` },
+    });
+
+    // Login again
+    const loginResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    const { token: token2 } = await loginResp.json();
+    const version2 = decode(token2).token_version;
+
+    // The new token must have a higher version than the old one
+    expect(version2).toBeGreaterThan(version1);
+  });
+
+  test('token with original token_version is rejected after logout (version mismatch)', async ({ page }) => {
+    // After logout, DB version increments from 1 to 2.
+    // The original token still has token_version=1, so authenticate() rejects it.
+    // This also covers legacy tokens (no token_version field) which default to 1 via ?? fallback.
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token: realToken } = await apiRegister(page, user, 'password123');
+
+    // Decode real token to extract sub and username
+    const b64 = realToken.split('.')[1];
+    const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
+    const realPayload = JSON.parse(atob(padded.padEnd(padded.length + (4 - padded.length % 4) % 4, '=')));
+
+    // Logout — DB version goes from 1 to 2
+    await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${realToken}` },
+    });
+
+    // The original token has token_version=1, DB is now 2 — rejected
+    const afterResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${realToken}` },
+    });
+    expect(afterResp.status()).toBe(401);
+
+    // Verify the version from realPayload was 1
+    expect(realPayload.token_version).toBe(1);
   });
 });

@@ -21,6 +21,7 @@ interface UserRow {
   password_hash: string;
   salt: string;
   created_at: string;
+  token_version: number;
 }
 
 interface PreferencesRow {
@@ -35,6 +36,7 @@ interface TokenPayload {
   sub: number;
   username: string;
   exp: number;
+  token_version?: number; // optional for legacy tokens issued before revocation support
 }
 
 // ─── Database Initialization ─────────────────────────────────────────
@@ -73,6 +75,17 @@ async function ensureTables(db: D1Database): Promise<void> {
     // SQLite returns "duplicate column name" when column already exists
     if (!msg.includes('duplicate column')) {
       throw e; // Re-throw unexpected errors
+    }
+  }
+  // Schema migration: add token_version column (safe if already exists)
+  try {
+    await db.prepare(
+      'ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1',
+    ).run();
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!msg.includes('duplicate column')) {
+      throw e;
     }
   }
   tablesInitialized = true;
@@ -382,12 +395,24 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
 
 async function authenticate(
   request: Request,
-  secret: string,
+  env: Env,
 ): Promise<TokenPayload | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
-  return verifyToken(token, secret);
+  const payload = await verifyToken(token, env.JWT_SECRET);
+  if (!payload) return null;
+
+  // Verify token_version matches DB to support revocation
+  const row = await env.DB.prepare(
+    'SELECT token_version FROM users WHERE id = ?',
+  ).bind(payload.sub).first<{ token_version: number }>();
+  if (!row) return null;
+  const currentVersion = row.token_version ?? 1;
+  const payloadVersion = payload.token_version ?? 1;
+  if (payloadVersion !== currentVersion) return null;
+
+  return payload;
 }
 
 // ─── Validation ──────────────────────────────────────────────────────
@@ -395,6 +420,19 @@ async function authenticate(
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const MIN_PASSWORD_LENGTH = 6;
 const MAX_PASSWORD_LENGTH = 256;
+
+function validatePassword(password: unknown): string | null {
+  if (typeof password !== 'string') {
+    return 'Password is required';
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return 'Password must be at least 6 characters';
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return 'Password must be at most 256 characters';
+  }
+  return null;
+}
 
 function validateRegistration(
   username: unknown,
@@ -406,13 +444,7 @@ function validateRegistration(
   if (!USERNAME_REGEX.test(username)) {
     return 'Username must be 3-20 characters, alphanumeric and underscores only';
   }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return 'Password must be at least 6 characters';
-  }
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return 'Password must be at most 256 characters';
-  }
-  return null;
+  return validatePassword(password);
 }
 
 // ─── Route Handlers ─────────────────────────────────────────────────
@@ -466,6 +498,7 @@ async function handleRegister(
         sub: userId,
         username,
         exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+        token_version: 1,
       },
       env.JWT_SECRET,
     );
@@ -504,7 +537,7 @@ async function handleLogin(
   }
 
   const user = await env.DB.prepare(
-    'SELECT id, username, password_hash, salt FROM users WHERE username = ?',
+    'SELECT id, username, password_hash, salt, token_version FROM users WHERE username = ?',
   )
     .bind(body.username)
     .first<UserRow>();
@@ -546,6 +579,7 @@ async function handleLogin(
       sub: user.id,
       username: user.username,
       exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+      token_version: user.token_version ?? 1,
     },
     env.JWT_SECRET,
   );
@@ -554,25 +588,14 @@ async function handleLogin(
   return jsonResponse(request, { token, username: user.username });
 }
 
-// Helper to verify user still exists (for deleted user token attacks)
-async function userExists(db: D1Database, userId: number): Promise<boolean> {
-  const user = await db.prepare('SELECT 1 FROM users WHERE id = ?').bind(userId).first();
-  return !!user;
-}
-
 async function handleGetPreferences(
   request: Request,
   env: Env,
   _logger: Logger,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   const prefs = await env.DB.prepare(
@@ -601,14 +624,9 @@ async function handlePutPreferences(
   env: Env,
   logger: Logger,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
-  }
-
-  // Verify user still exists (token may be valid but user deleted)
-  if (!(await userExists(env.DB, payload.sub))) {
-    return errorResponse(request, 'User not found', 401);
   }
 
   let body: { categoryScores?: unknown; hiddenCategories?: unknown; algorithmAggressiveness?: unknown };
@@ -661,7 +679,7 @@ async function handleDeleteAccount(
   env: Env,
   logger: Logger,
 ): Promise<Response> {
-  const payload = await authenticate(request, env.JWT_SECRET);
+  const payload = await authenticate(request, env);
   if (!payload) {
     return errorResponse(request, 'Unauthorized', 401);
   }
@@ -711,6 +729,81 @@ async function handleDeleteAccount(
   ]);
 
   logger.info('auth.delete.success', { userId: payload.sub, username: payload.username });
+  return jsonResponse(request, { success: true });
+}
+
+async function handleLogout(
+  request: Request,
+  env: Env,
+  logger: Logger,
+): Promise<Response> {
+  const payload = await authenticate(request, env);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  await env.DB.prepare(
+    'UPDATE users SET token_version = token_version + 1 WHERE id = ?',
+  ).bind(payload.sub).run();
+
+  logger.info('auth.logout.success', { userId: payload.sub, username: payload.username });
+  return jsonResponse(request, { success: true });
+}
+
+async function handleChangePassword(
+  request: Request,
+  env: Env,
+  logger: Logger,
+): Promise<Response> {
+  const payload = await authenticate(request, env);
+  if (!payload) {
+    return errorResponse(request, 'Unauthorized', 401);
+  }
+
+  let body: { currentPassword?: string; newPassword?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(request, 'Invalid JSON body', 400);
+  }
+
+  if (typeof body.currentPassword !== 'string' || !body.currentPassword) {
+    return errorResponse(request, 'Current password is required', 400);
+  }
+  if (typeof body.newPassword !== 'string') {
+    return errorResponse(request, 'New password is required', 400);
+  }
+  const validationError = validatePassword(body.newPassword);
+  if (validationError) {
+    return errorResponse(request, validationError, 400);
+  }
+
+  const user = await env.DB.prepare(
+    'SELECT password_hash, salt FROM users WHERE id = ?',
+  ).bind(payload.sub).first<Pick<UserRow, 'password_hash' | 'salt'>>();
+
+  if (!user) {
+    return errorResponse(request, 'User not found', 404);
+  }
+
+  const salt = new Uint8Array(hexToArrayBuffer(user.salt));
+  const computedHash = await hashPassword(body.currentPassword, salt);
+
+  if (!(await timingSafeEqual(computedHash, user.password_hash))) {
+    logger.warn('auth.changePassword.failure', { userId: payload.sub, reason: 'wrong_password' });
+    return errorResponse(request, 'Incorrect current password', 403);
+  }
+
+  const newSalt = generateSalt();
+  const newHash = await hashPassword(body.newPassword, newSalt);
+  const newSaltHex = arrayBufferToHex(newSalt.buffer as ArrayBuffer);
+
+  // Update password AND increment token_version to invalidate all existing sessions
+  await env.DB.prepare(
+    'UPDATE users SET password_hash = ?, salt = ?, token_version = token_version + 1 WHERE id = ?',
+  ).bind(newHash, newSaltHex, payload.sub).run();
+
+  logger.info('auth.changePassword.success', { userId: payload.sub });
   return jsonResponse(request, { success: true });
 }
 
@@ -860,6 +953,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         if (url.pathname === '/api/account' && request.method === 'DELETE') {
           return await handleDeleteAccount(request, env, logger);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request, env, logger);
+        }
+
+        if (url.pathname === '/api/password' && request.method === 'POST') {
+          return await handleChangePassword(request, env, logger);
         }
 
         return errorResponse(request, 'Not found', 404);
