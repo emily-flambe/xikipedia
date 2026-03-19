@@ -27,7 +27,7 @@ database_name = "xikipedia-users"
 database_id = "33c22faa-49cd-449d-a70e-73703c68f62b"
 
 [dev]
-port = 8799
+port = 8801
 
 [observability]
 enabled = true

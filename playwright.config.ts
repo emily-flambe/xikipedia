@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 // Override with PLAYWRIGHT_BASE_URL env var for production testing.
 // Note: window.__xikiTest is only created when hostname === 'localhost',
 // so tests using startFeedWithMock() only work on localhost.
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8799';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8801';
 const isCI = !!process.env.CI;
 const isLocalhost = baseURL.includes('localhost');
 
@@ -32,8 +32,8 @@ export default defineConfig({
 
   // Only start local dev server when testing against localhost
   webServer: isLocalhost ? {
-    command: 'npx wrangler dev --port 8799',
-    port: 8799,
+    command: 'npx wrangler dev --port 8801',
+    port: 8801,
     reuseExistingServer: !isCI,
     timeout: 120000,
   } : undefined,
