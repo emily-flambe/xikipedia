@@ -156,7 +156,7 @@ test.describe('HTTP method enforcement', () => {
     const user = uniqueUser();
     const { token } = await apiRegister(page, user, 'password123');
     const resp = await page.request.post('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
       data: { categoryScores: {} },
     });
     expect(resp.status()).toBe(404);
@@ -168,7 +168,7 @@ test.describe('HTTP method enforcement', () => {
     const user = uniqueUser();
     const { token } = await apiRegister(page, user, 'password123');
     const resp = await page.request.post('/api/account', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
       data: {},
     });
     expect(resp.status()).toBe(404);
@@ -386,7 +386,7 @@ test.describe('JWT token attacks', () => {
     const fakeToken = `${header}.${payload}.`;
 
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${fakeToken}` },
+      headers: { Cookie: `xiki_token=${fakeToken}` },
     });
     expect(resp.status()).toBe(401);
   });
@@ -412,7 +412,7 @@ test.describe('JWT token attacks', () => {
 
     // Token with only 2 parts (missing signature) -- split yields 2 parts
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${header}.${payload}` },
+      headers: { Cookie: `xiki_token=${header}.${payload}` },
     });
     expect(resp.status()).toBe(401);
   });
@@ -422,7 +422,7 @@ test.describe('JWT token attacks', () => {
     await page.goto('/');
 
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: 'Bearer a.b.c.d' },
+      headers: { Cookie: 'xiki_token=a.b.c.d' },
     });
     expect(resp.status()).toBe(401);
   });
@@ -435,27 +435,27 @@ test.describe('JWT token attacks', () => {
     // by using a real token and waiting -- not practical. Instead verify with a
     // structurally valid but signed-with-wrong-key token.
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOjEsInVzZXJuYW1lIjoiYWRtaW4iLCJleHAiOjB9.invalid' },
+      headers: { Cookie: 'xiki_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOjEsInVzZXJuYW1lIjoiYWRtaW4iLCJleHAiOjB9.invalid' },
     });
     expect(resp.status()).toBe(401);
   });
 
-  test('empty Authorization header is rejected', async ({ page }) => {
+  test('empty Cookie header is rejected', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
 
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: '' },
+      headers: { Cookie: '' },
     });
     expect(resp.status()).toBe(401);
   });
 
-  test('Authorization header with only "Bearer " (no token) is rejected', async ({ page }) => {
+  test('Cookie with empty xiki_token value is rejected', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
 
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: 'Bearer ' },
+      headers: { Cookie: 'xiki_token=' },
     });
     expect(resp.status()).toBe(401);
   });
@@ -476,7 +476,7 @@ test.describe('Deleted user token reuse', () => {
     // Delete account
     const delResp = await page.request.delete('/api/account', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
         'x-forwarded-for': uniqueIp(),
       },
@@ -487,7 +487,7 @@ test.describe('Deleted user token reuse', () => {
     // Try to write preferences with the now-invalid token
     const putResp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -511,7 +511,7 @@ test.describe('Deleted user token reuse', () => {
     // Save prefs, delete account, then try to read
     await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: { categoryScores: { test: 42 }, hiddenCategories: [] },
@@ -519,7 +519,7 @@ test.describe('Deleted user token reuse', () => {
 
     await page.request.delete('/api/account', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
         'x-forwarded-for': uniqueIp(),
       },
@@ -527,7 +527,7 @@ test.describe('Deleted user token reuse', () => {
     });
 
     const getResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
 
     // Token is cryptographically valid but user no longer exists - should be rejected
@@ -548,7 +548,7 @@ test.describe('Preference payload edge cases', () => {
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -571,7 +571,7 @@ test.describe('Preference payload edge cases', () => {
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -591,7 +591,7 @@ test.describe('Preference payload edge cases', () => {
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -614,7 +614,7 @@ test.describe('Preference payload edge cases', () => {
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -643,7 +643,7 @@ test.describe('Preference payload edge cases', () => {
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -663,7 +663,7 @@ test.describe('Preference payload edge cases', () => {
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {},
@@ -688,7 +688,7 @@ test.describe('Preference payload edge cases', () => {
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -940,7 +940,7 @@ test.describe('Concurrent operations', () => {
       Array.from({ length: 5 }, (_, i) =>
         page.request.put('/api/preferences', {
           headers: {
-            Authorization: `Bearer ${token}`,
+            Cookie: `xiki_token=${token}`,
             'Content-Type': 'application/json',
           },
           data: {
@@ -1053,7 +1053,7 @@ test.describe('CORS headers on API responses', () => {
     expect(resp.status()).toBe(204);
     const headers = resp.headers();
     expect(headers['access-control-allow-methods']).toContain('DELETE');
-    expect(headers['access-control-allow-headers']).toContain('Authorization');
+    expect(headers['access-control-allow-headers']).toContain('Content-Type');
   });
 });
 
@@ -1148,7 +1148,7 @@ test.describe('Delete account idempotency', () => {
 
     // First delete
     const del1 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: JSON.stringify({ password: 'password123' }),
     });
     expect(del1.ok()).toBe(true);
@@ -1157,7 +1157,7 @@ test.describe('Delete account idempotency', () => {
     // Token is still cryptographically valid so auth passes,
     // but DELETE FROM users WHERE id = ? will affect 0 rows.
     const del2 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: JSON.stringify({ password: 'password123' }),
     });
 
@@ -1226,19 +1226,19 @@ test.describe('token revocation: logout invalidation', () => {
 
     // Confirm token works before logout
     const beforeResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(beforeResp.status()).toBe(200);
 
     // Logout
     const logoutResp = await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(logoutResp.status()).toBe(200);
 
     // Old token must now be rejected
     const afterResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(afterResp.status()).toBe(401);
   });
@@ -1251,12 +1251,12 @@ test.describe('token revocation: logout invalidation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
 
     const resp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: { categoryScores: { attack: 999 }, hiddenCategories: [] },
@@ -1273,13 +1273,13 @@ test.describe('token revocation: logout invalidation', () => {
 
     // First logout succeeds
     const first = await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(first.status()).toBe(200);
 
     // Second logout with same token must be rejected (token is revoked)
     const second = await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(second.status()).toBe(401);
   });
@@ -1299,7 +1299,7 @@ test.describe('token revocation: logout requires authentication', () => {
     await page.goto('/');
 
     const resp = await page.request.post('/api/logout', {
-      headers: { Authorization: 'Bearer not.a.real.token' },
+      headers: { Cookie: 'xiki_token=not.a.real.token' },
     });
     expect(resp.status()).toBe(401);
   });
@@ -1332,29 +1332,29 @@ test.describe('token revocation: multiple sessions invalidated by single logout'
 
     // Both tokens work
     const aBeforeResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: { Cookie: `xiki_token=${tokenA}` },
     });
     expect(aBeforeResp.status()).toBe(200);
     const bBeforeResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${tokenB}` },
+      headers: { Cookie: `xiki_token=${tokenB}` },
     });
     expect(bBeforeResp.status()).toBe(200);
 
     // Logout using token A — increments token_version globally for this user
     const logoutResp = await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: { Cookie: `xiki_token=${tokenA}` },
     });
     expect(logoutResp.status()).toBe(200);
 
     // Token A is revoked
     const aAfterResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: { Cookie: `xiki_token=${tokenA}` },
     });
     expect(aAfterResp.status()).toBe(401);
 
     // Token B is ALSO revoked (shared token_version)
     const bAfterResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${tokenB}` },
+      headers: { Cookie: `xiki_token=${tokenB}` },
     });
     expect(bAfterResp.status()).toBe(401);
   });
@@ -1370,12 +1370,12 @@ test.describe('token revocation: login after logout gives working token', () => 
 
     // Logout
     await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${oldToken}` },
+      headers: { Cookie: `xiki_token=${oldToken}` },
     });
 
     // Old token is dead
     const staleResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${oldToken}` },
+      headers: { Cookie: `xiki_token=${oldToken}` },
     });
     expect(staleResp.status()).toBe(401);
 
@@ -1389,7 +1389,7 @@ test.describe('token revocation: login after logout gives working token', () => 
 
     // New token works
     const freshResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${newToken}` },
+      headers: { Cookie: `xiki_token=${newToken}` },
     });
     expect(freshResp.status()).toBe(200);
   });
@@ -1405,14 +1405,14 @@ test.describe('token revocation: password change invalidates tokens', () => {
 
     // Confirm token works
     const beforeResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(beforeResp.status()).toBe(200);
 
     // Change password
     const changeResp = await page.request.post('/api/password', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: { currentPassword: 'password123', newPassword: 'newpass456' },
@@ -1421,7 +1421,7 @@ test.describe('token revocation: password change invalidates tokens', () => {
 
     // Old token must now be rejected
     const afterResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(afterResp.status()).toBe(401);
   });
@@ -1435,13 +1435,13 @@ test.describe('token revocation: password change invalidates tokens', () => {
 
     // First password change
     await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'password123', newPassword: 'newpass456' },
     });
 
     // Try to use old token for another password change
     const secondResp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'newpass456', newPassword: 'another789' },
     });
     expect(secondResp.status()).toBe(401);
@@ -1455,7 +1455,7 @@ test.describe('token revocation: password change invalidates tokens', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'password123', newPassword: 'newpass456' },
     });
 
@@ -1467,7 +1467,7 @@ test.describe('token revocation: password change invalidates tokens', () => {
     const { token: newToken } = await loginResp.json();
 
     const prefsResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${newToken}` },
+      headers: { Cookie: `xiki_token=${newToken}` },
     });
     expect(prefsResp.status()).toBe(200);
   });
@@ -1480,7 +1480,7 @@ test.describe('token revocation: password change invalidates tokens', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'password123', newPassword: 'newpass456' },
     });
 
@@ -1501,7 +1501,7 @@ test.describe('password change endpoint validation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { newPassword: 'newpass456' },
     });
     expect(resp.status()).toBe(400);
@@ -1517,7 +1517,7 @@ test.describe('password change endpoint validation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: '', newPassword: 'newpass456' },
     });
     expect(resp.status()).toBe(400);
@@ -1531,7 +1531,7 @@ test.describe('password change endpoint validation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'password123' },
     });
     expect(resp.status()).toBe(400);
@@ -1547,7 +1547,7 @@ test.describe('password change endpoint validation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'password123', newPassword: 'abc' },
     });
     expect(resp.status()).toBe(400);
@@ -1563,7 +1563,7 @@ test.describe('password change endpoint validation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'password123', newPassword: 'a'.repeat(257) },
     });
     expect(resp.status()).toBe(400);
@@ -1579,7 +1579,7 @@ test.describe('password change endpoint validation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'wrongpassword', newPassword: 'newpass456' },
     });
     expect(resp.status()).toBe(403);
@@ -1605,7 +1605,7 @@ test.describe('password change endpoint validation', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/password', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: { currentPassword: 'password123', newPassword: 'password123' },
     });
     // Implementation does not block same-password reuse; this should succeed
@@ -1673,7 +1673,7 @@ test.describe('token_version in JWT payload', () => {
 
     // Logout
     await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${token1}` },
+      headers: { Cookie: `xiki_token=${token1}` },
     });
 
     // Login again
@@ -1708,12 +1708,12 @@ test.describe('token_version in JWT payload', () => {
 
     // Logout — DB version goes from 1 to 2
     await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${realToken}` },
+      headers: { Cookie: `xiki_token=${realToken}` },
     });
 
     // The original token has token_version=1, DB is now 2 — rejected
     const afterResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${realToken}` },
+      headers: { Cookie: `xiki_token=${realToken}` },
     });
     expect(afterResp.status()).toBe(401);
 

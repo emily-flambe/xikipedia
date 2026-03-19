@@ -404,7 +404,7 @@ test.describe('Delete account rate limiting', () => {
     // 5 wrong password attempts
     for (let i = 0; i < 5; i++) {
       const resp = await page.request.delete('/api/account', {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
         data: JSON.stringify({ password: `wrongguess${i}` }),
       });
       expect(resp.status()).toBe(403);
@@ -412,7 +412,7 @@ test.describe('Delete account rate limiting', () => {
 
     // 6th attempt should be rate limited (not 403)
     const resp6 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: JSON.stringify({ password: 'wrongguess5' }),
     });
     expect(resp6.status()).toBe(429);
@@ -436,14 +436,14 @@ test.describe('Delete account rate limiting', () => {
 
     // User A deletes successfully
     const delA = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${tokenA}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${tokenA}`, 'Content-Type': 'application/json' },
       data: JSON.stringify({ password: 'password123' }),
     });
     expect(delA.status()).toBe(200);
 
     // User B can still delete (different rate limit key)
     const delB = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${tokenB}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${tokenB}`, 'Content-Type': 'application/json' },
       data: JSON.stringify({ password: 'password123' }),
     });
     expect(delB.status()).toBe(200);
@@ -460,7 +460,7 @@ test.describe('Delete account rate limiting', () => {
 
     // Delete the account
     const del1 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: JSON.stringify({ password: 'password123' }),
     });
     expect(del1.status()).toBe(200);
@@ -469,7 +469,7 @@ test.describe('Delete account rate limiting', () => {
     // With cookie auth, authenticate() checks DB for user — deleted user returns 401
     for (let i = 0; i < 4; i++) {
       const resp = await page.request.delete('/api/account', {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
         data: JSON.stringify({ password: 'password123' }),
       });
       expect(resp.status()).toBe(401); // user deleted, auth fails
@@ -478,7 +478,7 @@ test.describe('Delete account rate limiting', () => {
     // 6th total attempt: auth fails before rate limiter (401 not 429)
     // because authenticate() rejects the token (user deleted, token_version invalid)
     const resp6 = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json' },
       data: JSON.stringify({ password: 'password123' }),
     });
     expect(resp6.status()).toBe(401);

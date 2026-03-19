@@ -615,7 +615,7 @@ test.describe('Preference persistence', () => {
 
     // Verify the preferences were actually saved by fetching them via API
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(resp.ok()).toBe(true);
     const prefs = await resp.json();
@@ -641,7 +641,7 @@ test.describe('Preference persistence', () => {
     const savedHidden = ['sports'];
     const putResp = await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: {
@@ -1098,7 +1098,7 @@ test.describe('API edge cases', () => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
       },
       data: Buffer.from('{invalid json{{'),
       failOnStatusCode: false,
@@ -1144,7 +1144,7 @@ test.describe('API edge cases', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(resp.ok()).toBe(true);
     const prefs = await resp.json();
@@ -1162,7 +1162,7 @@ test.describe('API edge cases', () => {
     // Save some preferences
     await page.request.put('/api/preferences', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Cookie: `xiki_token=${token}`,
         'Content-Type': 'application/json',
       },
       data: { categoryScores: { science: 999 }, hiddenCategories: ['math'] },
@@ -1170,7 +1170,7 @@ test.describe('API edge cases', () => {
 
     // Delete the account
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);
@@ -1180,7 +1180,7 @@ test.describe('API edge cases', () => {
     // The implementation doesn't check if user still exists after JWT verification.
     // This could be a BUG: JWT is valid but user is deleted, so preferences query returns empty.
     const prefsResp = await page.request.get('/api/preferences', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     // If the server returns 200 with empty prefs (user doesn't exist but JWT is valid),
     // that's technically a security concern - we should still document the behavior.
@@ -1278,7 +1278,7 @@ test.describe('API edge cases', () => {
 
     // Delete
     const delResp = await page.request.delete('/api/account', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
+      headers: { Cookie: `xiki_token=${token}`, 'Content-Type': 'application/json', 'x-forwarded-for': uniqueIp() },
       data: { password: 'password123' },
     });
     expect(delResp.ok()).toBe(true);
@@ -1299,7 +1299,7 @@ test.describe('API edge cases', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.get('/api/me', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(resp.ok()).toBe(true);
     const body = await resp.json();
@@ -1323,7 +1323,7 @@ test.describe('API edge cases', () => {
     const { token } = await apiRegister(page, user, 'password123');
 
     const resp = await page.request.post('/api/logout', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `xiki_token=${token}` },
     });
     expect(resp.ok()).toBe(true);
 
@@ -1387,18 +1387,16 @@ test.describe('Security', () => {
 
     // Try to access preferences with a garbage token
     const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: 'Bearer garbage.token.value' },
+      headers: { Cookie: 'xiki_token=garbage.token.value' },
     });
     expect(resp.status()).toBe(401);
   });
 
-  test('token without Bearer prefix is rejected', async ({ page }) => {
+  test('request without auth cookie is rejected', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
 
-    const resp = await page.request.get('/api/preferences', {
-      headers: { Authorization: 'some_token_no_bearer' },
-    });
+    const resp = await page.request.get('/api/preferences');
     expect(resp.status()).toBe(401);
   });
 });
