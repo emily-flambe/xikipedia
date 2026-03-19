@@ -9,7 +9,6 @@ import { createLogger, type Logger } from './logger';
 import { addSecurityHeaders, getCorsHeaders, jsonResponse, errorResponse, getClientIp } from './helpers';
 import { atomicIncrement, resetRateLimit, rateLimitResponse, isRateLimitableIp } from './rate-limit';
 import {
-  type TokenPayload,
   arrayBufferToHex,
   hexToArrayBuffer,
   hashPassword,

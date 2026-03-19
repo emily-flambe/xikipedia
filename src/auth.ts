@@ -74,11 +74,15 @@ export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const encoder = new TextEncoder();
   const hmac1 = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(a)));
   const hmac2 = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(b)));
-  let match = hmac1.length === hmac2.length;
-  for (let i = 0; i < hmac1.length; i++) {
-    match = match && hmac1[i] === hmac2[i];
+  // Constant-time comparison: accumulate XOR diffs across all bytes
+  let diff = hmac1.length ^ hmac2.length;
+  const len = Math.max(hmac1.length, hmac2.length);
+  for (let i = 0; i < len; i++) {
+    const v1 = i < hmac1.length ? hmac1[i] : 0;
+    const v2 = i < hmac2.length ? hmac2[i] : 0;
+    diff |= v1 ^ v2;
   }
-  return match;
+  return diff === 0;
 }
 
 // ─── JWT Helpers ─────────────────────────────────────────────────────
