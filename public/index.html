@@ -2655,6 +2655,7 @@
         try {
             const resp = await fetch('/api/account', {
                 method: 'DELETE',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password })
             });
@@ -2685,6 +2686,7 @@
             };
             fetch('/api/preferences', {
                 method: 'PUT',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             }).then(resp => {
@@ -2800,6 +2802,7 @@
         try {
             const resp = await fetch('/api/login', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -2842,6 +2845,7 @@
         try {
             const resp = await fetch('/api/register', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
@@ -4824,7 +4828,7 @@
         // If logged in, load saved preferences and auto-start
         if (isLoggedIn()) {
             try {
-                const prefsResp = await fetch('/api/preferences');
+                const prefsResp = await fetch('/api/preferences', { credentials: 'include' });
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
                 const prefs = await prefsResp.json();
 
