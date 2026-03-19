@@ -899,6 +899,30 @@ test.describe('Chunked format: basic feed loading', () => {
     expect(textContent).toBeTruthy();
     expect(textContent!.length).toBeGreaterThan(50);
   });
+
+  test('share URL (?article=ID) bypasses start screen in chunked format', async ({ page }) => {
+    test.setTimeout(60000);
+    // Article IDs in chunked mock data run from 1000 to 1199. Article 1000 is "Chunked Article 0".
+    const VALID_CHUNKED_ARTICLE_ID = 1000;
+    await setupChunkedRoutes(page);
+    await page.goto(`/?format=chunked&article=${VALID_CHUNKED_ARTICLE_ID}`);
+
+    // Start screen should auto-dismiss (share URL bypasses start screen)
+    await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 15000 });
+
+    // Shared article should appear first
+    const firstPost = page.locator('[data-testid="post"]').first();
+    await expect(firstPost).toBeVisible({ timeout: 15000 });
+    await expect(firstPost.locator('h1')).toContainText('Chunked Article 0');
+
+    // Text should lazy-load from chunk (wait for non-skeleton content)
+    const postText = firstPost.locator('p:not(.skeleton):not(.load-error)');
+    await expect(postText).toBeVisible({ timeout: 15000 });
+
+    // URL should be cleaned (no ?article= or ?format= remaining)
+    const search = await page.evaluate(() => window.location.search);
+    expect(search).toBe('');
+  });
 });
 
 test.describe('Theme toggle', () => {
