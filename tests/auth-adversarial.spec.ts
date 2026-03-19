@@ -174,6 +174,24 @@ test.describe('HTTP method enforcement', () => {
     const resp = await page.request.get('/api/account');
     expect(resp.status()).toBe(404);
   });
+
+  test('GET /api/logout returns 404', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+    const resp = await page.request.get('/api/logout');
+    expect(resp.status()).toBe(404);
+  });
+
+  test('PUT /api/logout returns 404', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+    const user = uniqueUser();
+    const { token } = await apiRegister(page, user, 'password123');
+    const resp = await page.request.put('/api/logout', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(resp.status()).toBe(404);
+  });
 });
 
 // =============================================================================
@@ -527,6 +545,111 @@ test.describe('Deleted user token reuse', () => {
 
     // Token is cryptographically valid but user no longer exists - should be rejected
     expect(getResp.status()).toBe(401);
+  });
+});
+
+// =============================================================================
+// TOKEN REVOCATION (LOGOUT)
+// =============================================================================
+
+test.describe('Token revocation', () => {
+  test('token used after logout is rejected with 401', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // Confirm token works before logout
+    const beforeResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(beforeResp.status()).toBe(200);
+
+    // Logout — increments token_version server-side
+    const logoutResp = await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(logoutResp.ok()).toBe(true);
+    const logoutBody = await logoutResp.json();
+    expect(logoutBody.success).toBe(true);
+
+    // Same token must now be rejected
+    const afterResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(afterResp.status()).toBe(401);
+  });
+
+  test('logging in again after logout issues a valid new token', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token: oldToken } = await apiRegister(page, user, 'password123');
+
+    await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${oldToken}` },
+    });
+
+    // Login again — should get a new token
+    const loginResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(loginResp.status()).toBe(200);
+    const { token: newToken } = await loginResp.json();
+    expect(newToken).not.toBe(oldToken);
+
+    // New token must work
+    const prefsResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${newToken}` },
+    });
+    expect(prefsResp.status()).toBe(200);
+
+    // Old token must still be rejected
+    const oldResp = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${oldToken}` },
+    });
+    expect(oldResp.status()).toBe(401);
+  });
+
+  test('logout without a token returns 401', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.post('/api/logout');
+    expect(resp.status()).toBe(401);
+  });
+
+  test('multiple logouts invalidate all prior tokens', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token: token1 } = await apiRegister(page, user, 'password123');
+
+    // Login again to get a second token
+    const loginResp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    const { token: token2 } = await loginResp.json();
+
+    // Logout using token2
+    await page.request.post('/api/logout', {
+      headers: { Authorization: `Bearer ${token2}` },
+    });
+
+    // Both tokens should now be invalid
+    const resp1 = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token1}` },
+    });
+    const resp2 = await page.request.get('/api/preferences', {
+      headers: { Authorization: `Bearer ${token2}` },
+    });
+    expect(resp1.status()).toBe(401);
+    expect(resp2.status()).toBe(401);
   });
 });
 

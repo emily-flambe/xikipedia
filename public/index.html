@@ -2636,7 +2636,19 @@
         return {};
     }
 
-    function logout() {
+    function handle401() {
+        safeRemoveItem('xiki_token');
+        safeRemoveItem('xiki_username');
+        window.location.reload();
+    }
+
+    async function logout() {
+        // Revoke the token server-side before clearing local state
+        try {
+            await fetch('/api/logout', { method: 'POST', headers: getAuthHeaders() });
+        } catch (_) {
+            // Network failure — proceed with local logout anyway
+        }
         safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
@@ -2656,6 +2668,10 @@
                 body: JSON.stringify({ password })
             });
             if (!resp.ok) {
+                if (resp.status === 401) {
+                    handle401();
+                    return;
+                }
                 const data = await resp.json().catch(() => ({}));
                 alert(data.error || 'Failed to delete account. Please try again.');
                 return;
@@ -2691,10 +2707,8 @@
             }).then(resp => {
                 if (!resp.ok) {
                     if (resp.status === 401) {
-                        // Token expired or invalid — clear auth and notify user
-                        safeRemoveItem('xiki_token');
-                        safeRemoveItem('xiki_username');
-                        showErrorToast('Session expired. Please log in again to save preferences.');
+                        // Token expired or revoked — clear auth and reload
+                        handle401();
                     } else {
                         showErrorToast('Failed to save preferences. Changes may not persist.');
                     }
@@ -4832,7 +4846,13 @@
                 const prefsResp = await fetch('/api/preferences', {
                     headers: getAuthHeaders()
                 });
-                if (!prefsResp.ok) throw new Error('Failed to load preferences');
+                if (!prefsResp.ok) {
+                    if (prefsResp.status === 401) {
+                        handle401();
+                        return;
+                    }
+                    throw new Error('Failed to load preferences');
+                }
                 const prefs = await prefsResp.json();
 
                 // Apply saved categoryScores (merge, preserving defaults like given names: -1000)
