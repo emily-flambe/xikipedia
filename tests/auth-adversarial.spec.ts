@@ -99,7 +99,11 @@ async function apiRegister(
     headers: { 'x-forwarded-for': uniqueIp() },
   });
   expect(resp.ok()).toBe(true);
-  return resp.json();
+  const setCookie = resp.headers()['set-cookie'] ?? '';
+  const match = setCookie.match(/xiki_token=([^;]+)/);
+  const token = match ? match[1] : '';
+  const body = await resp.json();
+  return { token, username: body.username };
 }
 
 async function gotoReady(page: Page) {

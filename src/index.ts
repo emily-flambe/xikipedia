@@ -393,10 +393,34 @@ function rateLimitResponse(request: Request, windowStart: number, windowSec: num
 
 // ─── Auth Middleware ─────────────────────────────────────────────────
 
+function getTokenFromCookies(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
+  for (const cookie of cookieHeader.split(';')) {
+    const [name, ...rest] = cookie.trim().split('=');
+    if (name.trim() === 'xiki_token') return rest.join('=').trim();
+  }
+  return null;
+}
+
+function authCookieHeader(token: string): string {
+  const maxAge = 30 * 24 * 60 * 60;
+  return `xiki_token=${token}; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}; Path=/`;
+}
+
+function clearAuthCookieHeader(): string {
+  return `xiki_token=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/`;
+}
+
 async function authenticate(
   request: Request,
   env: Env,
 ): Promise<TokenPayload | null> {
+  // Cookie takes precedence (httpOnly, set by server on login/register)
+  const cookieToken = getTokenFromCookies(request);
+  if (cookieToken) return verifyToken(cookieToken, secret);
+
+  // Fallback: Authorization header (used by automated tests and old sessions)
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
@@ -504,7 +528,15 @@ async function handleRegister(
     );
 
     logger.info('auth.register.success', { username, userId });
-    return jsonResponse(request, { token, username }, 201);
+    const resp = new Response(JSON.stringify({ username }), {
+      status: 201,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getCorsHeaders(request),
+        'Set-Cookie': authCookieHeader(token),
+      },
+    });
+    return resp;
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('SQLITE_CONSTRAINT')) {
@@ -585,7 +617,39 @@ async function handleLogin(
   );
 
   logger.info('auth.login.success', { username: user.username, userId: user.id });
-  return jsonResponse(request, { token, username: user.username });
+  const resp = new Response(JSON.stringify({ username: user.username }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders(request),
+      'Set-Cookie': authCookieHeader(token),
+    },
+  });
+  return resp;
+}
+
+async function handleLogout(request: Request): Promise<Response> {
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders(request),
+      'Set-Cookie': clearAuthCookieHeader(),
+    },
+  });
+}
+
+async function handleMe(
+  request: Request,
+  env: Env,
+  _logger: Logger,
+): Promise<Response> {
+  const payload = await authenticate(request, env.JWT_SECRET);
+  if (!payload) return errorResponse(request, 'Unauthorized', 401);
+  if (!(await userExists(env.DB, payload.sub))) {
+    return errorResponse(request, 'User not found', 401);
+  }
+  return jsonResponse(request, { username: payload.username, userId: payload.sub });
 }
 
 async function handleGetPreferences(
@@ -729,7 +793,14 @@ async function handleDeleteAccount(
   ]);
 
   logger.info('auth.delete.success', { userId: payload.sub, username: payload.username });
-  return jsonResponse(request, { success: true });
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders(request),
+      'Set-Cookie': clearAuthCookieHeader(),
+    },
+  });
 }
 
 async function handleLogout(
@@ -941,6 +1012,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         if (url.pathname === '/api/login' && request.method === 'POST') {
           return await handleLogin(request, env, logger);
+        }
+
+        if (url.pathname === '/api/logout' && request.method === 'POST') {
+          return await handleLogout(request);
+        }
+
+        if (url.pathname === '/api/me' && request.method === 'GET') {
+          return await handleMe(request, env, logger);
         }
 
         if (url.pathname === '/api/preferences' && request.method === 'GET') {

@@ -1787,6 +1787,9 @@
         try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
     }
 
+    // Migrate: clear legacy token from localStorage (now stored as httpOnly cookie)
+    safeRemoveItem('xiki_token');
+
     // Debug logger — gate all frontend console output behind localStorage.getItem('debug')
     const dbg = {
         warn: (...args) => { if (safeGetItem('debug')) console.warn(...args); },
@@ -2623,35 +2626,24 @@
     // ============================================
 
     function isLoggedIn() {
-        return !!safeGetItem('xiki_token');
+        return !!safeGetItem('xiki_username');
     }
 
     function currentUser() {
         return safeGetItem('xiki_username') || null;
     }
 
-    function getAuthHeaders() {
-        const token = safeGetItem('xiki_token');
-        if (token) return { 'Authorization': 'Bearer ' + token };
-        return {};
-    }
-
     async function logout() {
         try {
-            await fetch('/api/logout', {
-                method: 'POST',
-                headers: getAuthHeaders()
-            });
+            await fetch('/api/logout', { method: 'POST', credentials: 'include' });
         } catch (_) {
             // Network failure — proceed with local logout anyway
         }
-        safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
 
     function handle401() {
-        safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
@@ -2663,10 +2655,7 @@
         try {
             const resp = await fetch('/api/account', {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password })
             });
             if (!resp.ok) {
@@ -2679,7 +2668,6 @@
             alert('Failed to delete account. Please try again.');
             return;
         }
-        safeRemoveItem('xiki_token');
         safeRemoveItem('xiki_username');
         window.location.reload();
     }
@@ -2697,15 +2685,11 @@
             };
             fetch('/api/preferences', {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             }).then(resp => {
                 if (!resp.ok) {
                     if (resp.status === 401) {
-                        // Token expired or invalid — clear auth and notify user
                         handle401();
                         showErrorToast('Session expired. Please log in again to save preferences.');
                     } else {
@@ -2826,7 +2810,6 @@
                 btn.textContent = 'Log in';
                 return;
             }
-            safeSetItem('xiki_token', data.token);
             safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -2869,7 +2852,6 @@
                 btn.textContent = 'Create account';
                 return;
             }
-            safeSetItem('xiki_token', data.token);
             safeSetItem('xiki_username', data.username);
             window.location.reload();
         } catch (e) {
@@ -2890,7 +2872,7 @@
     };
 
     // Logout and delete account buttons
-    document.getElementById('logoutBtn').onclick = logout;
+    document.getElementById('logoutBtn').onclick = () => logout();
     document.getElementById('deleteAccountBtn').onclick = deleteAccount;
 
     // Recursive category expansion with memoization
@@ -4842,9 +4824,7 @@
         // If logged in, load saved preferences and auto-start
         if (isLoggedIn()) {
             try {
-                const prefsResp = await fetch('/api/preferences', {
-                    headers: getAuthHeaders()
-                });
+                const prefsResp = await fetch('/api/preferences');
                 if (!prefsResp.ok) throw new Error('Failed to load preferences');
                 const prefs = await prefsResp.json();
 
