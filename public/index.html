@@ -4830,7 +4830,13 @@
             // Verify session is still valid (handles stale localStorage state)
             try {
                 const meResp = await fetch('/api/me', { credentials: 'include' });
-                if (!meResp.ok) {
+                if (meResp.ok) {
+                    const meData = await meResp.json();
+                    // Reconcile localStorage username with server session
+                    if (meData.username && meData.username !== safeGetItem('xiki_username')) {
+                        safeSetItem('xiki_username', meData.username);
+                    }
+                } else {
                     safeRemoveItem('xiki_token');
                     safeRemoveItem('xiki_username');
                     // Don't reload - just proceed as logged out

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Tests run against local wrangler dev server by default (localhost:8799).
+// Tests run against local wrangler dev server by default (localhost:8801).
 // Override with PLAYWRIGHT_BASE_URL env var for production testing.
 // Note: window.__xikiTest is only created when hostname === 'localhost',
 // so tests using startFeedWithMock() only work on localhost.
