@@ -1060,7 +1060,7 @@ test.describe('CORS headers on API responses', () => {
 // =============================================================================
 
 test.describe('Token/response structure', () => {
-  test('register response contains both token and username', async ({ page }) => {
+  test('register response contains username and sets httpOnly auth cookie', async ({ page }) => {
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -1072,14 +1072,19 @@ test.describe('Token/response structure', () => {
     expect(resp.status()).toBe(201);
     const body = await resp.json();
 
-    expect(body).toHaveProperty('token');
+    // Token is now in Set-Cookie header, not response body
     expect(body).toHaveProperty('username');
-    expect(typeof body.token).toBe('string');
-    expect(body.token.split('.')).toHaveLength(3); // JWT has 3 parts
     expect(body.username).toBe(user);
+
+    const setCookie = resp.headers()['set-cookie'] ?? '';
+    const match = setCookie.match(/xiki_token=([^;]+)/);
+    expect(match).toBeTruthy();
+    expect(match![1].split('.')).toHaveLength(3); // JWT has 3 parts
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('Secure');
   });
 
-  test('login response contains both token and username', async ({ page }) => {
+  test('login response contains username and sets httpOnly auth cookie', async ({ page }) => {
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -1093,11 +1098,16 @@ test.describe('Token/response structure', () => {
     expect(resp.status()).toBe(200);
     const body = await resp.json();
 
-    expect(body).toHaveProperty('token');
+    // Token is now in Set-Cookie header, not response body
     expect(body).toHaveProperty('username');
-    expect(typeof body.token).toBe('string');
-    expect(body.token.split('.')).toHaveLength(3);
     expect(body.username).toBe(user);
+
+    const setCookie = resp.headers()['set-cookie'] ?? '';
+    const match = setCookie.match(/xiki_token=([^;]+)/);
+    expect(match).toBeTruthy();
+    expect(match![1].split('.')).toHaveLength(3); // JWT has 3 parts
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('Secure');
   });
 
   test('error responses have consistent structure', async ({ page }) => {
