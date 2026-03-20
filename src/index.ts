@@ -501,6 +501,24 @@ async function handleChangePassword(
   return jsonResponse(request, { success: true });
 }
 
+// ─── ETag Matching Helper ────────────────────────────────────────────
+
+/**
+ * Check if an ETag matches an If-None-Match header value.
+ * Handles wildcard (*), comma-separated lists, and W/ weak validators per RFC 9110.
+ */
+function etagMatches(ifNoneMatch: string, etag: string): boolean {
+  const trimmed = ifNoneMatch.trim();
+  if (trimmed === '*') return true;
+
+  // Strip W/ weak prefix for comparison (weak comparison per RFC 9110 §8.8.3.2)
+  const stripWeak = (tag: string): string => tag.trim().replace(/^W\//, '');
+  const normalizedEtag = stripWeak(etag);
+
+  // Parse comma-separated list of ETags
+  return trimmed.split(',').some((tag) => stripWeak(tag) === normalizedEtag);
+}
+
 // ─── R2 File Serving Helper ──────────────────────────────────────────
 
 async function serveR2File(
@@ -517,6 +535,29 @@ async function serveR2File(
   headers.set('Accept-Ranges', 'bytes');
 
   const ifNoneMatch = request.headers.get('If-None-Match');
+  const method = request.method.toUpperCase();
+
+  // Efficiently handle HEAD requests using R2 metadata only (no body download)
+  if (method === 'HEAD') {
+    const head = await env.DATA_BUCKET.head(key);
+    if (!head) {
+      return new Response('File not found', { status: 404 });
+    }
+
+    const etag = head.httpEtag;
+    if (ifNoneMatch && etag && etagMatches(ifNoneMatch, etag)) {
+      logger.info('data.notModified', { key, etag, method: 'HEAD' });
+      headers.set('ETag', etag);
+      return new Response(null, { status: 304, headers });
+    }
+
+    headers.set('Content-Length', String(head.size));
+    if (etag) headers.set('ETag', etag);
+    if (head.uploaded) headers.set('Last-Modified', head.uploaded.toUTCString());
+
+    logger.info('data.head', { key, size: head.size, etag });
+    return new Response(null, { status: 200, headers });
+  }
 
   // Handle range requests using R2's native range support
   const rangeHeader = request.headers.get('range');
@@ -530,7 +571,7 @@ async function serveR2File(
 
     // Check ETag for conditional request (after HEAD, before fetching body)
     const etag = head.httpEtag;
-    if (ifNoneMatch && etag && ifNoneMatch === etag) {
+    if (ifNoneMatch && etag && etagMatches(ifNoneMatch, etag)) {
       logger.info('data.notModified', { key, etag });
       headers.set('ETag', etag);
       return new Response(null, { status: 304, headers });
@@ -575,7 +616,7 @@ async function serveR2File(
     }
 
     const etag = head.httpEtag;
-    if (etag && ifNoneMatch === etag) {
+    if (etag && etagMatches(ifNoneMatch, etag)) {
       logger.info('data.notModified', { key, etag });
       headers.set('ETag', etag);
       return new Response(null, { status: 304, headers });
