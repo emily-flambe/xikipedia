@@ -104,20 +104,23 @@ async function ensureTables(db: D1Database): Promise<void> {
 
 type ApiHandler = (req: Request, env: Env, log: Logger) => Promise<Response>;
 
-// Null-prototype object prevents prototype pollution (e.g., "constructor" method)
+// Null-prototype objects prevent prototype pollution (e.g., "constructor" method)
 const API_ROUTES: Record<string, Record<string, ApiHandler>> = Object.create(null);
+let apiRoutesInitialized = false;
 
 // Populated after handler definitions below (hoisted functions)
 function initApiRoutes(): void {
-  Object.assign(API_ROUTES, {
-    '/api/register': { __proto__: null, POST: handleRegister },
-    '/api/login': { __proto__: null, POST: handleLogin },
-    '/api/logout': { __proto__: null, POST: handleLogout },
-    '/api/me': { __proto__: null, GET: handleMe },
-    '/api/preferences': { __proto__: null, GET: handleGetPreferences, PUT: handlePutPreferences },
-    '/api/account': { __proto__: null, DELETE: handleDeleteAccount },
-    '/api/password': { __proto__: null, POST: handleChangePassword },
-  });
+  const route = (handlers: Record<string, ApiHandler>): Record<string, ApiHandler> =>
+    Object.assign(Object.create(null), handlers);
+
+  API_ROUTES['/api/register'] = route({ POST: handleRegister });
+  API_ROUTES['/api/login'] = route({ POST: handleLogin });
+  API_ROUTES['/api/logout'] = route({ POST: handleLogout });
+  API_ROUTES['/api/me'] = route({ GET: handleMe });
+  API_ROUTES['/api/preferences'] = route({ GET: handleGetPreferences, PUT: handlePutPreferences });
+  API_ROUTES['/api/account'] = route({ DELETE: handleDeleteAccount });
+  API_ROUTES['/api/password'] = route({ POST: handleChangePassword });
+  apiRoutesInitialized = true;
 }
 
 // ─── Route Handlers ─────────────────────────────────────────────────
@@ -584,7 +587,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
       try {
         // Initialize route map on first request (handlers are hoisted)
-        if (Object.keys(API_ROUTES).length === 0) initApiRoutes();
+        if (!apiRoutesInitialized) initApiRoutes();
 
         const routeHandlers = API_ROUTES[url.pathname];
         if (routeHandlers) {
