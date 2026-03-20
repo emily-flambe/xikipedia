@@ -551,8 +551,11 @@ function validateR2Env(env: Env): string | null {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const startTime = Date.now();
     const response = await handleRequest(request, env);
-    return addSecurityHeaders(response);
+    const secured = addSecurityHeaders(response);
+    secured.headers.set('Server-Timing', `total;dur=${Date.now() - startTime}`);
+    return secured;
   },
 };
 
