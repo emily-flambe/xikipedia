@@ -9,9 +9,6 @@
 
 import { test, expect } from '@playwright/test';
 
-const BASE_URL =
-  process.env.PLAYWRIGHT_BASE_URL || 'https://xikipedia.emily-cogsdill.workers.dev';
-
 test.describe('API 405 Method Not Allowed', () => {
   const wrongMethodCases: Array<{
     path: string;
@@ -28,29 +25,23 @@ test.describe('API 405 Method Not Allowed', () => {
   ];
 
   for (const { path, method, expectedAllow } of wrongMethodCases) {
-    test(`${method} ${path} → 405 with Allow: ${expectedAllow}`, async ({ playwright }) => {
-      const ctx = await playwright.request.newContext({ baseURL: BASE_URL });
-      const response = await ctx.fetch(path, { method });
+    test(`${method} ${path} → 405 with Allow: ${expectedAllow}`, async ({ request }) => {
+      const response = await request.fetch(path, { method });
       expect(response.status()).toBe(405);
       expect(response.headers()['allow']).toBe(expectedAllow);
       const body = await response.json();
       expect(body.error).toContain('not allowed');
-      await ctx.dispose();
     });
   }
 
-  test('GET /api/preferences → not 405 (correct method)', async ({ playwright }) => {
-    const ctx = await playwright.request.newContext({ baseURL: BASE_URL });
-    const response = await ctx.get('/api/preferences');
+  test('GET /api/preferences → not 405 (correct method)', async ({ request }) => {
+    const response = await request.get('/api/preferences');
     // Should be 401 (not authenticated) or 200, but NOT 405
     expect(response.status()).not.toBe(405);
-    await ctx.dispose();
   });
 
-  test('unknown API path still returns 404', async ({ playwright }) => {
-    const ctx = await playwright.request.newContext({ baseURL: BASE_URL });
-    const response = await ctx.get('/api/nonexistent');
+  test('unknown API path still returns 404', async ({ request }) => {
+    const response = await request.get('/api/nonexistent');
     expect(response.status()).toBe(404);
-    await ctx.dispose();
   });
 });
