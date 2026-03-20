@@ -126,37 +126,41 @@ async function gotoReady(page: Page) {
 // =============================================================================
 
 test.describe('HTTP method enforcement', () => {
-  test('GET /api/register returns 404', async ({ page }) => {
+  test('GET /api/register returns 405 with Allow: POST', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
     const resp = await page.request.get('/api/register');
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('POST');
   });
 
-  test('PUT /api/register returns 404', async ({ page }) => {
+  test('PUT /api/register returns 405 with Allow: POST', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
     const resp = await page.request.put('/api/register', {
       data: { username: 'test', password: 'test123' },
     });
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('POST');
   });
 
-  test('GET /api/login returns 404', async ({ page }) => {
+  test('GET /api/login returns 405 with Allow: POST', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
     const resp = await page.request.get('/api/login');
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('POST');
   });
 
-  test('DELETE /api/login returns 404', async ({ page }) => {
+  test('DELETE /api/login returns 405 with Allow: POST', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
     const resp = await page.request.delete('/api/login');
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('POST');
   });
 
-  test('POST /api/preferences returns 404', async ({ page }) => {
+  test('POST /api/preferences returns 405 with Allow: GET, PUT', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
     const user = uniqueUser();
@@ -165,10 +169,11 @@ test.describe('HTTP method enforcement', () => {
       headers: { Cookie: `xiki_token=${token}` },
       data: { categoryScores: {} },
     });
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('GET, PUT');
   });
 
-  test('POST /api/account returns 404', async ({ page }) => {
+  test('POST /api/account returns 405 with Allow: DELETE', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
     const user = uniqueUser();
@@ -177,14 +182,16 @@ test.describe('HTTP method enforcement', () => {
       headers: { Cookie: `xiki_token=${token}` },
       data: {},
     });
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('DELETE');
   });
 
-  test('GET /api/account returns 404', async ({ page }) => {
+  test('GET /api/account returns 405 with Allow: DELETE', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
     const resp = await page.request.get('/api/account');
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('DELETE');
   });
 });
 
@@ -1310,12 +1317,13 @@ test.describe('token revocation: logout requires authentication', () => {
     expect(resp.status()).toBe(401);
   });
 
-  test('GET /api/logout returns 404 (wrong method)', async ({ page }) => {
+  test('GET /api/logout returns 405 (wrong method)', async ({ page }) => {
     await mockSmoldata(page);
     await page.goto('/');
 
     const resp = await page.request.get('/api/logout');
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(405);
+    expect(resp.headers()['allow']).toBe('POST');
   });
 });
 

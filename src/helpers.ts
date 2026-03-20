@@ -73,8 +73,19 @@ export function jsonResponse(
   });
 }
 
-export function errorResponse(request: Request, message: string, status: number): Response {
-  return jsonResponse(request, { error: message }, status);
+export function errorResponse(
+  request: Request,
+  message: string,
+  status: number,
+  extraHeaders?: Record<string, string>,
+): Response {
+  const response = jsonResponse(request, { error: message }, status);
+  if (extraHeaders) {
+    for (const [key, value] of Object.entries(extraHeaders)) {
+      response.headers.set(key, value);
+    }
+  }
+  return response;
 }
 
 // ─── Client IP ───────────────────────────────────────────────────────

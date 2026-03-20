@@ -563,36 +563,25 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       await ensureTables(env.DB);
 
       try {
-        if (url.pathname === '/api/register' && request.method === 'POST') {
-          return await handleRegister(request, env, logger);
-        }
+        type ApiHandler = (req: Request, env: Env, log: Logger) => Promise<Response>;
+        const API_ROUTES: Record<string, Record<string, ApiHandler>> = {
+          '/api/register': { POST: handleRegister },
+          '/api/login': { POST: handleLogin },
+          '/api/logout': { POST: handleLogout },
+          '/api/me': { GET: handleMe },
+          '/api/preferences': { GET: handleGetPreferences, PUT: handlePutPreferences },
+          '/api/account': { DELETE: handleDeleteAccount },
+          '/api/password': { POST: handleChangePassword },
+        };
 
-        if (url.pathname === '/api/login' && request.method === 'POST') {
-          return await handleLogin(request, env, logger);
-        }
-
-        if (url.pathname === '/api/logout' && request.method === 'POST') {
-          return await handleLogout(request, env, logger);
-        }
-
-        if (url.pathname === '/api/me' && request.method === 'GET') {
-          return await handleMe(request, env, logger);
-        }
-
-        if (url.pathname === '/api/preferences' && request.method === 'GET') {
-          return await handleGetPreferences(request, env, logger);
-        }
-
-        if (url.pathname === '/api/preferences' && request.method === 'PUT') {
-          return await handlePutPreferences(request, env, logger);
-        }
-
-        if (url.pathname === '/api/account' && request.method === 'DELETE') {
-          return await handleDeleteAccount(request, env, logger);
-        }
-
-        if (url.pathname === '/api/password' && request.method === 'POST') {
-          return await handleChangePassword(request, env, logger);
+        const routeHandlers = API_ROUTES[url.pathname];
+        if (routeHandlers) {
+          const handler = routeHandlers[request.method];
+          if (handler) {
+            return await handler(request, env, logger);
+          }
+          const allowed = Object.keys(routeHandlers).join(', ');
+          return errorResponse(request, `Method ${request.method} not allowed`, 405, { Allow: allowed });
         }
 
         return errorResponse(request, 'Not found', 404);
