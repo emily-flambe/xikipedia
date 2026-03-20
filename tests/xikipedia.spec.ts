@@ -104,6 +104,16 @@ test.describe('Xikipedia', () => {
   });
 
   test('shows loading state initially', async ({ page }) => {
+    // Delay the data response so we can observe the loading state
+    await page.route('**/smoldata.json', async (route) => {
+      await new Promise((r) => setTimeout(r, 2000));
+      await route.fallback();
+    });
+    await page.route('**/index.json', async (route) => {
+      await new Promise((r) => setTimeout(r, 2000));
+      await route.fallback();
+    });
+
     await page.goto('/');
     
     // Start button should be disabled during loading
