@@ -516,6 +516,8 @@ async function serveR2File(
   headers.set('Access-Control-Allow-Origin', '*');
   headers.set('Accept-Ranges', 'bytes');
 
+  const ifNoneMatch = request.headers.get('If-None-Match');
+
   // Handle range requests using R2's native range support
   const rangeHeader = request.headers.get('range');
   logger.info('data.serve', { key, ranged: !!rangeHeader });
@@ -524,6 +526,14 @@ async function serveR2File(
     const head = await env.DATA_BUCKET.head(key);
     if (!head) {
       return new Response('File not found', { status: 404 });
+    }
+
+    // Check ETag for conditional request (after HEAD, before fetching body)
+    const etag = head.httpEtag;
+    if (ifNoneMatch && etag && ifNoneMatch === etag) {
+      logger.info('data.notModified', { key, etag });
+      headers.set('ETag', etag);
+      return new Response(null, { status: 304, headers });
     }
 
     const totalSize = head.size;
@@ -548,6 +558,7 @@ async function serveR2File(
 
     headers.set('Content-Range', `bytes ${start}-${end}/${totalSize}`);
     headers.set('Content-Length', String(end - start + 1));
+    if (etag) headers.set('ETag', etag);
 
     logger.info('data.serve', { key, bytes: end - start + 1, range: true });
     return new Response(object.body, {
@@ -556,12 +567,29 @@ async function serveR2File(
     });
   }
 
+  // For non-range requests with If-None-Match, do a HEAD first to check ETag
+  if (ifNoneMatch) {
+    const head = await env.DATA_BUCKET.head(key);
+    if (!head) {
+      return new Response('File not found', { status: 404 });
+    }
+
+    const etag = head.httpEtag;
+    if (etag && ifNoneMatch === etag) {
+      logger.info('data.notModified', { key, etag });
+      headers.set('ETag', etag);
+      return new Response(null, { status: 304, headers });
+    }
+  }
+
   // Full object request
   const object = await env.DATA_BUCKET.get(key);
 
   if (!object) {
     return new Response('File not found', { status: 404 });
   }
+
+  if (object.httpEtag) headers.set('ETag', object.httpEtag);
 
   logger.info('data.serve', { key, bytes: object.size });
   headers.set('Content-Length', String(object.size));

@@ -1,0 +1,61 @@
+import { test, expect } from '@playwright/test';
+
+test.describe('ETag and conditional request support', () => {
+  test('GET /smoldata.json returns ETag header', async ({ request }) => {
+    // Use HEAD to avoid downloading the full ~215MB file
+    const response = await request.head('/smoldata.json');
+    expect(response.status()).toBe(200);
+    const etag = response.headers()['etag'];
+    expect(etag).toBeTruthy();
+    // ETag should be quoted per HTTP spec
+    expect(etag).toMatch(/^".*"$/);
+  });
+
+  test('GET /smoldata.json with matching If-None-Match returns 304', async ({
+    request,
+  }) => {
+    // First get the ETag via HEAD
+    const head = await request.head('/smoldata.json');
+    const etag = head.headers()['etag'];
+    expect(etag).toBeTruthy();
+
+    // Now request with If-None-Match
+    const response = await request.get('/smoldata.json', {
+      headers: { 'If-None-Match': etag },
+    });
+    expect(response.status()).toBe(304);
+  });
+
+  test('GET /smoldata.json with non-matching If-None-Match returns 200 with ETag', async ({
+    request,
+  }) => {
+    const response = await request.get('/smoldata.json', {
+      headers: { 'If-None-Match': '"not-a-real-etag"' },
+    });
+    expect(response.status()).toBe(200);
+    expect(response.headers()['etag']).toBeTruthy();
+  });
+
+  test('GET /index.json returns ETag header', async ({ request }) => {
+    const response = await request.head('/index.json');
+    expect(response.status()).toBe(200);
+    const etag = response.headers()['etag'];
+    expect(etag).toBeTruthy();
+    expect(etag).toMatch(/^".*"$/);
+  });
+
+  test('GET /index.json with matching If-None-Match returns 304', async ({
+    request,
+  }) => {
+    // First get the ETag
+    const head = await request.head('/index.json');
+    const etag = head.headers()['etag'];
+    expect(etag).toBeTruthy();
+
+    // Now request with If-None-Match
+    const response = await request.get('/index.json', {
+      headers: { 'If-None-Match': etag },
+    });
+    expect(response.status()).toBe(304);
+  });
+});
