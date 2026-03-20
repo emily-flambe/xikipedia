@@ -20,6 +20,7 @@ const CSP_POLICY = [
 
 const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy': CSP_POLICY,
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',

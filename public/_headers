@@ -2,6 +2,7 @@
 # These mirror the headers set in src/index.ts for Worker-handled routes
 # CSP is applied to all paths to cover SPA routing (not_found_handling = "single-page-application")
 /*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
