@@ -100,6 +100,26 @@ async function ensureTables(db: D1Database): Promise<void> {
   tablesInitialized = true;
 }
 
+// ─── API Route Map ──────────────────────────────────────────────────
+
+type ApiHandler = (req: Request, env: Env, log: Logger) => Promise<Response>;
+
+// Null-prototype object prevents prototype pollution (e.g., "constructor" method)
+const API_ROUTES: Record<string, Record<string, ApiHandler>> = Object.create(null);
+
+// Populated after handler definitions below (hoisted functions)
+function initApiRoutes(): void {
+  Object.assign(API_ROUTES, {
+    '/api/register': { __proto__: null, POST: handleRegister },
+    '/api/login': { __proto__: null, POST: handleLogin },
+    '/api/logout': { __proto__: null, POST: handleLogout },
+    '/api/me': { __proto__: null, GET: handleMe },
+    '/api/preferences': { __proto__: null, GET: handleGetPreferences, PUT: handlePutPreferences },
+    '/api/account': { __proto__: null, DELETE: handleDeleteAccount },
+    '/api/password': { __proto__: null, POST: handleChangePassword },
+  });
+}
+
 // ─── Route Handlers ─────────────────────────────────────────────────
 
 async function handleRegister(
@@ -563,36 +583,18 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       await ensureTables(env.DB);
 
       try {
-        if (url.pathname === '/api/register' && request.method === 'POST') {
-          return await handleRegister(request, env, logger);
-        }
+        // Initialize route map on first request (handlers are hoisted)
+        if (Object.keys(API_ROUTES).length === 0) initApiRoutes();
 
-        if (url.pathname === '/api/login' && request.method === 'POST') {
-          return await handleLogin(request, env, logger);
-        }
-
-        if (url.pathname === '/api/logout' && request.method === 'POST') {
-          return await handleLogout(request, env, logger);
-        }
-
-        if (url.pathname === '/api/me' && request.method === 'GET') {
-          return await handleMe(request, env, logger);
-        }
-
-        if (url.pathname === '/api/preferences' && request.method === 'GET') {
-          return await handleGetPreferences(request, env, logger);
-        }
-
-        if (url.pathname === '/api/preferences' && request.method === 'PUT') {
-          return await handlePutPreferences(request, env, logger);
-        }
-
-        if (url.pathname === '/api/account' && request.method === 'DELETE') {
-          return await handleDeleteAccount(request, env, logger);
-        }
-
-        if (url.pathname === '/api/password' && request.method === 'POST') {
-          return await handleChangePassword(request, env, logger);
+        const routeHandlers = API_ROUTES[url.pathname];
+        if (routeHandlers) {
+          const handler = routeHandlers[request.method];
+          if (handler) {
+            return await handler(request, env, logger);
+          }
+          // Include OPTIONS in Allow per RFC 9110 (CORS preflight is handled above)
+          const allowed = ['OPTIONS', ...Object.keys(routeHandlers)].join(', ');
+          return errorResponse(request, `Method ${request.method} not allowed`, 405, { Allow: allowed });
         }
 
         return errorResponse(request, 'Not found', 404);
