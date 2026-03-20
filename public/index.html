@@ -4970,6 +4970,25 @@
         });
     }
 
+    // ─── Global Error Handling ────────────────────────────────────
+    // Catch unhandled errors and promise rejections so they don't fail silently.
+    // Shows a non-intrusive toast so users know something went wrong.
+    window.addEventListener('error', (event) => {
+        console.error('[xikipedia] Unhandled error:', event.error || event.message);
+        // Don't show toast for resource loading errors (images, scripts, etc.)
+        if (event.target !== window) return;
+        if (typeof showErrorToast === 'function') {
+            showErrorToast('Something went wrong. Try refreshing the page.');
+        }
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('[xikipedia] Unhandled promise rejection:', event.reason);
+        if (typeof showErrorToast === 'function') {
+            showErrorToast('Something went wrong. Try refreshing the page.');
+        }
+    });
+
     // Online/offline status tracking and UI setup (needs DOM)
     document.addEventListener('DOMContentLoaded', () => {
         const offlineIndicator = document.getElementById('offlineIndicator');
