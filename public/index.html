@@ -1677,8 +1677,9 @@
             <button id="themeToggle" class="inline-tooltip" aria-label="Toggle dark/light mode" data-tooltip="Theme">&#127769;</button>
         </div>
     </header>
+    <main id="main" aria-label="Xikipedia feed">
     <p id="loading">Loading...</p>
-    <div id="feed" class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed"></div>
+    <div id="feed" class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed" aria-busy="true"></div>
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
         <button id="historyToggle" class="inline-tooltip" aria-label="Show reading history" data-tooltip="History (H)" style="display:none">📜</button>
@@ -1694,6 +1695,7 @@
         </div>
         <div id="historyList" class="history-list"></div>
     </div>
+    </main>
     <aside class="stats" data-testid="stats" aria-live="polite" aria-label="Category engagement scores">
         <button class="stats-close" aria-label="Close sidebar">&times;</button>
     </aside>
@@ -3405,6 +3407,7 @@
         postDiv.dataset.testid = "post";
         postDiv.dataset.title = nextPost.title;
         postDiv.dataset.id = nextPost.id;
+        postDiv.setAttribute("role", "article");
         postDiv.setAttribute("tabindex", "0");
         postDiv.setAttribute("aria-label", `Article: ${nextPost.title}. Press Enter to open on Wikipedia.`);
 
@@ -3821,7 +3824,11 @@
         postDiv.appendChild(buttonRow);
         engagePost(nextPost, -5);
         postsWithoutLike++;
-        document.querySelector(".posts").appendChild(postDiv);
+        const feedEl = document.querySelector(".posts");
+        feedEl.appendChild(postDiv);
+        if (feedEl.getAttribute('aria-busy') === 'true') {
+            feedEl.setAttribute('aria-busy', 'false');
+        }
 
         // Update session stats
         articlesViewed++;
