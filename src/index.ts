@@ -100,6 +100,26 @@ async function ensureTables(db: D1Database): Promise<void> {
   tablesInitialized = true;
 }
 
+// ─── API Route Map ──────────────────────────────────────────────────
+
+type ApiHandler = (req: Request, env: Env, log: Logger) => Promise<Response>;
+
+// Null-prototype object prevents prototype pollution (e.g., "constructor" method)
+const API_ROUTES: Record<string, Record<string, ApiHandler>> = Object.create(null);
+
+// Populated after handler definitions below (hoisted functions)
+function initApiRoutes(): void {
+  Object.assign(API_ROUTES, {
+    '/api/register': { __proto__: null, POST: handleRegister },
+    '/api/login': { __proto__: null, POST: handleLogin },
+    '/api/logout': { __proto__: null, POST: handleLogout },
+    '/api/me': { __proto__: null, GET: handleMe },
+    '/api/preferences': { __proto__: null, GET: handleGetPreferences, PUT: handlePutPreferences },
+    '/api/account': { __proto__: null, DELETE: handleDeleteAccount },
+    '/api/password': { __proto__: null, POST: handleChangePassword },
+  });
+}
+
 // ─── Route Handlers ─────────────────────────────────────────────────
 
 async function handleRegister(
@@ -563,16 +583,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       await ensureTables(env.DB);
 
       try {
-        type ApiHandler = (req: Request, env: Env, log: Logger) => Promise<Response>;
-        const API_ROUTES: Record<string, Record<string, ApiHandler>> = {
-          '/api/register': { POST: handleRegister },
-          '/api/login': { POST: handleLogin },
-          '/api/logout': { POST: handleLogout },
-          '/api/me': { GET: handleMe },
-          '/api/preferences': { GET: handleGetPreferences, PUT: handlePutPreferences },
-          '/api/account': { DELETE: handleDeleteAccount },
-          '/api/password': { POST: handleChangePassword },
-        };
+        // Initialize route map on first request (handlers are hoisted)
+        if (Object.keys(API_ROUTES).length === 0) initApiRoutes();
 
         const routeHandlers = API_ROUTES[url.pathname];
         if (routeHandlers) {
@@ -580,7 +592,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           if (handler) {
             return await handler(request, env, logger);
           }
-          const allowed = Object.keys(routeHandlers).join(', ');
+          // Include OPTIONS in Allow per RFC 9110 (CORS preflight is handled above)
+          const allowed = ['OPTIONS', ...Object.keys(routeHandlers)].join(', ');
           return errorResponse(request, `Method ${request.method} not allowed`, 405, { Allow: allowed });
         }
 

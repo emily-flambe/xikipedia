@@ -131,7 +131,7 @@ test.describe('HTTP method enforcement', () => {
     await page.goto('/');
     const resp = await page.request.get('/api/register');
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('POST');
+    expect(resp.headers()['allow']).toBe('OPTIONS, POST');
   });
 
   test('PUT /api/register returns 405 with Allow: POST', async ({ page }) => {
@@ -141,7 +141,7 @@ test.describe('HTTP method enforcement', () => {
       data: { username: 'test', password: 'test123' },
     });
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('POST');
+    expect(resp.headers()['allow']).toBe('OPTIONS, POST');
   });
 
   test('GET /api/login returns 405 with Allow: POST', async ({ page }) => {
@@ -149,7 +149,7 @@ test.describe('HTTP method enforcement', () => {
     await page.goto('/');
     const resp = await page.request.get('/api/login');
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('POST');
+    expect(resp.headers()['allow']).toBe('OPTIONS, POST');
   });
 
   test('DELETE /api/login returns 405 with Allow: POST', async ({ page }) => {
@@ -157,7 +157,7 @@ test.describe('HTTP method enforcement', () => {
     await page.goto('/');
     const resp = await page.request.delete('/api/login');
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('POST');
+    expect(resp.headers()['allow']).toBe('OPTIONS, POST');
   });
 
   test('POST /api/preferences returns 405 with Allow: GET, PUT', async ({ page }) => {
@@ -170,7 +170,7 @@ test.describe('HTTP method enforcement', () => {
       data: { categoryScores: {} },
     });
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('GET, PUT');
+    expect(resp.headers()['allow']).toBe('OPTIONS, GET, PUT');
   });
 
   test('POST /api/account returns 405 with Allow: DELETE', async ({ page }) => {
@@ -183,7 +183,7 @@ test.describe('HTTP method enforcement', () => {
       data: {},
     });
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('DELETE');
+    expect(resp.headers()['allow']).toBe('OPTIONS, DELETE');
   });
 
   test('GET /api/account returns 405 with Allow: DELETE', async ({ page }) => {
@@ -191,7 +191,7 @@ test.describe('HTTP method enforcement', () => {
     await page.goto('/');
     const resp = await page.request.get('/api/account');
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('DELETE');
+    expect(resp.headers()['allow']).toBe('OPTIONS, DELETE');
   });
 });
 
@@ -1323,7 +1323,7 @@ test.describe('token revocation: logout requires authentication', () => {
 
     const resp = await page.request.get('/api/logout');
     expect(resp.status()).toBe(405);
-    expect(resp.headers()['allow']).toBe('POST');
+    expect(resp.headers()['allow']).toBe('OPTIONS, POST');
   });
 });
 

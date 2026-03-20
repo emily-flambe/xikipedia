@@ -15,13 +15,13 @@ test.describe('API 405 Method Not Allowed', () => {
     method: string;
     expectedAllow: string;
   }> = [
-    { path: '/api/register', method: 'GET', expectedAllow: 'POST' },
-    { path: '/api/login', method: 'PUT', expectedAllow: 'POST' },
-    { path: '/api/logout', method: 'GET', expectedAllow: 'POST' },
-    { path: '/api/me', method: 'POST', expectedAllow: 'GET' },
-    { path: '/api/preferences', method: 'POST', expectedAllow: 'GET, PUT' },
-    { path: '/api/account', method: 'GET', expectedAllow: 'DELETE' },
-    { path: '/api/password', method: 'GET', expectedAllow: 'POST' },
+    { path: '/api/register', method: 'GET', expectedAllow: 'OPTIONS, POST' },
+    { path: '/api/login', method: 'PUT', expectedAllow: 'OPTIONS, POST' },
+    { path: '/api/logout', method: 'GET', expectedAllow: 'OPTIONS, POST' },
+    { path: '/api/me', method: 'POST', expectedAllow: 'OPTIONS, GET' },
+    { path: '/api/preferences', method: 'POST', expectedAllow: 'OPTIONS, GET, PUT' },
+    { path: '/api/account', method: 'GET', expectedAllow: 'OPTIONS, DELETE' },
+    { path: '/api/password', method: 'GET', expectedAllow: 'OPTIONS, POST' },
   ];
 
   for (const { path, method, expectedAllow } of wrongMethodCases) {
