@@ -570,10 +570,10 @@ test.describe('Preference payload edge cases', () => {
       },
     });
 
-    // The server accepts any object shape for categoryScores -- it just serializes it.
-    // This is a potential bug: the frontend expects numeric values.
-    // Document the behavior.
-    expect(resp.status()).not.toBe(500);
+    // Server validates that categoryScores values must be finite numbers
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toBe('categoryScores values must be finite numbers');
   });
 
   test('hiddenCategories with non-string values', async ({ page }) => {
@@ -593,7 +593,10 @@ test.describe('Preference payload edge cases', () => {
       },
     });
 
-    expect(resp.status()).not.toBe(500);
+    // Server validates that hiddenCategories items must be strings
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toBe('hiddenCategories items must be strings');
   });
 
   test('categoryScores as an array (should be object) is rejected', async ({ page }) => {
@@ -665,7 +668,8 @@ test.describe('Preference payload edge cases', () => {
       },
     });
 
-    expect(resp.status()).not.toBe(500);
+    // Deeply nested objects are not valid category score values (must be finite numbers)
+    expect(resp.status()).toBe(400);
   });
 
   test('empty body to PUT /api/preferences', async ({ page }) => {
@@ -684,6 +688,72 @@ test.describe('Preference payload edge cases', () => {
 
     // Empty body should default to {} for categoryScores and [] for hiddenCategories
     expect(resp.status()).toBe(200);
+  });
+
+  test('categoryScores with Infinity is rejected', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // JSON.stringify(Infinity) → null, but test the server-side check
+    // Send a value that parses as non-finite
+    const resp = await page.request.put('/api/preferences', {
+      headers: {
+        Cookie: `xiki_token=${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        categoryScores: { science: 42, math: 'Infinity' },
+        hiddenCategories: [],
+      },
+    });
+
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toBe('categoryScores values must be finite numbers');
+  });
+
+  test('categoryScores with valid numeric values is accepted', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.put('/api/preferences', {
+      headers: {
+        Cookie: `xiki_token=${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        categoryScores: { science: 150, math: -50, art: 0, history: 99.5 },
+        hiddenCategories: ['biology', 'chemistry'],
+      },
+    });
+
+    expect(resp.status()).toBe(200);
+  });
+
+  test('hiddenCategories with mixed types is rejected', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.put('/api/preferences', {
+      headers: {
+        Cookie: `xiki_token=${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        categoryScores: {},
+        hiddenCategories: ['science', 42],
+      },
+    });
+
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).toBe('hiddenCategories items must be strings');
   });
 
   test('preference payload near the 1MB size limit', async ({ page }) => {
