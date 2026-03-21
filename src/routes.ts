@@ -94,6 +94,39 @@ export async function ensureTables(db: D1Database): Promise<void> {
   tablesInitialized = true;
 }
 
+// ─── Request Body Parsing ────────────────────────────────────────────
+
+/** Maximum request body size for API endpoints (64KB — generous for JSON auth payloads). */
+const MAX_BODY_SIZE = 64 * 1024;
+
+/**
+ * Parse a JSON request body with size validation.
+ * Returns the parsed body or a Response (error) to return immediately.
+ */
+async function parseJsonBody<T>(request: Request, _logger: Logger): Promise<T | Response> {
+  // Check Content-Length header if present (fast reject without reading body)
+  const contentLength = request.headers.get('Content-Length');
+  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+    return errorResponse(request, 'Request body too large', 413);
+  }
+
+  try {
+    // Read body as text first to enforce size limit (defends against missing/spoofed Content-Length)
+    const text = await request.text();
+    if (text.length > MAX_BODY_SIZE) {
+      return errorResponse(request, 'Request body too large', 413);
+    }
+    return JSON.parse(text) as T;
+  } catch {
+    return errorResponse(request, 'Invalid JSON body', 400);
+  }
+}
+
+/** Type guard: returns true if parseJsonBody returned an error Response */
+function isResponse(value: unknown): value is Response {
+  return value instanceof Response;
+}
+
 // ─── Route Handlers ─────────────────────────────────────────────────
 
 async function handleRegister(
@@ -101,12 +134,9 @@ async function handleRegister(
   env: Env,
   logger: Logger,
 ): Promise<Response> {
-  let body: { username?: string; password?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(request, 'Invalid JSON body', 400);
-  }
+  const result = await parseJsonBody<{ username?: string; password?: string }>(request, logger);
+  if (isResponse(result)) return result;
+  const body = result;
 
   const validationError = validateRegistration(body.username, body.password);
   if (validationError) {
@@ -179,12 +209,9 @@ async function handleLogin(
   const ip = getClientIp(request);
   const rateLimitKey = `login_fail:${ip}`;
 
-  let body: { username?: string; password?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(request, 'Invalid JSON body', 400);
-  }
+  const result = await parseJsonBody<{ username?: string; password?: string }>(request, logger);
+  if (isResponse(result)) return result;
+  const body = result;
 
   if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
       !body.username || !body.password) {
@@ -304,12 +331,9 @@ async function handlePutPreferences(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
-  let body: { categoryScores?: unknown; hiddenCategories?: unknown; algorithmAggressiveness?: unknown };
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(request, 'Invalid JSON body', 400);
-  }
+  const result = await parseJsonBody<{ categoryScores?: unknown; hiddenCategories?: unknown; algorithmAggressiveness?: unknown }>(request, logger);
+  if (isResponse(result)) return result;
+  const body = result;
 
   if (body.categoryScores && (typeof body.categoryScores !== 'object' || Array.isArray(body.categoryScores))) {
     return errorResponse(request, 'categoryScores must be an object', 400);
@@ -390,12 +414,9 @@ async function handleDeleteAccount(
     return rateLimitResponse(request, rl.windowStart, 86400);
   }
 
-  let body: { password?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(request, 'Invalid JSON body', 400);
-  }
+  const result = await parseJsonBody<{ password?: string }>(request, logger);
+  if (isResponse(result)) return result;
+  const body = result;
 
   if (typeof body.password !== 'string' || !body.password) {
     return errorResponse(request, 'Password is required to delete account', 400);
@@ -473,12 +494,9 @@ async function handleChangePassword(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
-  let body: { currentPassword?: string; newPassword?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(request, 'Invalid JSON body', 400);
-  }
+  const result = await parseJsonBody<{ currentPassword?: string; newPassword?: string }>(request, logger);
+  if (isResponse(result)) return result;
+  const body = result;
 
   if (typeof body.currentPassword !== 'string' || !body.currentPassword) {
     return errorResponse(request, 'Current password is required', 400);
