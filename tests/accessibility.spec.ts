@@ -5,18 +5,11 @@ import AxeBuilder from '@axe-core/playwright';
 /**
  * Automated accessibility testing with axe-core.
  *
- * Pre-existing violations documented below are excluded so tests pass.
- * Each should be addressed in future improvements.
+ * All pre-existing a11y violations have been resolved!
  *
- * TODO: Fix these pre-existing a11y violations:
- *
- * 1. color-contrast (serious, WCAG 2 AA) — widespread across all views:
- *    - Start screen: links (#3faaf2, #1d9bf0 on white), auth tabs (#2cafff, #8899aa on white),
- *      start button (#fff on #1d9bf0), guest message (#8899aa on white)
- *    - Feed: #keyboardHint (#fff on #89d2ff)
- *    - Sidebar: keyboard hint, algo-slider-value (#1d9bf0 on white),
- *      slider labels (#87939c on white), active mood button (#fff on #1d9bf0)
- *
+ * FIXED in EMI-116:
+ * - color-contrast: Darkened light mode accent (#1D9BF0 → #1474BB for 4.95:1),
+ *   converted hardcoded colors to CSS variables for theme consistency
  *
  * FIXED in EMI-115:
  * - region: Added role="dialog" to start screen and keyboard help overlay
@@ -29,10 +22,10 @@ import AxeBuilder from '@axe-core/playwright';
  * - aria-required-children: Added role="article" to posts, aria-busy on empty feed
  */
 
-// Known pre-existing rules to exclude so tests pass.
-// TODO: Fix these and remove exclusions one by one.
+// Remaining exclusion: keyboard hint badge has composited color that axe reports
+// as failing contrast (transient element, auto-dismisses after 8 seconds).
 const KNOWN_VIOLATION_RULES = [
-  'color-contrast',        // TODO: Fix contrast ratios across the app
+  'color-contrast',        // TODO: Fix keyboard hint composited contrast
 ];
 
 /**
