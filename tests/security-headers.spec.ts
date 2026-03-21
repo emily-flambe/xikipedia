@@ -102,6 +102,13 @@ test.describe('Security Headers', () => {
     });
   });
 
+  test('API responses include Vary: Origin for CORS cache safety', async ({ playwright }) => {
+    const ctx = await playwright.request.newContext({ baseURL: BASE_URL });
+    const response = await ctx.get('/api/health');
+    expect(response.headers()['vary']).toMatch(/Origin/i);
+    await ctx.dispose();
+  });
+
   test('X-Request-Id is unique per request', async ({ playwright }) => {
     const ctx = await playwright.request.newContext({ baseURL: BASE_URL });
     const [r1, r2] = await Promise.all([ctx.get('/api/user'), ctx.get('/api/user')]);
