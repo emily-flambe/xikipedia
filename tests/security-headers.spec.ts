@@ -61,6 +61,7 @@ test.describe('Security Headers', () => {
         expect(csp, `Missing CSP directive: ${directive}`).toContain(directive);
       }
     });
+
   });
 
   test.describe('API endpoint (/api/user)', () => {
@@ -87,5 +88,28 @@ test.describe('Security Headers', () => {
         expect(csp, `Missing CSP directive: ${directive}`).toContain(directive);
       }
     });
+
+    test('has X-Request-Id as a valid UUID', () => {
+      const requestId = headers['x-request-id'];
+      expect(requestId).toBeDefined();
+      expect(requestId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+    });
+
+    test('has Server-Timing header', () => {
+      expect(headers['server-timing']).toMatch(/^total;dur=\d+$/);
+    });
+  });
+
+  test('X-Request-Id is unique per request', async ({ playwright }) => {
+    const ctx = await playwright.request.newContext({ baseURL: BASE_URL });
+    const [r1, r2] = await Promise.all([ctx.get('/api/user'), ctx.get('/api/user')]);
+    const id1 = r1.headers()['x-request-id'];
+    const id2 = r2.headers()['x-request-id'];
+    expect(id1).toBeDefined();
+    expect(id2).toBeDefined();
+    expect(id1).not.toBe(id2);
+    await ctx.dispose();
   });
 });
