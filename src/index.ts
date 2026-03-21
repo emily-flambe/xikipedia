@@ -43,15 +43,16 @@ function validateR2Env(env: Env): string | null {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const startTime = Date.now();
-    const response = await handleRequest(request, env);
+    const requestId = crypto.randomUUID();
+    const response = await handleRequest(request, env, requestId);
     const secured = addSecurityHeaders(response);
     secured.headers.set('Server-Timing', `total;dur=${Date.now() - startTime}`);
+    secured.headers.set('X-Request-Id', requestId);
     return secured;
   },
 };
 
-async function handleRequest(request: Request, env: Env): Promise<Response> {
-    const requestId = crypto.randomUUID();
+async function handleRequest(request: Request, env: Env, requestId: string): Promise<Response> {
     const logger = createLogger(requestId);
     const url = new URL(request.url);
 
