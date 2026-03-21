@@ -22,13 +22,11 @@ import AxeBuilder from '@axe-core/playwright';
  * - aria-required-children: Added role="article" to posts, aria-busy on empty feed
  */
 
-// Remaining exclusion: keyboard hint badge has composited color that axe reports
-// as failing contrast (transient element, auto-dismisses after 8 seconds).
-const KNOWN_VIOLATION_RULES = [
-  'color-contrast',        // Remaining: keyboard hint dismiss button composited contrast
-  // 'heading-order' — fixed in EMI-114
-  // 'region' — fixed previously
-];
+// All known violations have been fixed!
+// - color-contrast: fixed in EMI-115 (keyboard hint uses themed surface/text colors)
+// - heading-order: fixed in EMI-114
+// - region: fixed previously
+const KNOWN_VIOLATION_RULES: string[] = [];
 
 /**
  * Mock data to avoid 40MB download in CI.
