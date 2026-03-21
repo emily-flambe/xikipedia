@@ -542,7 +542,7 @@
             padding-bottom: 12px;
             border-bottom: 1px solid var(--border-color);
         }
-        .mood-section h4 {
+        .mood-section h2 {
             margin: 0 0 8px 0;
             font-size: 11px;
             color: var(--text-secondary);
@@ -584,7 +584,7 @@
             padding-bottom: 12px;
             border-bottom: 1px solid var(--border-color);
         }
-        .presets-section h4 {
+        .presets-section h2 {
             margin: 0 0 8px 0;
             font-size: 11px;
             color: var(--text-secondary);
@@ -3041,7 +3041,7 @@
         const moodSection = document.createElement("div");
         moodSection.classList.add("mood-section");
         
-        const moodTitle = document.createElement("h4");
+        const moodTitle = document.createElement("h2");
         moodTitle.textContent = "Reading Mood";
         moodSection.appendChild(moodTitle);
         
@@ -3076,7 +3076,7 @@
         const presetsSection = document.createElement("div");
         presetsSection.classList.add("presets-section");
         
-        const presetsTitle = document.createElement("h4");
+        const presetsTitle = document.createElement("h2");
         presetsTitle.textContent = "Quick Filters";
         presetsSection.appendChild(presetsTitle);
         
@@ -4441,7 +4441,7 @@
                 helpEl.id = 'keyboardHelp';
                 helpEl.innerHTML = `
                     <div class="keyboard-help-content">
-                        <h3>⌨️ Keyboard Shortcuts</h3>
+                        <h2>⌨️ Keyboard Shortcuts</h2>
                         <table>
                             <tr><td><kbd>J</kbd></td><td>Next post</td></tr>
                             <tr><td><kbd>K</kbd></td><td>Previous post</td></tr>
@@ -4480,7 +4480,7 @@
                     td.style.padding = '4px 12px';
                     if (i % 2 === 0) td.style.textAlign = 'right';
                 });
-                helpEl.querySelector('h3').style.marginTop = '0';
+                helpEl.querySelector('h2').style.marginTop = '0';
                 helpEl.querySelector('.help-dismiss').style.cssText = `
                     text-align: center; opacity: 0.7; font-size: 0.9em; margin-bottom: 0;
                 `;
