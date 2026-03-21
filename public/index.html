@@ -2687,20 +2687,42 @@
 
     // Debounced preference saving
     let saveTimeout = null;
+    let prefsDirty = false;
+
+    function buildPrefsPayload() {
+        return JSON.stringify({
+            categoryScores: categoryScores,
+            hiddenCategories: Array.from(hiddenCategories),
+            algorithmAggressiveness: algorithmAggressiveness
+        });
+    }
+
+    function flushPreferencesNow() {
+        if (!isLoggedIn() || !prefsDirty) return;
+        if (saveTimeout) { clearTimeout(saveTimeout); saveTimeout = null; }
+        prefsDirty = false;
+        // keepalive: true ensures the request survives page unload
+        fetch('/api/preferences', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: buildPrefsPayload(),
+            keepalive: true
+        }).catch(() => {});
+    }
+
     function savePreferences() {
         if (!isLoggedIn()) return;
+        prefsDirty = true;
         if (saveTimeout) clearTimeout(saveTimeout);
         saveTimeout = setTimeout(() => {
-            const body = {
-                categoryScores: categoryScores,
-                hiddenCategories: Array.from(hiddenCategories),
-                algorithmAggressiveness: algorithmAggressiveness
-            };
+            prefsDirty = false;
+            const payload = buildPrefsPayload();
             fetch('/api/preferences', {
                 method: 'PUT',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body: payload
             }).then(resp => {
                 if (!resp.ok) {
                     if (resp.status === 401) {
@@ -4951,10 +4973,18 @@
         };
     }
     
-    // Cleanup on page unload
+    // Flush unsaved preferences and clean up on page unload
     window.addEventListener('beforeunload', () => {
+        flushPreferencesNow();
         if (algorithmWorker) {
             algorithmWorker.terminate();
+        }
+    });
+
+    // Also flush when tab becomes hidden (more reliable on mobile)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            flushPreferencesNow();
         }
     });
 
