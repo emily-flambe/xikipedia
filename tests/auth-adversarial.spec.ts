@@ -1805,3 +1805,45 @@ test.describe('token_version in JWT payload', () => {
     expect(realPayload.token_version).toBe(1);
   });
 });
+
+test.describe('request body size limits', () => {
+  test('oversized register body returns 413', async ({ page }) => {
+    // 128KB JSON payload — well over the 64KB limit
+    const hugePayload = JSON.stringify({
+      username: 'a'.repeat(65536),
+      password: 'b'.repeat(65536),
+    });
+    const resp = await page.request.post('/api/register', {
+      data: hugePayload,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(resp.status()).toBe(413);
+    const body = await resp.json();
+    expect(body.error).toContain('too large');
+  });
+
+  test('oversized login body returns 413', async ({ page }) => {
+    const hugePayload = JSON.stringify({
+      username: 'a'.repeat(65536),
+      password: 'b'.repeat(65536),
+    });
+    const resp = await page.request.post('/api/login', {
+      data: hugePayload,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(resp.status()).toBe(413);
+    const body = await resp.json();
+    expect(body.error).toContain('too large');
+  });
+
+  test('normal-sized register body is accepted (not blocked by size limit)', async ({ page }) => {
+    const resp = await page.request.post('/api/register', {
+      data: JSON.stringify({ username: 'xx', password: 'short' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    // Should get a validation error (username too short), not 413
+    expect(resp.status()).toBe(400);
+    const body = await resp.json();
+    expect(body.error).not.toContain('too large');
+  });
+});
