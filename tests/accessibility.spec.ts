@@ -25,7 +25,9 @@ import AxeBuilder from '@axe-core/playwright';
 // Remaining exclusion: keyboard hint badge has composited color that axe reports
 // as failing contrast (transient element, auto-dismisses after 8 seconds).
 const KNOWN_VIOLATION_RULES = [
-  'color-contrast',        // TODO: Fix keyboard hint composited contrast
+  'color-contrast',        // Remaining: keyboard hint dismiss button composited contrast
+  // 'heading-order' — fixed in EMI-114
+  // 'region' — fixed previously
 ];
 
 /**
