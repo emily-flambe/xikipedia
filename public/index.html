@@ -1734,7 +1734,9 @@
             </div>
             <div class="auth-tab-content" data-tab-content="login">
                 <form id="loginForm" autocomplete="on">
+                <label for="loginUsername" class="sr-only">Username</label>
                 <input type="text" id="loginUsername" placeholder="Username" autocomplete="username">
+                <label for="loginPassword" class="sr-only">Password</label>
                 <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
                 <button class="auth-submit-btn" id="loginBtn" type="submit">Log in</button>
                 <div class="auth-error" id="loginError"></div>
@@ -1742,8 +1744,11 @@
             </div>
             <div class="auth-tab-content" data-tab-content="register">
                 <form id="registerForm" autocomplete="on">
+                <label for="registerUsername" class="sr-only">Username</label>
                 <input type="text" id="registerUsername" placeholder="Username" autocomplete="username">
+                <label for="registerPassword" class="sr-only">Password</label>
                 <input type="password" id="registerPassword" placeholder="Password" autocomplete="new-password">
+                <label for="registerConfirm" class="sr-only">Confirm password</label>
                 <input type="password" id="registerConfirm" placeholder="Confirm password" autocomplete="new-password">
                 <button class="auth-submit-btn" id="registerBtn" type="submit">Create account</button>
                 <div class="auth-error" id="registerError"></div>
