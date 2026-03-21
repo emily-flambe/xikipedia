@@ -3276,6 +3276,7 @@
                 img.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(item.thumb.replace(/ /g, '_'))}&width=120`;
                 img.alt = `Thumbnail for ${item.title}`;
                 img.loading = 'lazy';
+                img.decoding = 'async';
                 img.onerror = () => {
                     const noThumb = document.createElement('div');
                     noThumb.className = 'no-thumb';
@@ -3390,6 +3391,7 @@
         const fullImg = document.createElement("img");
         fullImg.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(imgName.replace(/ /g, '_'))}`;
         fullImg.alt = articleTitle ? `Full-size image from ${articleTitle}` : 'Full-size article image';
+        fullImg.decoding = 'async';
         fullImg.popover = "auto";
         fullImg.classList.add("fullImg");
         fullImg.onerror = () => fullImg.remove();
@@ -3791,6 +3793,7 @@
             postImg.alt = `Image for ${nextPost.title}`;
             postImg.classList.add("media");
             postImg.loading = "eager";
+            postImg.decoding = "async";
             postImg.onerror = () => postImg.remove();
             postImg.onclick = (e) => {
                 showPic(nextPost.thumb, nextPost.title);
