@@ -20,10 +20,10 @@ import AxeBuilder from '@axe-core/playwright';
  * 2. region (moderate, best-practice) — some content not wrapped in landmarks
  *    (partially fixed: <main> added, but overlays may still trigger)
  *
- * 3. heading-order (moderate, best-practice) — h3 in keyboard help overlay and h4
- *    in sidebar without proper hierarchy
+ * FIXED in EMI-108:
+ * - heading-order: Fixed hierarchy (h3→h2 keyboard help, h4→h3 sidebar)
  *
- * FIXED in this PR:
+ * FIXED in EMI-105:
  * - landmark-one-main: Added <main> landmark wrapping feed content
  * - aria-required-children: Added role="article" to posts, aria-busy on empty feed
  */
@@ -33,7 +33,6 @@ import AxeBuilder from '@axe-core/playwright';
 const KNOWN_VIOLATION_RULES = [
   'color-contrast',        // TODO: Fix contrast ratios across the app
   'region',                // TODO: Some overlays still outside landmarks
-  'heading-order',         // TODO: Fix heading hierarchy (h3/h4 skipping levels)
 ];
 
 /**
