@@ -100,6 +100,10 @@ test.describe('Security Headers', () => {
     test('has Server-Timing header', () => {
       expect(headers['server-timing']).toMatch(/^total;dur=\d+$/);
     });
+
+    test('has Cache-Control: no-store to prevent caching sensitive data', () => {
+      expect(headers['cache-control']).toBe('no-store');
+    });
   });
 
   test('API responses include Vary: Origin for CORS cache safety', async ({ playwright }) => {

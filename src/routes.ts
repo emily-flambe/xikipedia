@@ -185,6 +185,7 @@ async function handleRegister(
       status: 201,
       headers: {
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
         ...getCorsHeaders(request),
         'Set-Cookie': authCookieHeader(token, request),
       },
@@ -271,6 +272,7 @@ async function handleLogin(
     status: 200,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...getCorsHeaders(request),
       'Set-Cookie': authCookieHeader(token, request),
     },
@@ -453,6 +455,7 @@ async function handleDeleteAccount(
     status: 200,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...getCorsHeaders(request),
       'Set-Cookie': clearAuthCookieHeader(request),
     },
@@ -478,6 +481,7 @@ async function handleLogout(
     status: 200,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...getCorsHeaders(request),
       'Set-Cookie': clearAuthCookieHeader(request),
     },

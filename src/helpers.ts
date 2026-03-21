@@ -69,6 +69,7 @@ export function jsonResponse(
     status,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...getCorsHeaders(request),
     },
   });

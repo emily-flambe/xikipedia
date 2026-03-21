@@ -47,6 +47,7 @@ export function rateLimitResponse(request: Request, windowStart: number, windowS
     status: 429,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       'Retry-After': String(retryAfter),
       ...getCorsHeaders(request),
     },
