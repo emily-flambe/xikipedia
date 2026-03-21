@@ -17,25 +17,22 @@ import AxeBuilder from '@axe-core/playwright';
  *    - Sidebar: keyboard hint, algo-slider-value (#1d9bf0 on white),
  *      slider labels (#87939c on white), active mood button (#fff on #1d9bf0)
  *
- * 2. region (moderate, best-practice) — page content not wrapped in landmarks:
- *    - #feed, #sessionStats, #keyboardHint, #startScreen children, #keyboardHelp overlay
+ * 2. region (moderate, best-practice) — some content not wrapped in landmarks
+ *    (partially fixed: <main> added, but overlays may still trigger)
  *
- * 3. landmark-one-main (moderate, best-practice) — no <main> landmark in document
- *
- * 4. aria-required-children (critical, WCAG 2 A) — #feed has role="feed" but no
- *    role="article" children on start screen (feed is empty before data loads)
- *
- * 5. heading-order (moderate, best-practice) — h3 in keyboard help overlay and h4
+ * 3. heading-order (moderate, best-practice) — h3 in keyboard help overlay and h4
  *    in sidebar without proper hierarchy
+ *
+ * FIXED in this PR:
+ * - landmark-one-main: Added <main> landmark wrapping feed content
+ * - aria-required-children: Added role="article" to posts, aria-busy on empty feed
  */
 
 // Known pre-existing rules to exclude so tests pass.
 // TODO: Fix these and remove exclusions one by one.
 const KNOWN_VIOLATION_RULES = [
   'color-contrast',        // TODO: Fix contrast ratios across the app
-  'region',                // TODO: Wrap page content in landmark regions
-  'landmark-one-main',     // TODO: Add <main> landmark to document
-  'aria-required-children', // TODO: Handle empty feed state for role="feed"
+  'region',                // TODO: Some overlays still outside landmarks
   'heading-order',         // TODO: Fix heading hierarchy (h3/h4 skipping levels)
 ];
 
