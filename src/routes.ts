@@ -496,6 +496,43 @@ async function handleChangePassword(
   return jsonResponse(request, { success: true });
 }
 
+// ─── Health Check ────────────────────────────────────────────────────
+
+async function handleHealth(
+  request: Request,
+  env: Env,
+  logger: Logger,
+): Promise<Response> {
+  const checks: Record<string, 'ok' | 'error'> = {};
+
+  // Check D1 connectivity
+  try {
+    await env.DB.prepare('SELECT 1').first();
+    checks.database = 'ok';
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logger.error('health.db.error', { error: msg });
+    checks.database = 'error';
+  }
+
+  // Check R2 connectivity
+  try {
+    await env.DATA_BUCKET.head('smoldata.json');
+    checks.storage = 'ok';
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logger.error('health.r2.error', { error: msg });
+    checks.storage = 'error';
+  }
+
+  const healthy = Object.values(checks).every((v) => v === 'ok');
+
+  return jsonResponse(request, {
+    status: healthy ? 'healthy' : 'degraded',
+    checks,
+  }, healthy ? 200 : 503);
+}
+
 // ─── API Route Map ──────────────────────────────────────────────────
 
 type ApiHandler = (req: Request, env: Env, log: Logger) => Promise<Response>;
@@ -509,6 +546,7 @@ export function initApiRoutes(): void {
   const route = (handlers: Record<string, ApiHandler>): Record<string, ApiHandler> =>
     Object.assign(Object.create(null), handlers);
 
+  API_ROUTES['/api/health'] = route({ GET: handleHealth });
   API_ROUTES['/api/register'] = route({ POST: handleRegister });
   API_ROUTES['/api/login'] = route({ POST: handleLogin });
   API_ROUTES['/api/logout'] = route({ POST: handleLogout });
