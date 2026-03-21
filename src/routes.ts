@@ -318,9 +318,33 @@ async function handlePutPreferences(
     return errorResponse(request, 'hiddenCategories must be an array', 400);
   }
 
+  // Validate categoryScores values are numbers (prevents storing arbitrary data)
+  if (body.categoryScores) {
+    for (const [key, value] of Object.entries(body.categoryScores as Record<string, unknown>)) {
+      if (typeof key !== 'string') {
+        return errorResponse(request, 'categoryScores keys must be strings', 400);
+      }
+      if (typeof value !== 'number' || !Number.isFinite(value as number)) {
+        return errorResponse(request, 'categoryScores values must be finite numbers', 400);
+      }
+    }
+  }
+
+  // Validate hiddenCategories items are strings
+  if (body.hiddenCategories) {
+    for (const item of body.hiddenCategories as unknown[]) {
+      if (typeof item !== 'string') {
+        return errorResponse(request, 'hiddenCategories items must be strings', 400);
+      }
+    }
+  }
+
   // Build settings object from known client-sent fields
   const settings: Record<string, unknown> = {};
   if (typeof body.algorithmAggressiveness === 'number') {
+    if (!Number.isFinite(body.algorithmAggressiveness)) {
+      return errorResponse(request, 'algorithmAggressiveness must be a finite number', 400);
+    }
     settings.algorithmAggressiveness = Math.max(0, Math.min(100, body.algorithmAggressiveness));
   }
 
