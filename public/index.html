@@ -1705,7 +1705,7 @@
     <div class="stats-backdrop" id="statsBackdrop"></div>
     <button id="statsToggleBtn" class="tooltip-right" aria-label="Open category stats" data-tooltip="Stats (S)"></button>
     <button class="floating-btn" id="exploreBtn" aria-label="Toggle explore mode" data-tooltip="Explore (E)" style="display:none"></button>
-    <div id="startScreen" popover="manual">
+    <div id="startScreen" popover="manual" role="dialog" aria-label="Welcome to Xikipedia">
         <div>
             <h1>Xikipedia</h1>
             <h2 style="font-size: 100%;opacity:0.85;font-style:italic">
@@ -4439,6 +4439,8 @@
             if (!helpEl) {
                 helpEl = document.createElement('div');
                 helpEl.id = 'keyboardHelp';
+                helpEl.setAttribute('role', 'dialog');
+                helpEl.setAttribute('aria-label', 'Keyboard shortcuts');
                 helpEl.innerHTML = `
                     <div class="keyboard-help-content">
                         <h2>⌨️ Keyboard Shortcuts</h2>

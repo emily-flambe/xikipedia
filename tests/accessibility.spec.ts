@@ -17,10 +17,11 @@ import AxeBuilder from '@axe-core/playwright';
  *    - Sidebar: keyboard hint, algo-slider-value (#1d9bf0 on white),
  *      slider labels (#87939c on white), active mood button (#fff on #1d9bf0)
  *
- * 2. region (moderate, best-practice) — some content not wrapped in landmarks
- *    (partially fixed: <main> added, but overlays may still trigger)
  *
- * FIXED in EMI-108:
+ * FIXED in EMI-115:
+ * - region: Added role="dialog" to start screen and keyboard help overlay
+ *
+ * FIXED in EMI-114:
  * - heading-order: Fixed hierarchy (h3→h2 keyboard help, h4→h3 sidebar)
  *
  * FIXED in EMI-105:
@@ -32,7 +33,6 @@ import AxeBuilder from '@axe-core/playwright';
 // TODO: Fix these and remove exclusions one by one.
 const KNOWN_VIOLATION_RULES = [
   'color-contrast',        // TODO: Fix contrast ratios across the app
-  'region',                // TODO: Some overlays still outside landmarks
 ];
 
 /**
