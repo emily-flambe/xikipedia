@@ -4137,6 +4137,7 @@
         // Clear all posts from DOM
         const postsContainer = document.querySelector(".posts");
         postsContainer.innerHTML = "";
+        postsContainer.setAttribute('aria-busy', 'true');
         // Reset DOM pruning state
         pruneSpacer = null;
         lastPruneTime = 0;
