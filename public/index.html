@@ -3794,6 +3794,9 @@
             postImg.classList.add("media");
             postImg.loading = "eager";
             postImg.decoding = "async";
+            // First 2 posts get high fetch priority for faster LCP; later ones deprioritized
+            const currentFeed = document.querySelector(".posts");
+            postImg.fetchPriority = (currentFeed && currentFeed.children.length < 2) ? "high" : "low";
             postImg.onerror = () => postImg.remove();
             postImg.onclick = (e) => {
                 showPic(nextPost.thumb, nextPost.title);
