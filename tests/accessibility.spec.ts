@@ -163,6 +163,31 @@ test.describe('Accessibility (axe-core)', () => {
     expect(results.violations).toEqual([]);
   });
 
+  test('auth form inputs have associated labels', async ({ page }) => {
+    test.setTimeout(60000);
+    await setupMockRoute(page);
+    await page.goto('/');
+    const startBtn = page.locator('[data-testid="start-button"]');
+    await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
+
+    // Switch to login tab
+    await page.locator('[data-tab="login"]').click();
+    await expect(page.locator('#loginUsername')).toBeVisible();
+
+    // Verify login form labels
+    await expect(page.locator('label[for="loginUsername"]')).toHaveText('Username');
+    await expect(page.locator('label[for="loginPassword"]')).toHaveText('Password');
+
+    // Switch to register tab
+    await page.locator('[data-tab="register"]').click();
+    await expect(page.locator('#registerUsername')).toBeVisible();
+
+    // Verify register form labels
+    await expect(page.locator('label[for="registerUsername"]')).toHaveText('Username');
+    await expect(page.locator('label[for="registerPassword"]')).toHaveText('Password');
+    await expect(page.locator('label[for="registerConfirm"]')).toHaveText('Confirm password');
+  });
+
   test('keyboard help overlay has no unexpected a11y violations', async ({ page }) => {
     test.setTimeout(120000);
     await startFeed(page);
