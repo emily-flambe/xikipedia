@@ -625,6 +625,57 @@ test.describe('Preference persistence', () => {
     expect(Object.keys(prefs.categoryScores).length).toBeGreaterThan(0);
   });
 
+  test('preferences flush immediately on visibilitychange hidden', async ({ page }) => {
+    const user = uniqueUser();
+    const password = 'password123';
+
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Register and inject auth
+    const { token } = await apiRegister(page, user, password);
+
+    const cookieDomain = new URL(page.url()).hostname;
+    await page.context().addCookies([{
+      name: 'xiki_token',
+      value: token,
+      domain: cookieDomain,
+      path: '/api',
+      httpOnly: true,
+      secure: false,
+      sameSite: 'Strict',
+    }]);
+    await page.evaluate(
+      (user) => { localStorage.setItem('xiki_username', user); },
+      user,
+    );
+
+    await page.reload();
+
+    const post = page.locator('[data-testid="post"]').first();
+    await expect(post).toBeVisible({ timeout: 30000 });
+
+    // Like a post to mark preferences dirty
+    await page.locator('[data-testid="like-button"]').first().click();
+
+    // Set up a request listener before triggering visibilitychange
+    const savePromise = page.waitForRequest(
+      (req) =>
+        req.url().includes('/api/preferences') && req.method() === 'PUT',
+      { timeout: 5000 },
+    );
+
+    // Simulate tab going hidden — should flush preferences immediately (not after 5s debounce)
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // The flush should happen immediately, well within 2 seconds
+    const req = await savePromise;
+    expect(req.method()).toBe('PUT');
+  });
+
   // Skip: SW cache interference + requires __xikiTest API
   test('preferences survive page reload', async ({ page }) => {
     const user = uniqueUser();
