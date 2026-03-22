@@ -3995,8 +3995,16 @@
     );
     sentinelObserver.observe(scrollSentinel);
 
-    // Prune off-screen posts on scroll (no rAF loop needed)
-    window.addEventListener('scroll', pruneOffscreenPosts, { passive: true });
+    // On scroll: prune off-screen posts and check if more content is needed.
+    // The IntersectionObserver only fires on state *changes*, so if the sentinel
+    // stays within the rootMargin (e.g. after a short initial fill), subsequent
+    // scrolls would never trigger it again. The scroll listener handles that gap.
+    window.addEventListener('scroll', () => {
+        pruneOffscreenPosts();
+        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+            createNextPost();
+        }
+    }, { passive: true });
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
