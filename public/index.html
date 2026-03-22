@@ -3436,6 +3436,12 @@
         } catch (err) {
             dbg.error('Failed to get next post:', err);
             postCreationInProgress = false;
+            // Retry after a delay — algorithm may not be ready yet (e.g. share URL auto-start)
+            setTimeout(() => {
+                if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+                    createNextPost();
+                }
+            }, 500);
             return;
         }
         const postDiv = document.createElement("article");
@@ -3980,7 +3986,7 @@
     const scrollSentinel = document.createElement('div');
     scrollSentinel.id = 'scroll-sentinel';
     scrollSentinel.setAttribute('aria-hidden', 'true');
-    scrollSentinel.style.cssText = 'height:0;pointer-events:none;';
+    scrollSentinel.style.cssText = 'height:1px;pointer-events:none;';
     const feedDiv = document.getElementById('feed');
     feedDiv.parentNode.insertBefore(scrollSentinel, feedDiv.nextSibling);
 
