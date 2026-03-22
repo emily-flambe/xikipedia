@@ -40,6 +40,21 @@ export async function resetRateLimit(db: D1Database, key: string): Promise<void>
   await db.prepare('DELETE FROM rate_limits WHERE key = ?').bind(key).run();
 }
 
+/**
+ * Delete rate-limit entries whose window has expired.
+ * Called opportunistically to prevent unbounded table growth.
+ * Uses a generous cutoff (2× the longest window = 48h) to avoid
+ * accidentally deleting entries still within their active window.
+ */
+export async function cleanupStaleEntries(db: D1Database): Promise<number> {
+  const cutoff = Math.floor(Date.now() / 1000) - 2 * 86400; // 48h ago
+  const result = await db
+    .prepare('DELETE FROM rate_limits WHERE window_start < ?')
+    .bind(cutoff)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
 export function rateLimitResponse(request: Request, windowStart: number, windowSec: number): Response {
   const now = Math.floor(Date.now() / 1000);
   const retryAfter = Math.max(1, windowStart + windowSec - now);

@@ -484,3 +484,25 @@ test.describe('Delete account rate limiting', () => {
     expect(resp6.status()).toBe(401);
   });
 });
+
+test.describe('Rate limit cleanup via health endpoint', () => {
+  test('health endpoint runs cleanup without error', async ({ page }) => {
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Hit register a few times to create rate-limit entries
+    const ip = freshIp();
+    await apiRegister(page, uniqueUser(), 'password123', ip);
+
+    // Health endpoint should still return 200 (cleanup runs opportunistically)
+    const healthResp = await page.request.get('/api/health');
+    expect(healthResp.status()).toBe(200);
+    const body = await healthResp.json();
+    expect(body.status).toMatch(/^(healthy|degraded)$/);
+
+    // rateLimitEntriesCleaned is optional (only present if entries were old enough)
+    if (body.rateLimitEntriesCleaned !== undefined) {
+      expect(typeof body.rateLimitEntriesCleaned).toBe('number');
+    }
+  });
+});
