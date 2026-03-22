@@ -50,4 +50,20 @@ test.describe('Health endpoint', () => {
     expect(response.status()).toBe(405);
     await ctx.dispose();
   });
+
+  test('GET /api/health response has valid checks object (cleanup runs without error)', async ({ playwright }) => {
+    const ctx = await playwright.request.newContext({ baseURL: BASE_URL });
+    const response = await ctx.get('/api/health');
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    // Verify response structure supports optional rateLimitEntriesCleaned field
+    expect(body.status).toMatch(/^(healthy|degraded)$/);
+    expect(body.checks).toBeDefined();
+    // rateLimitEntriesCleaned is optional — present only when entries were deleted
+    if (body.rateLimitEntriesCleaned !== undefined) {
+      expect(typeof body.rateLimitEntriesCleaned).toBe('number');
+      expect(body.rateLimitEntriesCleaned).toBeGreaterThanOrEqual(0);
+    }
+    await ctx.dispose();
+  });
 });

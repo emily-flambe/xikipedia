@@ -7,7 +7,7 @@
 
 import type { Logger } from './logger';
 import { getCorsHeaders, jsonResponse, errorResponse, getClientIp } from './helpers';
-import { atomicIncrement, resetRateLimit, rateLimitResponse, isRateLimitableIp } from './rate-limit';
+import { atomicIncrement, resetRateLimit, rateLimitResponse, isRateLimitableIp, cleanupStaleEntries } from './rate-limit';
 import {
   arrayBufferToHex,
   hexToArrayBuffer,
@@ -571,11 +571,24 @@ async function handleHealth(
     checks.storage = 'error';
   }
 
+  // Opportunistic cleanup of expired rate-limit entries
+  let rateLimitCleanup = 0;
+  try {
+    rateLimitCleanup = await cleanupStaleEntries(env.DB);
+    if (rateLimitCleanup > 0) {
+      logger.info('rate_limit.cleanup', { deleted: rateLimitCleanup });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logger.warn('rate_limit.cleanup.error', { error: msg });
+  }
+
   const healthy = Object.values(checks).every((v) => v === 'ok');
 
   return jsonResponse(request, {
     status: healthy ? 'healthy' : 'degraded',
     checks,
+    ...(rateLimitCleanup > 0 ? { rateLimitEntriesCleaned: rateLimitCleanup } : {}),
   }, healthy ? 200 : 503);
 }
 
