@@ -571,16 +571,18 @@ async function handleHealth(
     checks.storage = 'error';
   }
 
-  // Opportunistic cleanup of expired rate-limit entries
+  // Opportunistic cleanup of expired rate-limit entries (only when DB is healthy)
   let rateLimitCleanup = 0;
-  try {
-    rateLimitCleanup = await cleanupStaleEntries(env.DB);
-    if (rateLimitCleanup > 0) {
-      logger.info('rate_limit.cleanup', { deleted: rateLimitCleanup });
+  if (checks.database === 'ok') {
+    try {
+      rateLimitCleanup = await cleanupStaleEntries(env.DB);
+      if (rateLimitCleanup > 0) {
+        logger.info('rate_limit.cleanup', { deleted: rateLimitCleanup });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logger.warn('rate_limit.cleanup.error', { error: msg });
     }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    logger.warn('rate_limit.cleanup.error', { error: msg });
   }
 
   const healthy = Object.values(checks).every((v) => v === 'ok');
