@@ -1693,7 +1693,7 @@
     <main id="main" aria-label="Xikipedia feed">
     <p id="loading">Loading...</p>
     <div id="feed" class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed" aria-busy="true"></div>
-    <div id="scroll-sentinel" aria-hidden="true" style="height:0"></div>
+    <div id="scroll-sentinel" aria-hidden="true" style="height:1px"></div>
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
         <button id="historyToggle" class="inline-tooltip" aria-label="Show reading history" data-tooltip="History (H)" style="display:none">📜</button>
@@ -3436,6 +3436,10 @@
         } catch (err) {
             dbg.error('Failed to get next post:', err);
             postCreationInProgress = false;
+            // Retry after a short delay if sentinel is still in range
+            if (sentinelIntersecting) {
+                setTimeout(() => { if (sentinelIntersecting) createNextPost(); }, 500);
+            }
             return;
         }
         const postDiv = document.createElement("article");
@@ -3974,11 +3978,22 @@
     let sentinelIntersecting = false;
 
     const feedSentinel = document.getElementById('scroll-sentinel');
-    const feedObserver = new IntersectionObserver(entries => {
-        sentinelIntersecting = entries[0].isIntersecting;
-        if (sentinelIntersecting) createNextPost();
-    }, { rootMargin: '0px 0px 1500px 0px', threshold: 0 });
-    feedObserver.observe(feedSentinel);
+    if (feedSentinel && 'IntersectionObserver' in window) {
+        const feedObserver = new IntersectionObserver(entries => {
+            sentinelIntersecting = entries[0].isIntersecting;
+            if (sentinelIntersecting) createNextPost();
+        }, { rootMargin: '0px 0px 1500px 0px', threshold: 0 });
+        feedObserver.observe(feedSentinel);
+    } else if (feedSentinel) {
+        // Fallback for browsers without IntersectionObserver
+        const checkScrollForFeed = () => {
+            const rect = feedSentinel.getBoundingClientRect();
+            sentinelIntersecting = rect.top <= window.innerHeight + 1500;
+            if (sentinelIntersecting) createNextPost();
+        };
+        window.addEventListener('scroll', checkScrollForFeed, { passive: true });
+        window.addEventListener('resize', checkScrollForFeed, { passive: true });
+    }
 
     window.addEventListener('scroll', pruneOffscreenPosts, { passive: true });
     window.addEventListener('resize', pruneOffscreenPosts, { passive: true });
