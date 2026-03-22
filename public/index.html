@@ -36,6 +36,7 @@
             --border-color: #38444D;
             --accent-color: #2cafff;
             --accent-text: #0a1929; /* Dark text on accent-color for WCAG AA (8.5:1 on #2cafff) */
+            --feed-width: min(800px, 90vw);
             color-scheme: dark;
         }
 
@@ -100,7 +101,7 @@
             left: 50%;
             transform: translateX(-50%);
             width: 100%;
-            max-width: 602px; /* match .posts (600px + 2px border) */
+            max-width: calc(var(--feed-width) + 2px); /* match .posts + border */
             height: calc(48px + env(safe-area-inset-top, 0px));
             padding-top: env(safe-area-inset-top, 0px);
             display: flex;
@@ -119,14 +120,14 @@
             gap: 8px;
         }
         .posts {
-            max-width: 600px;
+            max-width: var(--feed-width);
             width: 100vw;
             border: 1px solid var(--border-color);
             border-top: none;
             height: fit-content;
             padding-top: calc(56px + env(safe-area-inset-top, 0px));
         }
-        @media (max-width: 650px) {
+        @media (max-width: 850px) {
             .posts {
                 max-width: 100%;
                 border-left: none;
@@ -390,7 +391,7 @@
             padding-top: calc(56px + env(safe-area-inset-top, 0px));
             color: var(--text-secondary);
             font-size: 14px;
-            max-width: 600px;
+            max-width: var(--feed-width);
             margin: 0 auto;
         }
         .loading-details {
@@ -936,10 +937,10 @@
             transition: opacity 0.3s;
             overflow: hidden;
             height: 0;
-            max-width: 600px;
+            max-width: var(--feed-width);
             margin: 0 auto;
         }
-        @media (min-width: 601px) {
+        @media (min-width: 851px) {
             .pull-to-refresh-indicator {
                 display: none !important;
             }
@@ -1774,7 +1775,7 @@
             <select size="5" data-testid="category-search-select" aria-label="Category search results"></select>
         </div>
         </div>
-        <p style="margin-top:auto">
+        <p style="margin-top:16px">
             Since the content and images shown is from random Wikipedia articles, you will likely see
             NSFW content. Please only continue if you're an adult.
         </p>
