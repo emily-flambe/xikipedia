@@ -1198,3 +1198,396 @@ test.describe('algorithm.mjs — scoring and selection', () => {
     expect(result.allVisible).toBe(true);
   });
 });
+
+test.describe('algorithm.mjs — scoring and selection (score inspection)', () => {
+  test('scorePost: category affinity weight — science scores higher than sports', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      const sciencePost = {
+        id: 1, title: 'Science Article', text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['science']),
+      };
+      const sportsPost = {
+        id: 2, title: 'Sports Article', text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['sports']),
+      };
+
+      const context = {
+        pagesArr: [sciencePost, sportsPost] as any[],
+        categoryScores: { science: 1000, sports: 10 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: { science: now, sports: now } as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(['science', 'sports']),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      algo.getNextPost(); // mutates post.score on all sampled posts
+
+      return {
+        scienceScore: (sciencePost as any).score,
+        sportsScore: (sportsPost as any).score,
+      };
+    });
+
+    // Science (score 1000 * aggFactor 1.0 * decay ~1.0) should score much higher than sports (10)
+    expect(result.scienceScore).toBeGreaterThan(result.sportsScore);
+    // With decay ~1.0 (just engaged), science score should be roughly 1000 * 1.0 = 1000 (within 50%)
+    expect(result.scienceScore).toBeGreaterThan(500);
+    // Sports score should be roughly 10 * 1.0 = 10 (within 50%)
+    expect(result.sportsScore).toBeLessThan(15);
+  });
+
+  test('scorePost: time-based decay reduces score for stale categories', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+      const twoHoursAgo = now - 2 * 60 * 60 * 1000;
+
+      const recentPost = {
+        id: 1, title: 'Recent Article', text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['recent']),
+      };
+      const stalePost = {
+        id: 2, title: 'Stale Article', text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['stale']),
+      };
+
+      const context = {
+        pagesArr: [recentPost, stalePost] as any[],
+        categoryScores: { recent: 1000, stale: 1000 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: { recent: now, stale: twoHoursAgo } as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(['recent', 'stale']),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      algo.getNextPost(); // mutates post.score
+
+      return {
+        recentScore: (recentPost as any).score,
+        staleScore: (stalePost as any).score,
+      };
+    });
+
+    // Recent category decay ≈ 1.0 → score ≈ 1000
+    // Stale category (2h ago) decay = pow(0.5, 2) = 0.25 → score ≈ 250
+    expect(result.recentScore).toBeGreaterThan(result.staleScore);
+    // Stale post should be less than half of recent post score (at least 2x difference)
+    expect(result.staleScore).toBeLessThan(result.recentScore * 0.5);
+  });
+
+  test('scorePost: view penalty for posts with prior views', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      const freshPost = {
+        id: 1, title: 'Fresh Article', text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['science']),
+        // seen=0 (not set) → penalty = (3^0 - 1) * -500000 = 0
+      };
+      const seenTwicePost = {
+        id: 2, title: 'Already Seen Article', text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['science']),
+        seen: 2, // penalty = (3^2 - 1) * -500000 = -4,000,000
+      };
+
+      const context = {
+        // Neither post is in seenPostIds — they pass the hard-filter check
+        pagesArr: [freshPost, seenTwicePost] as any[],
+        categoryScores: { science: 100 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: { science: now } as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(['science']),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      algo.getNextPost(); // mutates post.score
+
+      return {
+        freshScore: (freshPost as any).score,
+        seenTwiceScore: (seenTwicePost as any).score,
+      };
+    });
+
+    // Fresh post: initialScore = 0, category score ≈ 100 → total > 0
+    expect(result.freshScore).toBeGreaterThan(0);
+    // Seen-twice post: initialScore = (3^2 - 1) * -500000 = -4,000,000 → massively negative
+    expect(result.seenTwiceScore).toBeLessThan(-3000000);
+    // Fresh post should massively outrank seen-twice post
+    expect(result.freshScore).toBeGreaterThan(result.seenTwiceScore);
+  });
+
+  test('variety enforcement: penalizes overexposed category after 2 consecutive posts', async ({ page }) => {
+    test.slow(); // stochastic test — uses retries internally
+
+    await setupAlgorithmRoutes(page);
+
+    // Retry internally to handle stochastic draw paths.
+    // With science=4999 and 18 science / 2 sports posts:
+    //   - P(science on draws 1,2) ≈ 0.98 each; P(both science) ≈ 0.96
+    //   - On draw 3: variety penalty → science score = -1, sports = 10 → sports wins all paths
+    // Loop up to 5 attempts to produce the deterministic 3-draw sequence.
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      // 18 science + 2 sports → biases default (18%) random path toward science for draws 1-2
+      // After 2 consecutive science: variety penalty: 4999 - 5000 = -1 < sports 10 → sports wins
+      function buildContext() {
+        const sciencePosts = Array.from({ length: 18 }, (_: unknown, i: number) => ({
+          id: i + 1, title: `Science ${i + 1}`, text: '', thumb: null, chunkId: 0,
+          allCategories: new Set(['science']),
+        }));
+        const sportsPosts = Array.from({ length: 2 }, (_: unknown, i: number) => ({
+          id: i + 19, title: `Sports ${i + 1}`, text: '', thumb: null, chunkId: 0,
+          allCategories: new Set(['sports']),
+        }));
+        return {
+          pagesArr: [...sciencePosts, ...sportsPosts] as any[],
+          categoryScores: { science: 4999, sports: 10 },
+          seenPostIds: new Set<number>(),
+          categoryLastEngaged: { science: now, sports: now } as Record<string, number>,
+          hiddenCategories: new Set<string>(),
+          reducedCategories: new Set<string>(),
+          boostedCategories: new Set<string>(),
+          exploredCategories: new Set<string>(['science', 'sports']),
+          algorithmAggressiveness: 50,
+          exploreMode: false,
+        };
+      }
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const context = buildContext();
+        const algo = createAlgorithm(context);
+        const posts: any[] = [];
+        for (let i = 0; i < 3; i++) {
+          posts.push(algo.getNextPost());
+        }
+        const p1Science = posts[0].allCategories.has('science');
+        const p2Science = posts[1].allCategories.has('science');
+        const p3Sports = posts[2].allCategories.has('sports');
+        if (p1Science && p2Science && p3Sports) {
+          return { success: true, attempt };
+        }
+      }
+      return { success: false, attempt: 5 };
+    });
+
+    // Variety penalty (−5000) flips science (4999−5000=−1) below sports (10) on the 3rd draw.
+    expect(result.success).toBe(true);
+  });
+
+  test('category roulette: eventually boosts unexplored categories', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      // 50 science posts (explored) + 50 nature posts (unexplored)
+      const sciencePosts = Array.from({ length: 50 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Science ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['science']),
+      }));
+      const naturePosts = Array.from({ length: 50 }, (_: unknown, i: number) => ({
+        id: i + 51, title: `Nature ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['nature']),
+      }));
+
+      const context = {
+        pagesArr: [...sciencePosts, ...naturePosts] as any[],
+        categoryScores: { science: 100, nature: 1 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: { science: now, nature: now } as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        // science is explored, nature is not — nature is eligible for roulette boost
+        exploredCategories: new Set<string>(['science']),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      let rouletteCount = 0;
+      for (let i = 0; i < 200; i++) {
+        const post = algo.getNextPost() as any;
+        if (Array.isArray(post.recommendedBecause) && post.recommendedBecause[0]?.startsWith('🎰')) {
+          rouletteCount++;
+        }
+      }
+      return { rouletteCount };
+    });
+
+    // 10% roulette chance per eligible draw. Over 200 iterations, P(zero roulette hits) ≈ 10^-9
+    expect(result.rouletteCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('edge case: empty category scores returns a post', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const pages = Array.from({ length: 50 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Article ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set([`cat-${i % 5}`]),
+      }));
+
+      const context = {
+        pagesArr: pages as any[],
+        categoryScores: {}, // No category has a score
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      let threw = false;
+      let post: any = null;
+      try {
+        post = algo.getNextPost();
+      } catch (e) {
+        threw = true;
+      }
+      return {
+        threw,
+        hasPost: !!post,
+        hasId: typeof post?.id === 'number',
+      };
+    });
+
+    expect(result.threw).toBe(false);
+    expect(result.hasPost).toBe(true);
+    expect(result.hasId).toBe(true);
+  });
+
+  test('edge case: all posts already seen falls back gracefully', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const pages = Array.from({ length: 5 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Article ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['science']),
+      }));
+
+      // All post IDs pre-added to seenPostIds
+      const seenPostIds = new Set<number>(pages.map((p: any) => p.id));
+
+      const context = {
+        pagesArr: pages as any[],
+        categoryScores: { science: 100 },
+        seenPostIds,
+        categoryLastEngaged: {} as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      let threw = false;
+      let post: any = null;
+      try {
+        post = algo.getNextPost();
+      } catch (e) {
+        threw = true;
+      }
+      return {
+        threw,
+        hasPost: !!post,
+        hasId: typeof post?.id === 'number',
+      };
+    });
+
+    expect(result.threw).toBe(false);
+    expect(result.hasPost).toBe(true);
+    expect(result.hasId).toBe(true);
+  });
+
+  test('edge case: single-category post pool — 5 draws all succeed', async ({ page }) => {
+    await setupAlgorithmRoutes(page);
+
+    const result = await page.evaluate(async () => {
+      const { createAlgorithm } = await import('/algorithm.mjs');
+
+      const now = Date.now();
+
+      const pages = Array.from({ length: 20 }, (_: unknown, i: number) => ({
+        id: i + 1, title: `Article ${i + 1}`, text: '', thumb: null, chunkId: 0,
+        allCategories: new Set(['science']),
+      }));
+
+      const context = {
+        pagesArr: pages as any[],
+        categoryScores: { science: 100 },
+        seenPostIds: new Set<number>(),
+        categoryLastEngaged: { science: now } as Record<string, number>,
+        hiddenCategories: new Set<string>(),
+        reducedCategories: new Set<string>(),
+        boostedCategories: new Set<string>(),
+        exploredCategories: new Set<string>(['science']),
+        algorithmAggressiveness: 50,
+        exploreMode: false,
+      };
+
+      const algo = createAlgorithm(context);
+      let threw = false;
+      const ids: number[] = [];
+      try {
+        for (let i = 0; i < 5; i++) {
+          ids.push((algo.getNextPost() as any).id);
+        }
+      } catch (e) {
+        threw = true;
+      }
+      return {
+        threw,
+        drawnCount: ids.length,
+        allHaveId: ids.every(id => typeof id === 'number'),
+      };
+    });
+
+    expect(result.threw).toBe(false);
+    expect(result.drawnCount).toBe(5);
+    expect(result.allHaveId).toBe(true);
+  });
+});
