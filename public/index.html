@@ -1693,6 +1693,7 @@
     <main id="main" aria-label="Xikipedia feed">
     <p id="loading">Loading...</p>
     <div id="feed" class="posts" data-testid="posts" role="feed" aria-label="Wikipedia article feed" aria-busy="true"></div>
+    <div id="scroll-sentinel" aria-hidden="true" style="height:0"></div>
     <div id="sessionStats" class="session-stats">
         <span id="viewCount">0</span> viewed · <span id="likeCount">0</span> liked
         <button id="historyToggle" class="inline-tooltip" aria-label="Show reading history" data-tooltip="History (H)" style="display:none">📜</button>
@@ -3414,7 +3415,6 @@
     async function createNextPost(specificPost = null) {
         // Prevent rapid duplicate calls
         if (postCreationInProgress && !specificPost) {
-            pendingPostCreation = true;
             return;
         }
 
@@ -3888,14 +3888,10 @@
         
         // Post creation complete
         postCreationInProgress = false;
-        
-        // If another request came in while we were working, handle it
-        if (pendingPostCreation) {
-            pendingPostCreation = false;
-            // Check if we still need more posts
-            if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-                createNextPost();
-            }
+
+        // If sentinel is still in range, keep filling
+        if (sentinelIntersecting) {
+            createNextPost();
         }
     }
 
@@ -3917,7 +3913,6 @@
 
     // Post creation queue to prevent rapid duplicate calls
     let postCreationInProgress = false;
-    let pendingPostCreation = false;
 
     // === DOM Pruning for infinite scroll performance ===
     const MAX_POSTS = 50;
@@ -3975,27 +3970,18 @@
         }
     }
 
-    // Scroll-driven post creation (replaces perpetual rAF loop)
-    let renderScheduled = false;
+    // IntersectionObserver-driven infinite scroll (no perpetual rAF)
+    let sentinelIntersecting = false;
 
-    function scheduleRender() {
-        if (renderScheduled) return;
-        renderScheduled = true;
-        requestAnimationFrame(render);
-    }
+    const feedSentinel = document.getElementById('scroll-sentinel');
+    const feedObserver = new IntersectionObserver(entries => {
+        sentinelIntersecting = entries[0].isIntersecting;
+        if (sentinelIntersecting) createNextPost();
+    }, { rootMargin: '0px 0px 1500px 0px', threshold: 0 });
+    feedObserver.observe(feedSentinel);
 
-    function render() {
-        renderScheduled = false;
-        pruneOffscreenPosts();
-        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-            createNextPost();
-            // Keep rendering while we need more posts (e.g. initial load)
-            scheduleRender();
-        }
-    }
-
-    window.addEventListener('scroll', scheduleRender, { passive: true });
-    window.addEventListener('resize', scheduleRender, { passive: true });
+    window.addEventListener('scroll', pruneOffscreenPosts, { passive: true });
+    window.addEventListener('resize', pruneOffscreenPosts, { passive: true });
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
@@ -4201,7 +4187,7 @@
         
         // Scroll to top and trigger post creation
         window.scrollTo(0, 0);
-        scheduleRender();
+        createNextPost();
     }
 
     // Pull-to-refresh state
@@ -4661,7 +4647,7 @@
         if (articleNotFound) {
             showErrorToast('Article not found. Showing your feed instead.');
         }
-        scheduleRender();
+        createNextPost();
     }
 
     // Main initialization
