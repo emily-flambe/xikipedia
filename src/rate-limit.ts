@@ -49,10 +49,11 @@ export const RATE_LIMIT_RETENTION_SEC = 2 * 86400;
  * Uses a generous cutoff (2× the longest window = 48h) to avoid
  * accidentally deleting entries still within their active window.
  *
- * @param cutoffSec — optional override for testing; defaults to RATE_LIMIT_RETENTION_SEC ago.
+ * @param retentionSec — how many seconds of entries to keep; defaults to RATE_LIMIT_RETENTION_SEC.
+ *   Entries with window_start older than (now - retentionSec) are deleted.
  */
-export async function cleanupStaleEntries(db: D1Database, cutoffSec?: number): Promise<number> {
-  const cutoff = cutoffSec ?? (Math.floor(Date.now() / 1000) - RATE_LIMIT_RETENTION_SEC);
+export async function cleanupStaleEntries(db: D1Database, retentionSec?: number): Promise<number> {
+  const cutoff = Math.floor(Date.now() / 1000) - (retentionSec ?? RATE_LIMIT_RETENTION_SEC);
   const result = await db
     .prepare('DELETE FROM rate_limits WHERE window_start < ?')
     .bind(cutoff)
