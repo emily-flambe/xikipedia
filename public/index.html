@@ -3414,7 +3414,6 @@
     async function createNextPost(specificPost = null) {
         // Prevent rapid duplicate calls
         if (postCreationInProgress && !specificPost) {
-            pendingPostCreation = true;
             return;
         }
 
@@ -3436,13 +3435,28 @@
         } catch (err) {
             dbg.error('Failed to get next post:', err);
             postCreationInProgress = false;
-            // Retry after a delay — algorithm may not be ready yet (e.g. share URL auto-start)
-            setTimeout(() => {
-                if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-                    createNextPost();
-                }
-            }, 500);
+            // Retry with exponential backoff — algorithm may not be ready yet
+            const retries = (createNextPost._retryCount || 0) + 1;
+            if (retries <= 5) {
+                createNextPost._retryCount = retries;
+                const delay = 500 * Math.pow(2, retries - 1); // 500ms, 1s, 2s, 4s, 8s
+                clearTimeout(createNextPost._retryTimer);
+                createNextPost._retryTimer = setTimeout(() => {
+                    createNextPost._retryTimer = null;
+                    if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+                        createNextPost();
+                    }
+                }, delay);
+            } else {
+                dbg.error('Giving up after 5 retries.');
+            }
             return;
+        }
+        // Reset retry state on success
+        createNextPost._retryCount = 0;
+        if (createNextPost._retryTimer) {
+            clearTimeout(createNextPost._retryTimer);
+            createNextPost._retryTimer = null;
         }
         const postDiv = document.createElement("article");
         const postTitle = document.createElement("h1");
@@ -3898,7 +3912,6 @@
         // Always check if more posts are needed after creation.
         // The IntersectionObserver won't re-fire while the sentinel remains
         // intersecting, so we must self-chain until the viewport is filled.
-        pendingPostCreation = false;
         if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
             createNextPost();
         }
@@ -3922,7 +3935,9 @@
 
     // Post creation queue to prevent rapid duplicate calls
     let postCreationInProgress = false;
-    let pendingPostCreation = false;
+    // Retry state for createNextPost (used by exponential backoff on transient failures)
+    createNextPost._retryCount = 0;
+    createNextPost._retryTimer = null;
 
     // === DOM Pruning for infinite scroll performance ===
     const MAX_POSTS = 50;
@@ -4007,6 +4022,14 @@
     // scrolls would never trigger it again. The scroll listener handles that gap.
     window.addEventListener('scroll', () => {
         pruneOffscreenPosts();
+        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+            createNextPost();
+        }
+    }, { passive: true });
+
+    // On resize: ensure the feed fills a taller viewport (e.g. device rotation).
+    // IntersectionObserver won't re-fire if the sentinel stays intersecting.
+    window.addEventListener('resize', () => {
         if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
             createNextPost();
         }
