@@ -11,8 +11,8 @@ test.describe('ETag and conditional request support', () => {
     expect(response.status()).toBe(200);
     const etag = response.headers()['etag'];
     expect(etag).toBeTruthy();
-    // ETag should be quoted per HTTP spec
-    expect(etag).toMatch(/^".*"$/);
+    // ETag should be quoted per HTTP spec (strong "..." or weak W/"...")
+    expect(etag).toMatch(/^(W\/)?".*"$/);
   });
 
   test('GET /smoldata.json with matching If-None-Match returns 304', async ({
