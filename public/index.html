@@ -3424,6 +3424,10 @@
         if (postCreationInProgress && !specificPost) {
             return;
         }
+        // Don't attempt post creation until algorithm is initialized
+        if (!specificPost && !(useWorkerAlgorithm && algorithmWorker?.isReady) && !fallbackAlgorithm) {
+            return;
+        }
 
         // If re-showing a specific post, check if it's already in the feed
         if (specificPost) {
@@ -3441,13 +3445,14 @@
         try {
             nextPost = specificPost || await getNextPostAsync();
         } catch (err) {
-            dbg.error('Failed to get next post:', err);
             postCreationInProgress = false;
             // Retry with exponential backoff — algorithm may not be ready yet
             const retries = (createNextPost._retryCount || 0) + 1;
             if (retries <= 5) {
                 createNextPost._retryCount = retries;
                 const delay = 500 * Math.pow(2, retries - 1); // 500ms, 1s, 2s, 4s, 8s
+                // Only log on first retry to avoid console spam during init
+                if (retries === 1) dbg.warn('Algorithm not ready, retrying...', err);
                 clearTimeout(createNextPost._retryTimer);
                 createNextPost._retryTimer = setTimeout(() => {
                     createNextPost._retryTimer = null;
@@ -3456,7 +3461,7 @@
                     }
                 }, delay);
             } else {
-                dbg.error('Giving up after 5 retries.');
+                dbg.error('Failed to get next post after 5 retries:', err);
             }
             return;
         }
