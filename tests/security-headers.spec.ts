@@ -18,8 +18,14 @@ const EXPECTED_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
   'referrer-policy': 'strict-origin-when-cross-origin',
-  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
 };
+
+/** Required Permissions-Policy directives (checked individually, order-independent). */
+const REQUIRED_PERMISSIONS_DIRECTIVES = [
+  'camera=()',
+  'microphone=()',
+  'geolocation=()',
+];
 
 /** CSP directives that must appear in the Content-Security-Policy header. */
 const EXPECTED_CSP_DIRECTIVES = [
@@ -50,15 +56,17 @@ test.describe('Security Headers', () => {
 
     for (const [header, expected] of Object.entries(EXPECTED_HEADERS)) {
       test(`has ${header}`, () => {
-        // Use toContain for permissions-policy so the test passes whether or not
-        // new directives (e.g. interest-cohort, browsing-topics) are deployed yet
-        if (header === 'permissions-policy') {
-          expect(headers[header]).toContain(expected);
-        } else {
-          expect(headers[header]).toBe(expected);
-        }
+        expect(headers[header]).toBe(expected);
       });
     }
+
+    test('has all required Permissions-Policy directives', () => {
+      const pp = headers['permissions-policy'];
+      expect(pp).toBeDefined();
+      for (const directive of REQUIRED_PERMISSIONS_DIRECTIVES) {
+        expect(pp, `Missing Permissions-Policy directive: ${directive}`).toContain(directive);
+      }
+    });
 
     test('has Content-Security-Policy with all directives', () => {
       const csp = headers['content-security-policy'];
@@ -83,13 +91,17 @@ test.describe('Security Headers', () => {
 
     for (const [header, expected] of Object.entries(EXPECTED_HEADERS)) {
       test(`has ${header}`, () => {
-        if (header === 'permissions-policy') {
-          expect(headers[header]).toContain(expected);
-        } else {
-          expect(headers[header]).toBe(expected);
-        }
+        expect(headers[header]).toBe(expected);
       });
     }
+
+    test('has all required Permissions-Policy directives', () => {
+      const pp = headers['permissions-policy'];
+      expect(pp).toBeDefined();
+      for (const directive of REQUIRED_PERMISSIONS_DIRECTIVES) {
+        expect(pp, `Missing Permissions-Policy directive: ${directive}`).toContain(directive);
+      }
+    });
 
     test('has Content-Security-Policy with all directives', () => {
       const csp = headers['content-security-policy'];

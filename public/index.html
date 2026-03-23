@@ -3474,7 +3474,9 @@
         postDiv.setAttribute("aria-label", `Article: ${nextPost.title}. Press Enter to open on Wikipedia.`);
 
         const openWikipedia = () => {
-            window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(nextPost.title.replace(/ /g, '_'))}`, '_blank', 'noopener,noreferrer');
+            const wikiUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(nextPost.title.replace(/ /g, '_'))}`;
+            const newWindow = window.open(wikiUrl, '_blank');
+            if (newWindow) newWindow.opener = null;
             if (!postDiv.dataset.engaged) {
                 postDiv.dataset.engaged = engagePost(nextPost, 75);
             }
