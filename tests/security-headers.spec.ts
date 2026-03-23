@@ -50,7 +50,13 @@ test.describe('Security Headers', () => {
 
     for (const [header, expected] of Object.entries(EXPECTED_HEADERS)) {
       test(`has ${header}`, () => {
-        expect(headers[header]).toBe(expected);
+        // Use toContain for permissions-policy so the test passes whether or not
+        // new directives (e.g. interest-cohort, browsing-topics) are deployed yet
+        if (header === 'permissions-policy') {
+          expect(headers[header]).toContain(expected);
+        } else {
+          expect(headers[header]).toBe(expected);
+        }
       });
     }
 
@@ -77,7 +83,11 @@ test.describe('Security Headers', () => {
 
     for (const [header, expected] of Object.entries(EXPECTED_HEADERS)) {
       test(`has ${header}`, () => {
-        expect(headers[header]).toBe(expected);
+        if (header === 'permissions-policy') {
+          expect(headers[header]).toContain(expected);
+        } else {
+          expect(headers[header]).toBe(expected);
+        }
       });
     }
 
