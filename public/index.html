@@ -3414,7 +3414,6 @@
     async function createNextPost(specificPost = null) {
         // Prevent rapid duplicate calls
         if (postCreationInProgress && !specificPost) {
-            pendingPostCreation = true;
             return;
         }
 
@@ -3436,7 +3435,28 @@
         } catch (err) {
             dbg.error('Failed to get next post:', err);
             postCreationInProgress = false;
+            // Retry with exponential backoff — algorithm may not be ready yet
+            const retries = (createNextPost._retryCount || 0) + 1;
+            if (retries <= 5) {
+                createNextPost._retryCount = retries;
+                const delay = 500 * Math.pow(2, retries - 1); // 500ms, 1s, 2s, 4s, 8s
+                clearTimeout(createNextPost._retryTimer);
+                createNextPost._retryTimer = setTimeout(() => {
+                    createNextPost._retryTimer = null;
+                    if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+                        createNextPost();
+                    }
+                }, delay);
+            } else {
+                dbg.error('Giving up after 5 retries.');
+            }
             return;
+        }
+        // Reset retry state on success
+        createNextPost._retryCount = 0;
+        if (createNextPost._retryTimer) {
+            clearTimeout(createNextPost._retryTimer);
+            createNextPost._retryTimer = null;
         }
         const postDiv = document.createElement("article");
         const postTitle = document.createElement("h1");
@@ -3889,13 +3909,11 @@
         // Post creation complete
         postCreationInProgress = false;
         
-        // If another request came in while we were working, handle it
-        if (pendingPostCreation) {
-            pendingPostCreation = false;
-            // Check if we still need more posts
-            if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-                createNextPost();
-            }
+        // Always check if more posts are needed after creation.
+        // The IntersectionObserver won't re-fire while the sentinel remains
+        // intersecting, so we must self-chain until the viewport is filled.
+        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+            createNextPost();
         }
     }
 
@@ -3917,7 +3935,9 @@
 
     // Post creation queue to prevent rapid duplicate calls
     let postCreationInProgress = false;
-    let pendingPostCreation = false;
+    // Retry state for createNextPost (used by exponential backoff on transient failures)
+    createNextPost._retryCount = 0;
+    createNextPost._retryTimer = null;
 
     // === DOM Pruning for infinite scroll performance ===
     const MAX_POSTS = 50;
@@ -3975,27 +3995,46 @@
         }
     }
 
-    // Scroll-driven post creation (replaces perpetual rAF loop)
-    let renderScheduled = false;
+    // === Sentinel-based infinite scroll (IntersectionObserver) ===
+    // Fires when the sentinel div enters the extended viewport zone,
+    // replacing the old perpetual rAF loop with an event-driven approach.
+    const scrollSentinel = document.createElement('div');
+    scrollSentinel.id = 'scroll-sentinel';
+    scrollSentinel.setAttribute('aria-hidden', 'true');
+    scrollSentinel.style.cssText = 'height:1px;pointer-events:none;';
+    document.querySelector('.posts').insertAdjacentElement('afterend', scrollSentinel);
 
-    function scheduleRender() {
-        if (renderScheduled) return;
-        renderScheduled = true;
-        requestAnimationFrame(render);
+    if ('IntersectionObserver' in window) {
+        const postLoadObserver = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    pruneOffscreenPosts();
+                    createNextPost();
+                }
+            },
+            { rootMargin: '0px 0px 1500px 0px' }
+        );
+        postLoadObserver.observe(scrollSentinel);
     }
 
-    function render() {
-        renderScheduled = false;
+    // On scroll: prune off-screen posts and check if more content is needed.
+    // The IntersectionObserver only fires on state *changes*, so if the sentinel
+    // stays within the rootMargin (e.g. after a short initial fill), subsequent
+    // scrolls would never trigger it again. The scroll listener handles that gap.
+    window.addEventListener('scroll', () => {
         pruneOffscreenPosts();
         if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
             createNextPost();
-            // Keep rendering while we need more posts (e.g. initial load)
-            scheduleRender();
         }
-    }
+    }, { passive: true });
 
-    window.addEventListener('scroll', scheduleRender, { passive: true });
-    window.addEventListener('resize', scheduleRender, { passive: true });
+    // On resize: ensure the feed fills a taller viewport (e.g. device rotation).
+    // IntersectionObserver won't re-fire if the sentinel stays intersecting.
+    window.addEventListener('resize', () => {
+        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
+            createNextPost();
+        }
+    }, { passive: true });
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
@@ -4201,7 +4240,7 @@
         
         // Scroll to top and trigger post creation
         window.scrollTo(0, 0);
-        scheduleRender();
+        createNextPost();
     }
 
     // Pull-to-refresh state
@@ -4661,7 +4700,7 @@
         if (articleNotFound) {
             showErrorToast('Article not found. Showing your feed instead.');
         }
-        scheduleRender();
+        createNextPost();
     }
 
     // Main initialization
