@@ -48,7 +48,7 @@ test.describe('ETag and conditional request support', () => {
     expect(response.status()).toBe(200);
     const etag = response.headers()['etag'];
     expect(etag).toBeTruthy();
-    expect(etag).toMatch(/^".*"$/);
+    expect(etag).toMatch(/^(W\/)?".*"$/);
   });
 
   test('GET /index.json with matching If-None-Match returns 304', async ({

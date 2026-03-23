@@ -1246,7 +1246,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     // Verify the text contains expected content
     const textContent = await postsWithText.first().textContent();
     expect(textContent).toBeTruthy();
-    expect(textContent!.length).toBeGreaterThan(10); // Should have some content
+    expect(textContent).toContain('lazy-loaded text content'); // Verify actual chunk text loaded
   });
 
   test('chunked format shows error state with retry button on fetch failure', async ({ page }) => {
