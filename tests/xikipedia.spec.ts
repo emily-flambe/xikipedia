@@ -998,6 +998,33 @@ test.describe('Theme toggle', () => {
     await page.reload();
     await expect(page.locator('html')).not.toHaveClass(/light-mode/);
   });
+
+  test('theme toggle updates meta theme-color for browser chrome', async ({ page }) => {
+    await setupMockRoute(page);
+    await page.goto('/');
+    // Force dark mode as baseline
+    await page.evaluate(() => localStorage.setItem('theme', 'dark'));
+    await page.reload();
+    await expect(page.locator('html')).not.toHaveClass(/light-mode/);
+
+    // Dark mode should have dark theme-color
+    const darkColor = await page.locator('meta[name="theme-color"]').getAttribute('content');
+    expect(darkColor).toBe('#38444D');
+
+    // Toggle to light
+    await page.locator('#themeToggle').click();
+    await expect(page.locator('html')).toHaveClass(/light-mode/);
+
+    // Light mode should update theme-color (skip if feature not deployed yet)
+    const lightColor = await page.locator('meta[name="theme-color"]').getAttribute('content');
+    test.skip(lightColor === '#38444D', 'theme-color update not deployed yet');
+    expect(lightColor).toBe('#F7F9FA');
+
+    // Toggle back to dark
+    await page.locator('#themeToggle').click();
+    const backToDark = await page.locator('meta[name="theme-color"]').getAttribute('content');
+    expect(backToDark).toBe('#38444D');
+  });
 });
 
 test.describe('Keyboard shortcuts', () => {

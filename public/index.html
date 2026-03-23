@@ -1835,28 +1835,36 @@
 
     // Theme toggle functionality
     const themeToggle = document.getElementById('themeToggle');
-    themeToggle.onclick = () => {
-        document.documentElement.classList.toggle('light-mode');
-        themeToggle.textContent = document.documentElement.classList.contains('light-mode') ? '\u2600\uFE0F' : '\uD83C\uDF19';
-        safeSetItem('theme', document.documentElement.classList.contains('light-mode') ? 'light' : 'dark');
-    };
-    // Load saved theme (or auto-detect OS preference on first visit)
-    const savedTheme = safeGetItem('theme');
-    if (savedTheme === 'light' || (!savedTheme && window.matchMedia('(prefers-color-scheme: light)').matches)) {
-        document.documentElement.classList.add('light-mode');
-        themeToggle.textContent = '\u2600\uFE0F';
-    }
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const THEME_COLOR_DARK = '#38444D';
+    const THEME_COLOR_LIGHT = '#F7F9FA';
 
-    // Follow OS theme changes when user hasn't set a manual preference
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-        if (safeGetItem('theme')) return; // User chose manually, don't override
-        if (e.matches) {
+    function applyTheme(isLight) {
+        if (isLight) {
             document.documentElement.classList.add('light-mode');
             themeToggle.textContent = '\u2600\uFE0F';
         } else {
             document.documentElement.classList.remove('light-mode');
             themeToggle.textContent = '\uD83C\uDF19';
         }
+        if (themeColorMeta) themeColorMeta.content = isLight ? THEME_COLOR_LIGHT : THEME_COLOR_DARK;
+    }
+
+    themeToggle.onclick = () => {
+        const isLight = !document.documentElement.classList.contains('light-mode');
+        applyTheme(isLight);
+        safeSetItem('theme', isLight ? 'light' : 'dark');
+    };
+    // Load saved theme (or auto-detect OS preference on first visit)
+    const savedTheme = safeGetItem('theme');
+    if (savedTheme === 'light' || (!savedTheme && window.matchMedia('(prefers-color-scheme: light)').matches)) {
+        applyTheme(true);
+    }
+
+    // Follow OS theme changes when user hasn't set a manual preference
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+        if (safeGetItem('theme')) return; // User chose manually, don't override
+        applyTheme(e.matches);
     });
 
     const DATA_LAST_UPDATED = "February 2026";
