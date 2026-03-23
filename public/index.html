@@ -3995,47 +3995,23 @@
         }
     }
 
-    // === Sentinel-based infinite scroll (IntersectionObserver) ===
-    // Fires when the sentinel div enters the extended viewport zone,
-    // replacing the old perpetual rAF loop with an event-driven approach.
+    // IntersectionObserver-based infinite scroll — fires only when sentinel approaches viewport
     const scrollSentinel = document.createElement('div');
     scrollSentinel.id = 'scroll-sentinel';
     scrollSentinel.setAttribute('aria-hidden', 'true');
-    scrollSentinel.style.cssText = 'height:1px;pointer-events:none;';
-    const feedDiv = document.getElementById('feed');
-    feedDiv.parentNode.insertBefore(scrollSentinel, feedDiv.nextSibling);
+    scrollSentinel.style.cssText = 'height: 1px; pointer-events: none;';
+    document.querySelector('.posts').insertAdjacentElement('afterend', scrollSentinel);
 
-    if ('IntersectionObserver' in window) {
-        const sentinelObserver = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting) {
-                    createNextPost();
-                }
-            },
-            // Trigger loading when sentinel is within 1500px of the viewport
-            { rootMargin: '0px 0px 1500px 0px' }
-        );
-        sentinelObserver.observe(scrollSentinel);
-    }
-
-    // On scroll: prune off-screen posts and check if more content is needed.
-    // The IntersectionObserver only fires on state *changes*, so if the sentinel
-    // stays within the rootMargin (e.g. after a short initial fill), subsequent
-    // scrolls would never trigger it again. The scroll listener handles that gap.
-    window.addEventListener('scroll', () => {
-        pruneOffscreenPosts();
-        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-            createNextPost();
-        }
-    }, { passive: true });
-
-    // On resize: ensure the feed fills a taller viewport (e.g. device rotation).
-    // IntersectionObserver won't re-fire if the sentinel stays intersecting.
-    window.addEventListener('resize', () => {
-        if (document.documentElement.scrollHeight < scrollY + innerHeight + 1500) {
-            createNextPost();
-        }
-    }, { passive: true });
+    const postLoadObserver = new IntersectionObserver(
+        (entries) => {
+            if (entries[0].isIntersecting) {
+                pruneOffscreenPosts();
+                createNextPost();
+            }
+        },
+        { rootMargin: '0px 0px 1500px 0px' }
+    );
+    postLoadObserver.observe(scrollSentinel);
 
     // Add a category picker button
     function addPickableCategory(cat, checked) {
