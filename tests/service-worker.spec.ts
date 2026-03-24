@@ -166,16 +166,19 @@ test.describe('Service Worker', () => {
 test.describe('Service Worker + Feed Integration', () => {
   
   test('can browse feed offline after initial load', async ({ page, context }) => {
-    // Unregister SW and clear caches so Playwright's route mock isn't bypassed.
-    // Note: These promises fire-and-forget, but this is intentional. addInitScript runs
-    // synchronously at page load before any fetch begins. By the time smoldata.json is
-    // requested (after DOM parsing and script execution), the SW is already unregistering.
-    // This approach is reliable in CI and avoids complex pre-navigation setups.
+    // Unregister existing SW, clear caches, AND block new SW registration so
+    // Playwright's route mock is never bypassed by a freshly-activated SW.
+    // Under parallel test load the fire-and-forget unregister can race with a
+    // new SW registering and intercepting smoldata.json before the mock fires.
     await page.addInitScript(() => {
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(regs => {
           regs.forEach(r => r.unregister());
         });
+        // Prevent the page from registering a new SW that would intercept fetches.
+        // A never-resolving promise is safest: callers await it without crashing,
+        // and no real SW activates.
+        navigator.serviceWorker.register = () => new Promise(() => {});
       }
       if ('caches' in window) {
         caches.keys().then(names => names.forEach(n => caches.delete(n)));
