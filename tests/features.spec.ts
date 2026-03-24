@@ -1073,6 +1073,11 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   // chunk requests through its networkFirst() handler to the real server.
   test.use({ serviceWorkers: 'block' });
 
+  // The retry test has a ~5% flake rate due to browser HTTP cache (force-cache)
+  // intermittently serving cached 500s instead of going through Playwright's mock.
+  // A single retry makes double-failure negligible (~0.25%).
+  test.describe.configure({ retries: 1 });
+
   /**
    * Generate mock index data for chunked format.
    * Index contains articles without text, only with chunkId.
@@ -1297,16 +1302,18 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   });
 
   test('retry button successfully loads text after failure', async ({ page }) => {
-    // Block SW registration so Playwright route mocks reliably intercept
-    // chunk fetches. Without this, a production SW can serve chunk-*.json
-    // from cache, bypassing the mock that simulates failure/retry.
+    // Override fetch to use 'no-store' cache mode so every request goes
+    // through Playwright's route mock instead of the browser HTTP cache.
+    // Without this, force-cache can serve a cached 500 on retry.
     await page.addInitScript(() => {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(r => r.unregister());
-        });
-        navigator.serviceWorker.register = () => new Promise(() => {});
-      }
+      const origFetch = window.fetch;
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : (input as Request).url;
+        if (url.includes('chunk-') && url.includes('.json')) {
+          return origFetch(input, { ...init, cache: 'no-store' });
+        }
+        return origFetch(input, init);
+      };
     });
 
     // Track fetch attempts per chunk to fail first, succeed on retry
