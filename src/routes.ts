@@ -498,6 +498,13 @@ async function handleChangePassword(
     return errorResponse(request, 'Unauthorized', 401);
   }
 
+  // Rate limit: 5 password change attempts per user per hour (prevents brute-forcing current password)
+  const changePwKey = `changepw:${payload.sub}`;
+  const rl = await atomicIncrement(env.DB, changePwKey, 3600);
+  if (rl.count > 5) {
+    return rateLimitResponse(request, rl.windowStart, 3600);
+  }
+
   const result = await parseJsonBody<{ currentPassword?: string; newPassword?: string }>(request, logger);
   if (isResponse(result)) return result;
   const body = result;
