@@ -3424,8 +3424,15 @@
         if (postCreationInProgress && !specificPost) {
             return;
         }
-        // Don't attempt post creation until algorithm is initialized
+        // Don't attempt post creation until algorithm is initialized.
+        // If not ready, schedule a single deferred retry instead of spamming.
         if (!specificPost && !(useWorkerAlgorithm && algorithmWorker?.isReady) && !fallbackAlgorithm) {
+            if (!createNextPost._initWait) {
+                createNextPost._initWait = setTimeout(() => {
+                    createNextPost._initWait = null;
+                    createNextPost();
+                }, 200);
+            }
             return;
         }
 
