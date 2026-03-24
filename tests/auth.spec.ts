@@ -1288,16 +1288,35 @@ test.describe('API edge cases', () => {
   });
 
   test('register with username of exactly 3 characters succeeds', async ({ page }) => {
-    // Use random suffix (not timestamp) to avoid collisions when tests run concurrently
-    const user = `t${Math.random().toString(36).slice(2, 4).padEnd(2, '0')}`;
+    // 3-char usernames have limited entropy (~46K combos) so collisions are
+    // expected across test runs against a persistent database.
+    // Strategy: try up to 5 random 3-char names until one succeeds (201).
+    // A 409 just means the name exists, proving the server processed the
+    // 3-char boundary — but we want at least one fresh 201 for a full test.
     await mockSmoldata(page);
     await page.goto('/');
 
-    const resp = await page.request.post('/api/register', {
-      data: { username: user, password: 'password123' },
-      headers: { 'x-forwarded-for': uniqueIp() },
-    });
-    expect(resp.status()).toBe(201);
+    let registered = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      const a = chars[Math.floor(Math.random() * 26)]; // letter first
+      const b = chars[Math.floor(Math.random() * chars.length)];
+      const c = chars[Math.floor(Math.random() * chars.length)];
+      const user = `${a}${b}${c}`;
+
+      const resp = await page.request.post('/api/register', {
+        data: { username: user, password: 'password123' },
+        headers: { 'x-forwarded-for': uniqueIp() },
+      });
+
+      if (resp.status() === 201) {
+        registered = true;
+        break;
+      }
+      // 409 = username taken, try another
+      expect(resp.status()).toBe(409);
+    }
+    expect(registered).toBe(true);
   });
 
   test('register with username of exactly 20 characters succeeds', async ({ page }) => {
