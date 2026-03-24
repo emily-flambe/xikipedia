@@ -1576,6 +1576,63 @@ test.describe('token revocation: password change invalidates tokens', () => {
   });
 });
 
+test.describe('password change re-authentication', () => {
+  // These tests verify the new Set-Cookie behavior on password change.
+  // They require the EMI-140 backend change to be deployed.
+  const needsDeploy = (process.env.PLAYWRIGHT_BASE_URL ?? '').includes('workers.dev');
+
+  test('password change response sets a fresh auth cookie that works', async ({ page }) => {
+    test.skip(needsDeploy, 'Requires EMI-140 deploy (Set-Cookie on password change)');
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    // Change password
+    const changeResp = await page.request.post('/api/password', {
+      headers: {
+        Cookie: `xiki_token=${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { currentPassword: 'password123', newPassword: 'newpass456' },
+    });
+    expect(changeResp.status()).toBe(200);
+
+    // Extract the new token from Set-Cookie header
+    const setCookie = changeResp.headers()['set-cookie'] ?? '';
+    expect(setCookie).toContain('xiki_token=');
+    const newToken = extractTokenFromSetCookie(setCookie);
+
+    // New token should work for authenticated requests
+    const prefsResp = await page.request.get('/api/preferences', {
+      headers: { Cookie: `xiki_token=${newToken}` },
+    });
+    expect(prefsResp.status()).toBe(200);
+  });
+
+  test('password change cookie token differs from the original token', async ({ page }) => {
+    test.skip(needsDeploy, 'Requires EMI-140 deploy (Set-Cookie on password change)');
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token: originalToken } = await apiRegister(page, user, 'password123');
+
+    const changeResp = await page.request.post('/api/password', {
+      headers: {
+        Cookie: `xiki_token=${originalToken}`,
+        'Content-Type': 'application/json',
+      },
+      data: { currentPassword: 'password123', newPassword: 'newpass456' },
+    });
+    expect(changeResp.status()).toBe(200);
+
+    const newToken = extractTokenFromSetCookie(changeResp.headers()['set-cookie'] ?? '');
+    expect(newToken).not.toBe(originalToken);
+  });
+});
+
 test.describe('password change endpoint validation', () => {
   test('missing currentPassword returns 400', async ({ page }) => {
     const user = uniqueUser();
