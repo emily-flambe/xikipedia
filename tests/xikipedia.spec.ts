@@ -1015,11 +1015,8 @@ test.describe('Theme toggle', () => {
     await page.locator('#themeToggle').click();
     await expect(page.locator('html')).toHaveClass(/light-mode/);
 
-    // Light mode should update theme-color (skip on production if not deployed yet)
+    // Light mode should update theme-color
     const lightColor = await page.locator('meta[name="theme-color"]').getAttribute('content');
-    if (!isLocalhost && lightColor === '#38444D') {
-      test.skip(true, 'theme-color update not deployed to production yet');
-    }
     expect(lightColor).toBe('#F7F9FA');
 
     // Toggle back to dark
