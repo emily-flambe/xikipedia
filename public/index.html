@@ -2953,11 +2953,12 @@
             subs.forEach(s => allCategories.add(s));
             cacheValue.forEach(s => allCategories.add(s));
         });
-        return new Set([...allCategories].map(e => e?.toLowerCase?.() || e));
+        return new Set([...allCategories].map(e => e?.toLowerCase?.() || e).filter(Boolean));
     }
 
     // Convert category ID to display name
     function convertCat(cat) {
+        if (!cat) return cat;
         if (cat.startsWith("p:")) {
             cat = cat.slice(2);
             return pagesArr.find(e => e.id == cat)?.title ?? noPageMaps[cat] ?? cat;

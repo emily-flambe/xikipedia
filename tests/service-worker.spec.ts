@@ -167,10 +167,7 @@ test.describe('Service Worker + Feed Integration', () => {
   
   test('can browse feed offline after initial load', async ({ browser }) => {
     // Use a fresh context with service workers BLOCKED so Playwright's route
-    // mock is never bypassed by a cached SW response. Previous approaches
-    // (fire-and-forget unregister + never-resolving register stub) still raced
-    // under parallel test load because an already-active SW could serve
-    // smoldata.json from cache before the unregister completed.
+    // mock is never bypassed by a cached SW response.
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage();
 
@@ -191,6 +188,7 @@ test.describe('Service Worker + Feed Integration', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
+        headers: { 'Cache-Control': 'no-store' },
         body: JSON.stringify(mockData)
       });
     });
