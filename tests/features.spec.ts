@@ -1328,10 +1328,13 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
         const attempts = (fetchAttempts.get(chunkId) || 0) + 1;
         fetchAttempts.set(chunkId, attempts);
 
-        // Fail the first attempt, succeed on retry
+        // Fail the first attempt, succeed on retry.
+        // no-store prevents the browser's force-cache from caching
+        // the 500 and re-serving it on the retry fetch.
         if (attempts === 1) {
           await route.fulfill({
             status: 500,
+            headers: { 'Cache-Control': 'no-store' },
             contentType: 'application/json',
             body: JSON.stringify({ error: 'Simulated failure' }),
           });
