@@ -128,6 +128,11 @@ test.describe('Accessibility (axe-core)', () => {
     test.setTimeout(120000);
     await startFeed(page);
 
+    // Wait for CSS animations to settle (keyboard hint fade-in is 0.3s).
+    // axe-core uses computed opacity for contrast checks; mid-animation
+    // opacity causes false-positive color-contrast failures.
+    await page.waitForTimeout(500);
+
     const results = await new AxeBuilder({ page })
       .disableRules(KNOWN_VIOLATION_RULES)
       .analyze();
