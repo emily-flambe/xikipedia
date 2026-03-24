@@ -1577,12 +1577,7 @@ test.describe('token revocation: password change invalidates tokens', () => {
 });
 
 test.describe('password change re-authentication', () => {
-  // These tests verify the new Set-Cookie behavior on password change.
-  // They require the EMI-140 backend change to be deployed.
-  const needsDeploy = (process.env.PLAYWRIGHT_BASE_URL ?? '').includes('workers.dev');
-
   test('password change response sets a fresh auth cookie that works', async ({ page }) => {
-    test.skip(needsDeploy, 'Requires EMI-140 deploy (Set-Cookie on password change)');
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
@@ -1612,7 +1607,6 @@ test.describe('password change re-authentication', () => {
   });
 
   test('password change cookie token differs from the original token', async ({ page }) => {
-    test.skip(needsDeploy, 'Requires EMI-140 deploy (Set-Cookie on password change)');
     const user = uniqueUser();
     await mockSmoldata(page);
     await page.goto('/');
