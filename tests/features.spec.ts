@@ -1135,6 +1135,18 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
    * Note: Chunked format loads index.json (not smoldata.json)
    */
   async function setupChunkedRoutes(page: Page, options: { failChunk?: number; delayChunkMs?: number } = {}) {
+    // Block SW registration so Playwright route mocks reliably intercept
+    // chunk fetches. Without this, a production SW can serve chunk-*.json
+    // from cache, bypassing the mock data.
+    await page.addInitScript(() => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+        });
+        navigator.serviceWorker.register = () => new Promise(() => {});
+      }
+    });
+
     // Route index.json for chunked format
     await page.route('**/index.json', async (route) => {
       await route.fulfill({
@@ -1302,10 +1314,16 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   });
 
   test('retry button successfully loads text after failure', async ({ page }) => {
-    // Override fetch to use 'no-store' cache mode so every request goes
-    // through Playwright's route mock instead of the browser HTTP cache.
-    // Without this, force-cache can serve a cached 500 on retry.
+    // Block SW + override fetch cache mode so every chunk request goes
+    // through Playwright's route mock instead of the browser HTTP cache
+    // or a cached SW response.
     await page.addInitScript(() => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+        });
+        navigator.serviceWorker.register = () => new Promise(() => {});
+      }
       const origFetch = window.fetch;
       window.fetch = (input, init) => {
         const url = typeof input === 'string' ? input : (input as Request).url;
