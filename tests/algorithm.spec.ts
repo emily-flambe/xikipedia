@@ -904,17 +904,19 @@ test.describe('algorithm.mjs — scoring and selection', () => {
 
       const algo = createAlgorithm(context);
       let rouletteCount = 0;
-      for (let i = 0; i < 200; i++) {
+      let nullCount = 0;
+      for (let i = 0; i < 500; i++) {
         const post = algo.getNextPost() as any;
+        if (!post) { nullCount++; continue; }
         if (Array.isArray(post.recommendedBecause) && post.recommendedBecause[0]?.startsWith('🎰')) {
           rouletteCount++;
         }
       }
-      return { rouletteCount };
+      return { rouletteCount, nullCount };
     });
 
-    // 10% chance per eligible post; over 200 draws (minus serendipity injections)
-    // we expect several roulette hits.
+    // 10% chance per eligible post; over 500 draws we expect many roulette hits.
+    // P(0 hits in 500 trials at 10%) ≈ 0.9^500 ≈ 5×10⁻²⁴
     expect(result.rouletteCount).toBeGreaterThanOrEqual(1);
   });
 
