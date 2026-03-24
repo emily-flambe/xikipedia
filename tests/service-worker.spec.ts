@@ -165,25 +165,14 @@ test.describe('Service Worker', () => {
 // Integration tests with feed
 test.describe('Service Worker + Feed Integration', () => {
   
-  test('can browse feed offline after initial load', async ({ page, context }) => {
-    // Unregister existing SW, clear caches, AND block new SW registration so
-    // Playwright's route mock is never bypassed by a freshly-activated SW.
-    // Under parallel test load the fire-and-forget unregister can race with a
-    // new SW registering and intercepting smoldata.json before the mock fires.
-    await page.addInitScript(() => {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(r => r.unregister());
-        });
-        // Prevent the page from registering a new SW that would intercept fetches.
-        // A never-resolving promise is safest: callers await it without crashing,
-        // and no real SW activates.
-        navigator.serviceWorker.register = () => new Promise(() => {});
-      }
-      if ('caches' in window) {
-        caches.keys().then(names => names.forEach(n => caches.delete(n)));
-      }
-    });
+  test('can browse feed offline after initial load', async ({ browser }) => {
+    // Use a fresh context with service workers BLOCKED so Playwright's route
+    // mock is never bypassed by a cached SW response. Previous approaches
+    // (fire-and-forget unregister + never-resolving register stub) still raced
+    // under parallel test load because an already-active SW could serve
+    // smoldata.json from cache before the unregister completed.
+    const context = await browser.newContext({ serviceWorkers: 'block' });
+    const page = await context.newPage();
 
     // Use mock data for test speed
     await page.route('**/smoldata.json', async route => {
@@ -213,7 +202,7 @@ test.describe('Service Worker + Feed Integration', () => {
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
 
-    // Wait for posts to render (may take time on CI due to SW cleanup race)
+    // Wait for posts to render
     await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 15000 });
 
     // Go offline
@@ -227,6 +216,8 @@ test.describe('Service Worker + Feed Integration', () => {
 
     // Offline indicator should show (fired by window 'offline' event)
     await expect(page.locator('#offlineIndicator')).toBeVisible();
+
+    await context.close();
   });
 
   test('offline indicator has correct aria attributes', async ({ page, context }) => {
