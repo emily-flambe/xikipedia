@@ -3425,13 +3425,20 @@
             return;
         }
         // Don't attempt post creation until algorithm is initialized.
-        // If not ready, schedule a single deferred retry instead of spamming.
+        // Schedule retries with exponential backoff so the feed starts automatically.
         if (!specificPost && !(useWorkerAlgorithm && algorithmWorker?.isReady) && !fallbackAlgorithm) {
-            if (!createNextPost._initWait) {
-                createNextPost._initWait = setTimeout(() => {
-                    createNextPost._initWait = null;
+            const retries = (createNextPost._retryCount || 0) + 1;
+            if (retries <= 5) {
+                createNextPost._retryCount = retries;
+                const delay = 500 * Math.pow(2, retries - 1); // 500ms, 1s, 2s, 4s, 8s
+                if (retries === 1) dbg.warn('Algorithm not ready, scheduling retry...');
+                clearTimeout(createNextPost._retryTimer);
+                createNextPost._retryTimer = setTimeout(() => {
+                    createNextPost._retryTimer = null;
                     createNextPost();
-                }, 200);
+                }, delay);
+            } else {
+                dbg.error('Algorithm failed to initialize after 5 retries');
             }
             return;
         }
@@ -3458,8 +3465,8 @@
             if (retries <= 5) {
                 createNextPost._retryCount = retries;
                 const delay = 500 * Math.pow(2, retries - 1); // 500ms, 1s, 2s, 4s, 8s
-                // Only log on first retry to avoid console spam during init
-                if (retries === 1) dbg.warn('Algorithm not ready, retrying...', err);
+                // Only log on first retry to avoid console spam during repeated failures
+                if (retries === 1) dbg.warn('Temporary problem getting next post, retrying...', err);
                 clearTimeout(createNextPost._retryTimer);
                 createNextPost._retryTimer = setTimeout(() => {
                     createNextPost._retryTimer = null;
