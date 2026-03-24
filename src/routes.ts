@@ -540,13 +540,38 @@ async function handleChangePassword(
   const newHash = await hashPassword(body.newPassword, newSalt);
   const newSaltHex = arrayBufferToHex(newSalt.buffer as ArrayBuffer);
 
-  // Update password AND increment token_version to invalidate all existing sessions
+  // Update password AND increment token_version to invalidate all other sessions.
+  // Read back the new version so we can issue a fresh token for the current session.
   await env.DB.prepare(
     'UPDATE users SET password_hash = ?, salt = ?, token_version = token_version + 1 WHERE id = ?',
   ).bind(newHash, newSaltHex, payload.sub).run();
 
+  const row = await env.DB.prepare(
+    'SELECT token_version FROM users WHERE id = ?',
+  ).bind(payload.sub).first<{ token_version: number }>();
+  const newVersion = row?.token_version ?? (payload.token_version ?? 1) + 1;
+
+  // Issue a fresh token so the current session stays authenticated
+  const token = await createToken(
+    {
+      sub: payload.sub,
+      username: payload.username,
+      exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+      token_version: newVersion,
+    },
+    env.JWT_SECRET,
+  );
+
   logger.info('auth.changePassword.success', { userId: payload.sub });
-  return jsonResponse(request, { success: true });
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      ...getCorsHeaders(request),
+      'Set-Cookie': authCookieHeader(token, request),
+    },
+  });
 }
 
 // ─── Health Check ────────────────────────────────────────────────────
