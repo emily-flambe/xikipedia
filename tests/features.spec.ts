@@ -1250,6 +1250,16 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   });
 
   test('chunked format shows error state with retry button on fetch failure', async ({ page }) => {
+    // Block SW so route mocks aren't bypassed by cached SW responses
+    await page.addInitScript(() => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+        });
+        navigator.serviceWorker.register = () => new Promise(() => {});
+      }
+    });
+
     // Create a route that ALWAYS fails chunk fetches
     await page.route('**/index.json', async (route) => {
       await route.fulfill({
@@ -1287,6 +1297,18 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
   });
 
   test('retry button successfully loads text after failure', async ({ page }) => {
+    // Block SW registration so Playwright route mocks reliably intercept
+    // chunk fetches. Without this, a production SW can serve chunk-*.json
+    // from cache, bypassing the mock that simulates failure/retry.
+    await page.addInitScript(() => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+        });
+        navigator.serviceWorker.register = () => new Promise(() => {});
+      }
+    });
+
     // Track fetch attempts per chunk to fail first, succeed on retry
     const fetchAttempts = new Map<number, number>();
 
