@@ -249,7 +249,7 @@ public/full-wiki/
 ```
 
 ### Requirements
-- Node.js 20.18.1+ 
+- Node.js 20.18.1+
 - `bunzip2` for decompression (pre-installed on Linux/Mac)
 - ~50GB free disk space
 - ~4-8 hours processing time
