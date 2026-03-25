@@ -3289,9 +3289,10 @@
             div.className = 'history-item';
             div.dataset.id = item.id;
             div.tabIndex = 0;
-            if (item.thumb) {
+            const cleanHistThumb = sanitizeThumb(item.thumb);
+            if (cleanHistThumb) {
                 const img = document.createElement('img');
-                img.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(item.thumb.replace(/ /g, '_'))}&width=120`;
+                img.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(cleanHistThumb.replace(/ /g, '_'))}&width=120`;
                 img.alt = `Thumbnail for ${item.title}`;
                 img.loading = 'lazy';
                 img.decoding = 'async';
@@ -3846,9 +3847,10 @@
 
         postDiv.appendChild(postP);
 
-        if (nextPost.thumb) {
+        const cleanPostThumb = sanitizeThumb(nextPost.thumb);
+        if (cleanPostThumb) {
             const postImg = document.createElement("img");
-            postImg.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(nextPost.thumb.replace(/ /g, '_'))}&width=512`;
+            postImg.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(cleanPostThumb.replace(/ /g, '_'))}&width=512`;
             postImg.alt = `Image for ${nextPost.title}`;
             postImg.classList.add("media");
             postImg.loading = "eager";
@@ -3858,7 +3860,7 @@
             postImg.fetchPriority = (currentFeed && currentFeed.children.length < 2) ? "high" : "low";
             postImg.onerror = () => postImg.remove();
             postImg.onclick = (e) => {
-                showPic(nextPost.thumb, nextPost.title);
+                showPic(cleanPostThumb, nextPost.title);
                 if (!postImg.dataset.engaged) {
                     postImg.dataset.engaged = engagePost(nextPost, 100);
                 }
@@ -4082,6 +4084,19 @@
         check.dataset.category = cat;
         if (checked) check.checked = true;
         categoryPickList.appendChild(picker);
+    }
+
+    // Sanitize thumbnail filenames from dataset
+    // Some entries contain wiki markup like "File:Name.jpg" or "[[File:Name.jpg|thumb|desc]]"
+    function sanitizeThumb(thumb) {
+        if (!thumb) return null;
+        let name = thumb.trim();
+        // Strip [[File:...|options]] wiki markup — extract filename
+        const wikiMatch = name.match(/^\[\[(?:File|Image):([^|\]]+)/i);
+        if (wikiMatch) name = wikiMatch[1].trim();
+        // Strip File: or Image: prefix
+        name = name.replace(/^(?:File|Image):/i, '').trim();
+        return name || null;
     }
 
     // Clean raw Wikipedia markup from article text
