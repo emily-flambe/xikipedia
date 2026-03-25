@@ -1183,7 +1183,7 @@
             color: var(--text-secondary, #8899AA);
             margin-top: 4px;
         }
-        
+
         /* === Filter Presets === */
         .filter-presets-section {
             margin-bottom: 12px;
@@ -1886,16 +1886,16 @@
     const hiddenCategories = new Set();
     const reducedCategories = new Set();  // 75% less likely to show
     const boostedCategories = new Set();  // 3x more likely to show
-    
+
     // Mood modes: normal, light (hide dark topics), deep (STEM/academic focus)
     let moodMode = 'normal';
-    
+
     // Filter presets - pre-built category groups
     const filterPresets = {
         noDark: {
             name: "🚫 No dark topics",
             type: "block",
-            categories: ["war", "wars", "death", "deaths", "murder", "murders", "crime", "crimes", 
+            categories: ["war", "wars", "death", "deaths", "murder", "murders", "crime", "crimes",
                         "disaster", "disasters", "disease", "diseases", "terrorism", "genocide",
                         "violence", "accidents", "famine", "poverty", "torture", "execution",
                         "suicide", "assassination", "massacre", "bombing", "shooting"]
@@ -1911,14 +1911,14 @@
         stemBoost: {
             name: "🔬 STEM boost",
             type: "boost",
-            categories: ["science", "technology", "mathematics", "engineering", "physics", 
+            categories: ["science", "technology", "mathematics", "engineering", "physics",
                         "chemistry", "biology", "computer science", "astronomy", "medicine",
                         "geology", "ecology", "genetics", "neuroscience", "algorithms"]
         },
         cultureBoost: {
             name: "🎨 Culture boost",
             type: "boost",
-            categories: ["art", "music", "film", "literature", "theatre", "dance", 
+            categories: ["art", "music", "film", "literature", "theatre", "dance",
                         "painting", "sculpture", "poetry", "novels", "architecture",
                         "photography", "fashion", "design", "museums", "galleries"]
         },
@@ -1935,7 +1935,7 @@
                         "forests", "oceans", "mountains", "conservation", "species"]
         }
     };
-    
+
     // Mood mode presets - define what each mood does
     const moodPresets = {
         light: {
@@ -1954,10 +1954,10 @@
                    "linguistics", "archaeology", "astronomy", "medicine", "engineering"]
         }
     };
-    
+
     // Active filter presets
     const activePresets = new Set();
-    
+
     // Save all category filters to localStorage
     function saveCategoryFilters() {
         safeSetItem('xiki_blocked_categories', JSON.stringify(Array.from(hiddenCategories)));
@@ -1965,28 +1965,28 @@
         safeSetItem('xiki_boosted_categories', JSON.stringify(Array.from(boostedCategories)));
         safeSetItem('xiki_active_presets', JSON.stringify(Array.from(activePresets)));
         safeSetItem('xiki_mood_mode', moodMode);
-        
+
         // Sync filters to worker
         if (algorithmWorker) {
             algorithmWorker.syncFilters(hiddenCategories, reducedCategories, boostedCategories);
         }
     }
-    
+
     // Load all category filters from localStorage
     function loadCategoryFilters() {
         try {
             const blocked = safeGetItem('xiki_blocked_categories');
             if (blocked) JSON.parse(blocked).forEach(cat => hiddenCategories.add(cat));
-            
+
             const reduced = safeGetItem('xiki_reduced_categories');
             if (reduced) JSON.parse(reduced).forEach(cat => reducedCategories.add(cat));
-            
+
             const boosted = safeGetItem('xiki_boosted_categories');
             if (boosted) JSON.parse(boosted).forEach(cat => boostedCategories.add(cat));
-            
+
             const savedPresets = safeGetItem('xiki_active_presets');
             if (savedPresets) JSON.parse(savedPresets).forEach(p => activePresets.add(p));
-            
+
             const savedMood = safeGetItem('xiki_mood_mode');
             if (savedMood) moodMode = savedMood;
         } catch (e) {
@@ -1994,18 +1994,18 @@
             showErrorToast('Failed to load category filters.');
         }
     }
-    
+
     // Legacy alias for backward compatibility
     function saveBlockedCategories() { saveCategoryFilters(); }
     function loadBlockedCategories() { loadCategoryFilters(); }
-    
+
     // Apply a filter preset (supports both block and boost types)
     function toggleFilterPreset(presetKey) {
         const preset = filterPresets[presetKey];
         if (!preset) return;
-        
+
         const targetSet = preset.type === 'boost' ? boostedCategories : hiddenCategories;
-        
+
         if (activePresets.has(presetKey)) {
             // Disable preset - remove categories
             activePresets.delete(presetKey);
@@ -2021,56 +2021,56 @@
         updatePresetButtons();
         scheduleEngagementUpdate();
     }
-    
+
     // Set mood mode (normal, light, deep)
     function setMoodMode(mode) {
         if (mode === moodMode) return;
-        
+
         // Clear previous mood's effects (only for non-normal modes)
         if (moodMode !== 'normal' && moodPresets[moodMode]) {
             const prev = moodPresets[moodMode];
             prev.block?.forEach(cat => hiddenCategories.delete(cat));
             prev.boost?.forEach(cat => boostedCategories.delete(cat));
         }
-        
+
         moodMode = mode;
-        
+
         // Apply new mood's effects
         if (mode !== 'normal' && moodPresets[mode]) {
             const preset = moodPresets[mode];
             preset.block?.forEach(cat => hiddenCategories.add(cat));
             preset.boost?.forEach(cat => boostedCategories.add(cat));
         }
-        
+
         saveCategoryFilters();
         updateMoodButtons();
         scheduleEngagementUpdate();
-        
+
         const moodNames = { normal: '⚖️ Normal', light: '☀️ Light', deep: '🧠 Deep Dive' };
         showToast(`Mood: ${moodNames[mode]}`);
     }
-    
+
     // Update mood button UI state
     function updateMoodButtons() {
         document.querySelectorAll('.mood-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.mood === moodMode);
         });
     }
-    
+
     // Update preset button UI state
     function updatePresetButtons() {
         document.querySelectorAll('.preset-btn').forEach(btn => {
             btn.classList.toggle('active', activePresets.has(btn.dataset.preset));
         });
     }
-    
+
     // Set category filter action (block, reduce, boost, clear)
     function setCategoryFilter(category, action) {
         // Clear from all sets first
         hiddenCategories.delete(category);
         reducedCategories.delete(category);
         boostedCategories.delete(category);
-        
+
         // Apply new action
         switch (action) {
             case 'block':
@@ -2089,11 +2089,11 @@
                 showToast(`✓ Cleared: ${convertCat(category)}`);
                 break;
         }
-        
+
         saveCategoryFilters();
         scheduleEngagementUpdate();
     }
-    
+
     // Get current filter status for a category
     function getCategoryFilterStatus(category) {
         if (hiddenCategories.has(category)) return 'blocked';
@@ -2101,7 +2101,7 @@
         if (boostedCategories.has(category)) return 'boosted';
         return 'normal';
     }
-    
+
     const defaultCategories = [
         "nature", "science", "animals", "anthropology", "places",
         "sociology", "art", "mathematics", "games", "technology",
@@ -2118,7 +2118,7 @@
     // === Time-based decay ===
     const categoryLastEngaged = {};     // Track when each category was last positively engaged
     const sessionStartTime = Date.now();
-    
+
     // === Shared algorithm module ===
     // Imported as an ES module; used by the main-thread fallback when the
     // algorithm worker is unavailable.
@@ -2184,7 +2184,7 @@
                 dbg.warn('Failed to create worker:', err);
                 return false;
             }
-            
+
             // Create ready promise
             this.readyPromise = new Promise(resolve => {
                 this.readyResolve = resolve;
@@ -2228,10 +2228,10 @@
             try {
                 await Promise.race([this.readyPromise, timeoutPromise]);
                 this.isReady = true;
-                
+
                 // Start periodic score sync (every 5 seconds)
                 this._startSyncTimer();
-                
+
                 return true;
             } catch (err) {
                 dbg.warn('Worker init failed:', err);
@@ -2251,7 +2251,7 @@
             }
 
             const requestId = ++this.requestIdCounter;
-            
+
             return new Promise((resolve, reject) => {
                 // Timeout after 5 seconds
                 const timeout = setTimeout(() => {
@@ -2269,12 +2269,12 @@
         // Sync category scores to worker (debounced internally)
         syncScores(categoryScoresData) {
             if (!this.worker || !this.isReady) return;
-            
+
             // Debounce: only sync if 1 second has passed since last sync
             const now = Date.now();
             if (now - this.lastScoreSync < 1000) return;
             this.lastScoreSync = now;
-            
+
             this.worker.postMessage({
                 type: 'UPDATE_SCORES',
                 payload: { categoryScores: categoryScoresData }
@@ -2299,9 +2299,9 @@
             if (!this.worker || !this.isReady) return;
             this.worker.postMessage({
                 type: 'UPDATE_SETTINGS',
-                payload: { 
-                    algorithmAggressiveness: aggValue, 
-                    exploreMode: exploreModeValue 
+                payload: {
+                    algorithmAggressiveness: aggValue,
+                    exploreMode: exploreModeValue
                 }
             });
         }
@@ -2775,7 +2775,7 @@
             return;
         }
         const searchTarget = [
-            ...pagesArr.map(e => e.title.toLowerCase()), 
+            ...pagesArr.map(e => e.title.toLowerCase()),
             ...Object.values(noPageMaps).map(e => e.toLowerCase())
         ];
         let results = searchTarget
@@ -2783,7 +2783,7 @@
             .slice(0, 100);
         if (results.length < 100) {
             results = [
-                ...results, 
+                ...results,
                 ...searchTarget
                     .filter(e => e.includes(searchText.toLowerCase()) && !results.includes(e))
                     .slice(0, 100 - results.length)
@@ -2939,7 +2939,7 @@
             if (!cat) return;
             const subs = subCategories[cat] ?? [];
             if (!subs.length) return;
-            
+
             let cacheValue = recursiveCache.get(cat);
             if (!cacheValue) {
                 recursiveCache.set(cat, -1);
@@ -3059,20 +3059,20 @@
         // Mood mode section
         const moodSection = document.createElement("div");
         moodSection.classList.add("mood-section");
-        
+
         const moodTitle = document.createElement("h2");
         moodTitle.textContent = "Reading Mood";
         moodSection.appendChild(moodTitle);
-        
+
         const moodButtons = document.createElement("div");
         moodButtons.classList.add("mood-buttons");
-        
+
         const moods = [
             { id: 'light', icon: '☀️', label: 'Light' },
             { id: 'normal', icon: '⚖️', label: 'Normal' },
             { id: 'deep', icon: '🧠', label: 'Deep' }
         ];
-        
+
         moods.forEach(({ id, icon, label }) => {
             const btn = document.createElement("button");
             btn.classList.add("mood-btn");
@@ -3087,21 +3087,21 @@
             };
             moodButtons.appendChild(btn);
         });
-        
+
         moodSection.appendChild(moodButtons);
         statsEl.appendChild(moodSection);
 
         // Filter presets section
         const presetsSection = document.createElement("div");
         presetsSection.classList.add("presets-section");
-        
+
         const presetsTitle = document.createElement("h2");
         presetsTitle.textContent = "Quick Filters";
         presetsSection.appendChild(presetsTitle);
-        
+
         const presetsGrid = document.createElement("div");
         presetsGrid.classList.add("presets-grid");
-        
+
         Object.entries(filterPresets).forEach(([key, preset]) => {
             const btn = document.createElement("button");
             btn.classList.add("preset-btn");
@@ -3116,7 +3116,7 @@
             };
             presetsGrid.appendChild(btn);
         });
-        
+
         presetsSection.appendChild(presetsGrid);
         statsEl.appendChild(presetsSection);
 
@@ -3263,12 +3263,12 @@
             }
         });
         savePreferences();
-        
+
         // Sync to worker (debounced internally)
         if (algorithmWorker) {
             algorithmWorker.syncScores(categoryScores);
         }
-        
+
         return amount;
     }
 
@@ -3282,7 +3282,7 @@
     function updateHistoryUI() {
         const list = document.getElementById('historyList');
         if (!list) return;
-        
+
         list.innerHTML = '';
         viewedHistory.forEach(item => {
             const div = document.createElement('div');
@@ -3344,13 +3344,13 @@
         const toggle = document.getElementById('historyToggle');
         const panel = document.getElementById('historyPanel');
         const close = document.getElementById('historyClose');
-        
+
         toggle.style.display = 'inline-block';
-        
+
         toggle.onclick = () => {
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
         };
-        
+
         close.onclick = () => {
             panel.style.display = 'none';
         };
@@ -3361,29 +3361,29 @@
         const hint = document.getElementById('keyboardHint');
         const dismiss = document.getElementById('keyboardHintDismiss');
         const storageKey = 'xiki_keyboard_hint_seen';
-        
+
         // Don't show if user has seen it before
         if (safeGetItem(storageKey)) return;
-        
+
         // Show the hint
         hint.style.display = 'flex';
-        
+
         // Mark as seen
         safeSetItem(storageKey, 'true');
-        
+
         // Auto-dismiss after 8 seconds
         const autoDismiss = setTimeout(() => {
             hint.classList.add('fade-out');
             setTimeout(() => hint.style.display = 'none', 500);
         }, 8000);
-        
+
         // Manual dismiss
         dismiss.onclick = () => {
             clearTimeout(autoDismiss);
             hint.classList.add('fade-out');
             setTimeout(() => hint.style.display = 'none', 500);
         };
-        
+
         // Also dismiss if user presses ?
         document.addEventListener('keydown', function dismissOnQuestion(e) {
             if (e.key === '?') {
@@ -3559,7 +3559,7 @@
         };
 
         postTitle.innerText = nextPost.title;
-        
+
         // Helper function to fetch text for chunked format (supports retry)
         const MAX_CHUNK_RETRIES = 3;
         let chunkRetryCount = 0;
@@ -3614,7 +3614,7 @@
                     }
                 });
         };
-        
+
         // Handle text loading (supports both simple and chunked formats)
         if (nextPost.text) {
             // Text already loaded (simple format or cached chunk)
@@ -3626,7 +3626,7 @@
             // Fallback
             postP.innerText = sanitizeWikiText(nextPost.text) || "";
         }
-        
+
         postYes.dataset.testid = "like-button";
         postYes.setAttribute("aria-label", `Like this article: ${nextPost.title}`);
         postYes.setAttribute("aria-pressed", "false");
@@ -3712,20 +3712,20 @@
             whyBtn.innerText = "Why?";
             whyBtn.setAttribute("aria-label", "Why was this recommended?");
             whyBtn.setAttribute("aria-expanded", "false");
-            
+
             const reasonDiv = document.createElement("div");
             reasonDiv.classList.add("recommendation-reason");
             reasonDiv.style.display = "none";
-            
+
             // Create clickable category chips with dropdown menu
             nextPost.recommendedBecause.forEach((cat, idx) => {
                 const wrapper = document.createElement("div");
                 wrapper.classList.add("category-chip-wrapper");
-                
+
                 // Find the raw category name (before convertCat)
                 const rawCat = [...nextPost.allCategories].find(c => convertCat(c) === cat) || cat;
                 const currentStatus = getCategoryFilterStatus(rawCat);
-                
+
                 const chip = document.createElement("button");
                 chip.classList.add("category-chip");
                 if (currentStatus !== 'normal') chip.classList.add(currentStatus);
@@ -3826,12 +3826,12 @@
                         chip.focus();
                     }
                 });
-                
+
                 wrapper.appendChild(chip);
                 wrapper.appendChild(dropdown);
                 reasonDiv.appendChild(wrapper);
             });
-            
+
             whyBtn.onclick = (e) => {
                 e.stopPropagation();
                 const isExpanded = reasonDiv.style.display !== "none";
@@ -3839,13 +3839,13 @@
                 whyBtn.setAttribute("aria-expanded", String(!isExpanded));
                 whyBtn.innerText = isExpanded ? "Why?" : "×";
             };
-            
+
             postDiv.appendChild(whyBtn);
             postDiv.appendChild(reasonDiv);
         }
 
         postDiv.appendChild(postP);
-        
+
         if (nextPost.thumb) {
             const postImg = document.createElement("img");
             postImg.src = `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(nextPost.thumb.replace(/ /g, '_'))}&width=512`;
@@ -3935,10 +3935,10 @@
         }
         updateSessionStats();
         updateHistoryUI();
-        
+
         // Post creation complete
         postCreationInProgress = false;
-        
+
         // Always check if more posts are needed after creation.
         // The IntersectionObserver won't re-fire while the sentinel remains
         // intersecting, so we must self-chain until the viewport is filled.
@@ -4267,7 +4267,7 @@
         if (fallbackAlgorithm) {
             fallbackAlgorithm.reset();
         }
-        
+
         // Scroll to top and trigger post creation
         window.scrollTo(0, 0);
         createNextPost();
@@ -4350,7 +4350,7 @@
         // Pointer events (desktop mouse + touch)
         let isPointerPulling = false;
         let capturedPointerId = null;
-        
+
         postsContainer.addEventListener("pointerdown", (e) => {
             if (e.pointerType === 'touch') return; // Handled by touch events
             // Don't start pull if clicking on interactive elements
@@ -4392,7 +4392,7 @@
                 capturedPointerId = null;
             }
         });
-        
+
         // Also handle lostpointercapture for robustness
         postsContainer.addEventListener("lostpointercapture", (e) => {
             if (isPointerPulling) {
@@ -4508,7 +4508,7 @@
             const posts = Array.from(document.querySelectorAll('.post'));
             const current = getCurrentPost();
             if (!current) return posts[0] || null;
-            
+
             const idx = posts.indexOf(current);
             if (direction === 'next') {
                 return posts[idx + 1] || current;
@@ -4616,7 +4616,7 @@
                     }
                     break;
 
-                case 'n': // Less like this  
+                case 'n': // Less like this
                     if (current) {
                         e.preventDefault();
                         const lessBtn = current.querySelector('.less-btn');
@@ -4767,41 +4767,41 @@
         }
 
         defaultCategories.forEach(e => addPickableCategory(e));
-        
+
         // Detect data format (simple vs chunked)
         const dataFormat = getDataFormat();
         isChunkedFormat = dataFormat === 'chunked';
-        
+
         const loadingDetails = document.getElementById('loadingDetails');
         const loadingProgressBar = document.getElementById('loadingProgressBar');
         const loading = document.querySelector("#loading");
-        
+
         let subCategories;
         let wikiLen;
-        
+
         if (isChunkedFormat) {
             // ============================================
             // Chunked format: load index.json
             // ============================================
             startBtn.innerText = "Xikipedia is loading... (downloading index)";
-            
+
             const indexData = await getFileWithProgress("index.json");
-            
+
             subCategories = indexData.subCategories;
             noPageMaps = indexData.noPageMaps || {};
             wikiLen = indexData.pages.length;
-            
+
             // Initialize chunk cache and fetcher
             chunkCache = new ChunkCache(10);
             chunkFetcher = new ChunkFetcher(chunkCache, 2);
-            
+
             let i = 0;
             let lastFrame = Date.now();
-            
+
             // Process pages - format: [title, pageId, chunkId, thumbHash, categories]
             while (indexData.pages.length) {
                 const e = indexData.pages.pop();
-                
+
                 const tempPage = {
                     title: e[0],
                     id: e[1],
@@ -4812,7 +4812,7 @@
                     // Reconstruct thumb URL from hash if present
                     thumb: e[3] ? null : null  // thumbHash is just for future use, not a full filename
                 };
-                
+
                 if (i % 1000 === 0 && Date.now() - lastFrame > 20) {
                     const percent = (i / wikiLen * 100).toFixed(0);
                     startBtn.innerText = `Processing articles... ${percent}%`;
@@ -4822,13 +4822,13 @@
                     lastFrame = Date.now();
                 }
                 i++;
-                
+
                 tempPage.allCategories = new Set(recursiveCategories(subCategories, [...tempPage.categories], 0));
                 tempPage.allCategories.add(`p:${tempPage.id}`);
                 pagesArr.push(tempPage);
             }
-            
-            
+
+
         } else {
             // ============================================
             // Simple format: load smoldata.json (existing behavior)
@@ -4886,7 +4886,7 @@
         loading.remove();
         document.getElementById('loadingProgress').style.display = 'none';
         document.getElementById('loadingDetails').innerText = `${wikiLen.toLocaleString()} articles ready`;
-        
+
         // Initialize WebWorker for algorithm (in background during start screen)
         algorithmWorker = new AlgorithmWorkerManager();
         const workerInitState = {
@@ -4933,7 +4933,7 @@
         }).catch(err => {
             dbg.warn('Algorithm module load failed, fallback unavailable:', err);
         });
-        
+
         startBtn.removeAttribute("disabled");
         categorySearchInput.removeAttribute("disabled");
         startBtn.innerText = "I'm an adult, continue";
@@ -5059,7 +5059,7 @@
             updateEngagement,
         };
     }
-    
+
     // Flush unsaved preferences and clean up on page unload
     window.addEventListener('beforeunload', () => {
         flushPreferencesNow();
@@ -5091,7 +5091,7 @@
                 // SW registered
             })
             .catch(err => dbg.error('SW registration failed:', err));
-        
+
         // Listen for messages from SW
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data?.type === 'SW_ACTIVATED') {
