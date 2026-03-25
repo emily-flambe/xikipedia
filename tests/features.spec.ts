@@ -88,7 +88,7 @@ async function startFeedWithMock(page: Page) {
     test.skip();
     return;
   }
-  
+
   await setupMockRoute(page);
   await page.goto('/');
 
@@ -351,7 +351,7 @@ test.describe('Feature 2: Feed refresh', () => {
       // Fallback for non-worker mode
       return window.__xikiTest!.seenPostIds.size;
     });
-    
+
     expect(seenBefore).toBeGreaterThan(0);
 
     // Refresh feed
@@ -363,7 +363,7 @@ test.describe('Feature 2: Feed refresh', () => {
     const seenAfter = await page.evaluate(() => {
       return window.__xikiTest!.pagesArr.filter((p: any) => p.seen && p.seen > 0).length;
     });
-    
+
     // Should be 0 or very small (from auto-generated initial posts)
     expect(seenAfter).toBeLessThanOrEqual(3);
   });
@@ -1162,12 +1162,12 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
       if (options.delayChunkMs) {
         await new Promise(resolve => setTimeout(resolve, options.delayChunkMs));
       }
-      
+
       const url = route.request().url();
       const match = url.match(/chunk-(\d+)\.json/);
       if (match) {
         const chunkId = parseInt(match[1], 10);
-        
+
         // Simulate failure for specific chunk if requested
         if (options.failChunk === chunkId) {
           await route.fulfill({
@@ -1177,7 +1177,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
           });
           return;
         }
-        
+
         const chunkData = generateChunkData(chunkId);
         await route.fulfill({
           status: 200,
@@ -1219,7 +1219,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     await page.route('**/articles/chunk-*.json', async (route) => {
       // Small delay to observe skeleton state
       await new Promise(resolve => setTimeout(resolve, 200));
-      
+
       const url = route.request().url();
       const match = url.match(/chunk-(\d+)\.json/);
       if (match) {
@@ -1244,7 +1244,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     // Wait for posts to appear
     const posts = page.locator('[data-testid="post"]');
     await expect(posts.first()).toBeVisible({ timeout: 10000 });
-    
+
     // Wait for text to finish loading - paragraphs should have content or be in error state
     // (They transition from skeleton → text or skeleton → error)
     const paragraphs = posts.first().locator('p');
@@ -1256,10 +1256,10 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
 
     // Wait for any post to have text content (not skeleton or error)
     const postsWithText = page.locator('[data-testid="post"] p:not(.skeleton):not(.load-error)');
-    
+
     // At least one post should have loaded text successfully
     await expect(postsWithText.first()).toBeVisible({ timeout: 10000 });
-    
+
     // Verify the text contains expected content
     const textContent = await postsWithText.first().textContent();
     expect(textContent).toBeTruthy();
@@ -1306,7 +1306,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     // Wait for any post with error state
     const errorPosts = page.locator('[data-testid="post"] p.load-error');
     await expect(errorPosts.first()).toBeVisible({ timeout: 10000 });
-    
+
     // Check for retry button in error state
     const retryBtn = errorPosts.first().locator('.retry-btn');
     await expect(retryBtn).toBeVisible();
@@ -1410,14 +1410,14 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
     const isChunked = await page.evaluate(() => {
       return window.__xikiTest!.isChunkedFormat;
     });
-    
+
     expect(isChunked).toBe(true);
-    
+
     // Also verify chunkCache and chunkFetcher are initialized
     const hasChunkInfra = await page.evaluate(() => {
       return !!window.__xikiTest!.chunkCache && !!window.__xikiTest!.chunkFetcher;
     });
-    
+
     expect(hasChunkInfra).toBe(true);
   });
 
@@ -1436,7 +1436,7 @@ test.describe('Chunked Format: Lazy Text Loading', () => {
         fetcherHasGetArticleText: typeof fetcher?.getArticleText === 'function'
       };
     });
-    
+
     expect(infraStatus.hasCache).toBe(true);
     expect(infraStatus.hasFetcher).toBe(true);
     expect(infraStatus.cacheHasGetStats).toBe(true);

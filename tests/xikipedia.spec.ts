@@ -94,11 +94,11 @@ async function startFeed(page: Page) {
 test.describe('Xikipedia', () => {
   test('loads the start screen', async ({ page }) => {
     await page.goto('/');
-    
+
     // Start screen should be visible
     const startScreen = page.locator('#startScreen');
     await expect(startScreen).toBeVisible();
-    
+
     // Title should be present
     await expect(page.locator('h1')).toContainText('Xikipedia');
   });
@@ -115,21 +115,21 @@ test.describe('Xikipedia', () => {
     });
 
     await page.goto('/');
-    
+
     // Start button should be disabled during loading
     const startBtn = page.locator('[data-testid="start-button"]');
-    
+
     // Initially it says loading (or connection lost on local dev without R2 data)
     await expect(startBtn).toContainText(/loading|connection lost/i);
   });
 
   test('displays category pickers', async ({ page }) => {
     await page.goto('/');
-    
+
     // Wait for category pickers to appear
     const categoryPickers = page.locator('.categoryPicker');
     await expect(categoryPickers.first()).toBeVisible({ timeout: 10000 });
-    
+
     // Should have default categories
     const pickerCount = await categoryPickers.count();
     expect(pickerCount).toBeGreaterThanOrEqual(10);
@@ -138,9 +138,9 @@ test.describe('Xikipedia', () => {
   test('enables start button after data loads', async ({ page }) => {
     await setupMockRoute(page);
     await page.goto('/');
-    
+
     const startBtn = page.locator('[data-testid="start-button"]');
-    
+
     // Wait for button to become enabled (data loaded)
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await expect(startBtn).toContainText(/continue/i);
@@ -148,14 +148,14 @@ test.describe('Xikipedia', () => {
 
   test('can select categories', async ({ page }) => {
     await page.goto('/');
-    
+
     // Wait for category pickers to appear
     const firstPicker = page.locator('.categoryPicker').first();
     await expect(firstPicker).toBeVisible({ timeout: 10000 });
-    
+
     // Click on a category
     await firstPicker.click();
-    
+
     // Verify it's checked
     const checkbox = firstPicker.locator('input[type="checkbox"]');
     await expect(checkbox).toBeChecked();
@@ -164,18 +164,18 @@ test.describe('Xikipedia', () => {
   test('starts the feed when clicking continue', async ({ page }) => {
     await setupMockRoute(page);
     await page.goto('/');
-    
+
     const startBtn = page.locator('[data-testid="start-button"]');
-    
+
     // Wait for button to become enabled
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
-    
+
     // Click continue
     await startBtn.click();
-    
+
     // Start screen should be hidden/removed
     await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
-    
+
     // Posts should start appearing
     const posts = page.locator('[data-testid="post"]');
     await expect(posts.first()).toBeVisible({ timeout: 10000 });
@@ -184,18 +184,18 @@ test.describe('Xikipedia', () => {
   test('can like a post', async ({ page }) => {
     await setupMockRoute(page);
     await page.goto('/');
-    
+
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
-    
+
     // Wait for posts
     const likeButton = page.locator('[data-testid="like-button"]').first();
     await expect(likeButton).toBeVisible({ timeout: 10000 });
-    
+
     // Click like
     await likeButton.click();
-    
+
     // Verify it's liked
     await expect(likeButton).toHaveAttribute('data-liked', 'true');
   });
@@ -205,19 +205,19 @@ test.describe('Xikipedia', () => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await setupMockRoute(page);
     await page.goto('/');
-    
+
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
-    
+
     // Toggle button should be visible
     const toggleBtn = page.locator('#statsToggleBtn');
     await expect(toggleBtn).toBeVisible({ timeout: 5000 });
-    
+
     // Click toggle to open sidebar drawer
     await toggleBtn.click();
     await page.waitForTimeout(400);
-    
+
     // Stats should be visible after opening
     const stats = page.locator('[data-testid="stats"]');
     await expect(stats).toBeVisible({ timeout: 10000 });
@@ -227,21 +227,21 @@ test.describe('Xikipedia', () => {
   test('infinite scroll loads more posts', async ({ page }) => {
     await setupMockRoute(page);
     await page.goto('/');
-    
+
     const startBtn = page.locator('[data-testid="start-button"]');
     await expect(startBtn).not.toBeDisabled({ timeout: 30000 });
     await startBtn.click();
-    
+
     // Wait for initial posts
     const posts = page.locator('[data-testid="post"]');
     await expect(posts.first()).toBeVisible({ timeout: 10000 });
-    
+
     const initialCount = await posts.count();
-    
+
     // Scroll down
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(1000);
-    
+
     // Should have more posts
     const newCount = await posts.count();
     expect(newCount).toBeGreaterThan(initialCount);
@@ -327,14 +327,14 @@ test.describe('Feature 2: Feed refresh', () => {
 
     const indicator = page.locator('#pullIndicator');
     await expect(indicator).toBeAttached();
-    
+
     // Should contain the pull text
     await expect(indicator).toContainText('Pull to refresh');
   });
 
   test('pull-to-refresh works with touch gestures', async ({ page, browserName }) => {
     test.setTimeout(180000);
-    
+
     // Skip on browsers without touch support in test
     if (browserName !== 'chromium') {
       test.skip();
@@ -408,12 +408,12 @@ test.describe('Feature 2: Feed refresh', () => {
     // Mouse drag down
     await page.mouse.move(startX, startY);
     await page.mouse.down();
-    
+
     for (let y = startY; y <= startY + 150; y += 10) {
       await page.mouse.move(startX, y);
       await page.waitForTimeout(10);
     }
-    
+
     await page.mouse.up();
     await page.waitForTimeout(800);
 
@@ -461,7 +461,7 @@ test.describe('Feature 2: Feed refresh', () => {
 
     // New posts should appear
     await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 5000 });
-    
+
     // Should be at scroll position 0
     const scrollPos = await page.evaluate(() => window.scrollY);
     expect(scrollPos).toBe(0);
@@ -1111,7 +1111,7 @@ test.describe('Wiki text sanitization', () => {
     const results = await page.evaluate(() => {
       const fn = (globalThis as any).sanitizeWikiText;
       if (!fn) return null;
-      
+
       return {
         refs: fn('Text<ref name="a">citation</ref> here'),
         selfClosingRef: fn('Text<ref name="b" /> here'),
@@ -1147,7 +1147,7 @@ test.describe('Wiki text sanitization', () => {
     const results = await page.evaluate(() => {
       const fn = (globalThis as any).sanitizeWikiText;
       if (!fn) return null;
-      
+
       // Test nested template handling
       const nested = fn('Hello {{foo|{{bar}}}} world');
       // If nested templates aren't handled, this will contain leftover markup

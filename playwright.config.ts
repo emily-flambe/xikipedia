@@ -16,7 +16,7 @@ export default defineConfig({
   workers: isCI ? 4 : undefined, // Mock data used for all tests
   reporter: 'html',
   timeout: 60000, // 1 minute default, tests can override if needed
-  
+
   use: {
     baseURL,
     trace: 'on-first-retry',

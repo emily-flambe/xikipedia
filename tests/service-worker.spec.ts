@@ -4,7 +4,7 @@ import { test, expect, Page } from '@playwright/test';
 
 // Service Worker tests need special handling
 test.describe('Service Worker', () => {
-  
+
   test.beforeEach(async ({ context }) => {
     // Grant SW permission (Chromium-specific)
     await context.grantPermissions([]);
@@ -12,35 +12,35 @@ test.describe('Service Worker', () => {
 
   test('service worker registers successfully', async ({ page }) => {
     await page.goto('/');
-    
+
     // Wait for SW to register
     const swRegistered = await page.evaluate(async () => {
       if (!('serviceWorker' in navigator)) return false;
       const registration = await navigator.serviceWorker.ready;
       return registration.active !== null;
     });
-    
+
     expect(swRegistered).toBe(true);
   });
 
   test('offline indicator shows when offline', async ({ page, context }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
+
     const indicator = page.locator('#offlineIndicator');
     await expect(indicator).not.toBeVisible();
-    
+
     // Simulate offline
     await context.setOffline(true);
     await page.waitForTimeout(500);
-    
+
     await expect(indicator).toBeVisible();
     await expect(indicator).toContainText("You're offline");
-    
+
     // Go back online
     await context.setOffline(false);
     await page.waitForTimeout(500);
-    
+
     await expect(indicator).not.toBeVisible();
   });
 
@@ -48,18 +48,18 @@ test.describe('Service Worker', () => {
     // First visit - cache the page
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
+
     // Wait for SW to be active
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
-    
+
     // Go offline
     await context.setOffline(true);
-    
+
     // Navigate again - should load from cache
     await page.goto('/');
-    
+
     // Page should still render
     await expect(page.locator('body')).toBeVisible();
     await expect(page.locator('#themeToggle')).toBeVisible();
@@ -90,34 +90,34 @@ test.describe('Service Worker', () => {
         body: JSON.stringify({ pages: [], subCategories: {}, noPageMaps: {} })
       });
     });
-    
+
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
+
     // Wait for SW
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
-    
+
     // Check if cached
     const isCached = await page.evaluate(async () => {
       const cache = await caches.open('xiki-data-v1');
       const keys = await cache.keys();
       return keys.some(k => k.url.includes('smoldata.json'));
     });
-    
+
     // Note: This may be false if the mock intercepts before SW
     // In real scenario, the SW would cache the response
   });
 
   test('thumbnails are runtime cached', async ({ page }) => {
     await page.goto('/');
-    
+
     // Wait for SW
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
-    
+
     // Add a thumbnail URL to cache manually (simulating runtime caching)
     await page.evaluate(async () => {
       const cache = await caches.open('xiki-thumbs-v1');
@@ -126,25 +126,25 @@ test.describe('Service Worker', () => {
       });
       await cache.put('https://upload.wikimedia.org/test.jpg', testResponse);
     });
-    
+
     // Verify it's in cache
     const isCached = await page.evaluate(async () => {
       const cache = await caches.open('xiki-thumbs-v1');
       const match = await cache.match('https://upload.wikimedia.org/test.jpg');
       return match !== undefined;
     });
-    
+
     expect(isCached).toBe(true);
   });
 
   test('API requests are not cached (network only)', async ({ page }) => {
     await page.goto('/');
-    
+
     // Wait for SW
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
-    
+
     // Check that no API responses are in any cache
     const apiCached = await page.evaluate(async () => {
       const cacheNames = await caches.keys();
@@ -157,14 +157,14 @@ test.describe('Service Worker', () => {
       }
       return false;
     });
-    
+
     expect(apiCached).toBe(false);
   });
 });
 
 // Integration tests with feed
 test.describe('Service Worker + Feed Integration', () => {
-  
+
   test('can browse feed offline after initial load', async ({ browser }) => {
     // Use a fresh context with service workers BLOCKED so Playwright's route
     // mock is never bypassed by a cached SW response.
@@ -221,13 +221,13 @@ test.describe('Service Worker + Feed Integration', () => {
   test('offline indicator has correct aria attributes', async ({ page, context }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
+
     const indicator = page.locator('#offlineIndicator');
-    
+
     // Check accessibility attributes
     await expect(indicator).toHaveAttribute('role', 'status');
     await expect(indicator).toHaveAttribute('aria-live', 'polite');
-    
+
     // When visible, should be announced
     await context.setOffline(true);
     await page.waitForTimeout(500);
