@@ -827,8 +827,7 @@ test.describe('Chunked format: basic feed loading', () => {
   // stale browser HTTP cache from parallel workers in the same browser instance,
   // bypassing Playwright's route mocks. Retry once to handle this race.
   test.describe.configure({ retries: 1 });
-  // Retry once: chunk fetches occasionally miss the route mock under parallel load
-  test.describe.configure({ retries: 1 });
+
 
   function generateChunkedIndexData() {
     const pages: [string, number, number, string | null, string[]][] = [];
