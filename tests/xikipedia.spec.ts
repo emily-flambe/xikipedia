@@ -1171,4 +1171,43 @@ test.describe('Wiki text sanitization', () => {
     expect(results.wikiPipeLink).toBe('Visit the city today');
     expect(results.fileLink).toBe('See here');
   });
+
+  test('sanitizeThumb cleans thumbnail filenames', async ({ page }) => {
+    await setupMockRoute(page);
+    await page.goto('/');
+
+    const results = await page.evaluate(() => {
+      const fn = (globalThis as any).sanitizeThumb;
+      if (!fn) return null;
+
+      return {
+        normal: fn('Example.jpg'),
+        filePrefix: fn('File:Example.jpg'),
+        imagePrefix: fn('Image:Example.jpg'),
+        caseInsensitive: fn('file:Example.jpg'),
+        wikiMarkup: fn('[[File:Akfa-group-logo.svg|thumb|Akfa-group-logo]]'),
+        wikiMarkupNoOptions: fn('[[File:Example.jpg]]'),
+        nullInput: fn(null),
+        empty: fn(''),
+        whitespace: fn('  '),
+        filenameWithSpaces: fn('My Photo.jpg'),
+      };
+    });
+
+    if (!results) {
+      test.skip();
+      return;
+    }
+
+    expect(results.normal).toBe('Example.jpg');
+    expect(results.filePrefix).toBe('Example.jpg');
+    expect(results.imagePrefix).toBe('Example.jpg');
+    expect(results.caseInsensitive).toBe('Example.jpg');
+    expect(results.wikiMarkup).toBe('Akfa-group-logo.svg');
+    expect(results.wikiMarkupNoOptions).toBe('Example.jpg');
+    expect(results.nullInput).toBeNull();
+    expect(results.empty).toBeNull();
+    expect(results.whitespace).toBeNull();
+    expect(results.filenameWithSpaces).toBe('My Photo.jpg');
+  });
 });
