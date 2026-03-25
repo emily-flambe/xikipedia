@@ -823,6 +823,12 @@ test.describe('Chunked format: basic feed loading', () => {
   // Without this, the SW's clients.claim() takes control of the page and routes
   // chunk requests through its networkFirst() handler to the real server.
   test.use({ serviceWorkers: 'block' });
+  // The app uses fetch({cache:'force-cache'}) which can intermittently serve
+  // stale browser HTTP cache from parallel workers in the same browser instance,
+  // bypassing Playwright's route mocks. Retry once to handle this race.
+  test.describe.configure({ retries: 1 });
+  // Retry once: chunk fetches occasionally miss the route mock under parallel load
+  test.describe.configure({ retries: 1 });
 
   function generateChunkedIndexData() {
     const pages: [string, number, number, string | null, string[]][] = [];
@@ -870,6 +876,7 @@ test.describe('Chunked format: basic feed loading', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
+        headers: { 'Cache-Control': 'no-store' },
         body: indexJson,
       });
     });
@@ -881,6 +888,7 @@ test.describe('Chunked format: basic feed loading', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
+          headers: { 'Cache-Control': 'no-store' },
           body: JSON.stringify(generateChunkData(chunkId)),
         });
       } else {
@@ -901,13 +909,12 @@ test.describe('Chunked format: basic feed loading', () => {
     await expect(page.locator('#startScreen')).not.toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-testid="post"]').first()).toBeVisible({ timeout: 10000 });
 
-    // Wait for at least one post to have text (not skeleton, not error)
+    // Wait for at least one post to have loaded article text (not skeleton,
+    // not error, and long enough to be real content — not a transient state).
     const postsWithText = page.locator('[data-testid="post"] p:not(.skeleton):not(.load-error)');
     await expect(postsWithText.first()).toBeVisible({ timeout: 10000 });
-
-    const textContent = await postsWithText.first().textContent();
-    expect(textContent).toBeTruthy();
-    expect(textContent!.length).toBeGreaterThan(50);
+    // Wait for the text to settle — chunk fetch may still be in flight
+    await expect(postsWithText.first()).toHaveText(/.{50,}/, { timeout: 10000 });
   });
 
   test('share URL (?article=ID) bypasses start screen in chunked format', async ({ page }) => {
