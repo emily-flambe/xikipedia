@@ -32,3 +32,9 @@ When writing ad-hoc Playwright scripts (not tests) to screenshot/debug the live 
    ```
 7. **Use `waitUntil: 'domcontentloaded'`** instead of default `'load'` for pages with long-running fetches. The `'load'` event can take 60s+ if the page fetches large data files.
 8. **Clean up temp scripts** after use — don't leave `screenshot-*.mjs` files in the repo.
+
+## Knowledge Graph (Agent-MCP)
+
+After significant changes (new features, architecture decisions, schema changes), save context to Agent-MCP using `update_project_context`. Use the key prefix `xikipedia/` (e.g., `xikipedia/architecture`).
+
+Update existing entries when information changes. Create new keys for new topics. This ensures any agent in any session can retrieve project context via `ask_project_rag`.
