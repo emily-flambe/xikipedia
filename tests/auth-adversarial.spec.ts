@@ -1898,3 +1898,115 @@ test.describe('request body size limits', () => {
     expect(body.error).not.toContain('too large');
   });
 });
+
+// =============================================================================
+// HTTPONLY COOKIE SECURITY
+// =============================================================================
+
+test.describe('httpOnly cookie security', () => {
+  test('register: Set-Cookie includes HttpOnly and SameSite=Strict', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const resp = await page.request.post('/api/register', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(resp.status()).toBe(201);
+
+    const setCookie = resp.headers()['set-cookie'] ?? '';
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('SameSite=Strict');
+  });
+
+  test('login: Set-Cookie includes HttpOnly and SameSite=Strict', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/login', {
+      data: { username: user, password: 'password123' },
+      headers: { 'x-forwarded-for': uniqueIp() },
+    });
+    expect(resp.status()).toBe(200);
+
+    const setCookie = resp.headers()['set-cookie'] ?? '';
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('SameSite=Strict');
+  });
+
+  test('logout: Set-Cookie clears cookie with HttpOnly and Max-Age=0', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.post('/api/logout', {
+      headers: { Cookie: `xiki_token=${token}` },
+    });
+    expect(resp.status()).toBe(200);
+
+    const setCookie = resp.headers()['set-cookie'] ?? '';
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('Max-Age=0');
+    expect(setCookie).toMatch(/xiki_token=(?:;|$)/);
+  });
+
+  test('account deletion: Set-Cookie clears cookie', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    const { token } = await apiRegister(page, user, 'password123');
+
+    const resp = await page.request.delete('/api/account', {
+      headers: {
+        Cookie: `xiki_token=${token}`,
+        'Content-Type': 'application/json',
+        'x-forwarded-for': uniqueIp(),
+      },
+      data: JSON.stringify({ password: 'password123' }),
+    });
+    expect(resp.ok()).toBe(true);
+
+    const setCookie = resp.headers()['set-cookie'] ?? '';
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('Max-Age=0');
+    expect(setCookie).toMatch(/xiki_token=(?:;|$)/);
+  });
+
+  test('token is not accessible via localStorage after login', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Register via API — sets httpOnly cookie in the browser context
+    await apiRegister(page, user, 'password123');
+
+    // Reload the page; the cookie travels in the browser context
+    await page.reload();
+
+    // Token must not appear in localStorage
+    const tokenInStorage = await page.evaluate(() => localStorage.getItem('xiki_token'));
+    expect(tokenInStorage).toBeNull();
+  });
+
+  test('token is not readable via document.cookie (httpOnly)', async ({ page }) => {
+    const user = uniqueUser();
+    await mockSmoldata(page);
+    await page.goto('/');
+
+    // Register via API — sets httpOnly cookie in the browser context
+    await apiRegister(page, user, 'password123');
+
+    await page.reload();
+
+    // document.cookie exposes only non-httpOnly cookies; xiki_token must not appear
+    const cookieStr = await page.evaluate(() => document.cookie);
+    expect(cookieStr).not.toContain('xiki_token');
+  });
+});
